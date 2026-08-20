@@ -1,0 +1,105 @@
+# ============================================================
+# 4MyTravels — .gitignore (React Native / Expo)
+# ============================================================
+
+# ---- Dependencies ----
+node_modules/
+.pnp/
+.pnp.js
+.yarn/
+
+# ---- Expo ----
+.expo/
+dist/
+web-build/
+.expo-shared/
+# Expo environment / account secrets
+.env*.local
+.expo/env*
+
+# ---- Build outputs ----
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+*.apk
+*.aab
+*.ipa
+*.app
+build/
+ios/build/
+android/build/
+android/.gradle/
+android/app/build/
+android/app/.cxx/
+android/app/src/main/assets/
+ios/DerivedData/
+ios/Pods/
+*.hmap
+
+# ---- Native project temp ----
+*.tsbuildinfo
+npm-debug.*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---- Metro ----
+.metro-health-check*
+
+# ---- Xcode ----
+*.xcworkspace
+!default.xcworkspace
+xcuserdata/
+*.xcbkptlist
+*.xccheckout
+
+# ---- Android Studio / IntelliJ ----
+.idea/
+*.iml
+*.iws
+.gradle/
+local.properties
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ---- Local env / secrets ----
+.env
+.env.*
+!.env.example
+*.local
+secrets.json
+google-services.json
+GoogleService-Info.plist
+
+# ---- Logs & OS ----
+logs/
+*.log
+npm-deps.log
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---- Editor / CI ----
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.fleet/
+.project
+.settings/
+.classpath
+
+# ---- Coverage / test ----
+coverage/
+.nyc_output/
+
+# ---- Misc ----
+.cache/
+.temp/
+.tmp/
+*.swp

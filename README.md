@@ -1,54 +1,64 @@
 # 4MyTravels
 
-Privacy-first reis-app, gebouwd met React Native + Expo.
+Privacy-first travel app built with React Native + Expo.
 
-> Licentie: **AGPL-3.0** — zie [`LICENSE`](./LICENSE).
-> Bij netwerkgebruik (bijv. een backend/API) verplicht de AGPL het aanbieden
-> van de volledige broncode van de draaiende versie aan de gebruikers.
+> License: **GPL-3.0** — see [`LICENSE`](./LICENSE).
+
+## Language
+
+All repository content — code, comments, documentation, commit messages, and
+issue/PR discussions — is written in **English** to serve an international user
+base and English-speaking contributors. (In-app UI text is English in v1, with
+other languages planned later.)
 
 ## Stack
 
 - React Native (Expo SDK 57)
 - TypeScript
-- Expo Router (best practice voor nieuwe Expo-apps)
-- npm als package manager
+- Expo Router (recommended for new Expo apps)
+- npm as package manager
 
-## Vereisten (lokaal)
+## Requirements (local)
 
 - Node.js 22.x
 - npm 10.x
 - Expo CLI (`npx expo`)
-- Een emulator (Android Studio / Xcode) of fysiek device met Expo Go
+- An emulator (Android Studio / Xcode) or a physical device with Expo Go
 
-## Aan de slag
+## Getting started
 
 ```bash
-# dependencies installeren
+# install dependencies
 npm install
 
-# dev-server starten (Expo)
+# start the dev server (Expo)
 npx expo start
 ```
 
-Scan de QR-code in de Expo Go-app (of druk `a` voor Android-emulator / `i` voor iOS).
+Scan the QR code in the Expo Go app (or press `a` for the Android emulator / `i` for iOS).
 
-## Projectstructuur
+## Project structure
 
 ```
 4mytravels/
-├── app/            # Expo Router schermen & navigatie
-├── assets/         # logo's, fonts, images
-├── components/     # herbruikbare UI-componenten
-├── constants/      # thema, config
+├── app/            # Expo Router screens & navigation
+├── assets/         # logos, fonts, images
+├── components/     # reusable UI components
+├── constants/      # theme, config
 ├── hooks/          # custom React hooks
-├── scripts/        # build-/dev-hulpscripts
-├── LICENSE         # AGPL-3.0
+├── scripts/        # build/dev helper scripts
+├── LICENSE         # GPL-3.0
 └── README.md
 ```
 
-## Licentie
+## Contributing
 
-Dit project valt onder de **GNU Affero General Public License v3.0**.
-De volledige tekst staat in [`LICENSE`](./LICENSE).
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Contributions are welcome via
+fork → branch → pull request.
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0**.
+The full text is in [`LICENSE`](./LICENSE).
 
 Copyright (C) 2026 4MyTravels

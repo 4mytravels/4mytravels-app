@@ -64,7 +64,16 @@ export class WebStorageAdapter implements StorageAdapter {
         cols.forEach((c, i) => {
           row[c] = params[i];
         });
-        t.rows.push(row);
+        // INSERT OR REPLACE: replace an existing row with the same primary key
+        // (first column, conventionally `id`) instead of appending a duplicate.
+        const pkCol = cols[0];
+        const pkVal = params[0];
+        const existingIdx = t.rows.findIndex((r) => r[pkCol] === pkVal);
+        if (existingIdx >= 0) {
+          t.rows[existingIdx] = row;
+        } else {
+          t.rows.push(row);
+        }
       }
       return;
     }
@@ -87,13 +96,37 @@ export class WebStorageAdapter implements StorageAdapter {
       }
       return;
     }
+    if (/^DELETE FROM (\w+)/i.test(stmt)) {
+      const name = stmt.match(/^DELETE FROM (\w+)/i)![1];
+      const t = this.tables.get(name);
+      if (t) {
+        const wm = stmt.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+        const params = (_params as unknown[]) ?? [];
+        if (wm && params.length > 0) {
+          const col = wm[1];
+          const val = params[0];
+          t.rows = t.rows.filter((r) => r[col] !== val);
+        } else {
+          t.rows = [];
+        }
+      }
+      return;
+    }
     // ignore other statements (CREATE TABLE without IF NOT EXISTS, etc.)
   }
 
-  async query<T = Record<string, unknown>>(sql: string, _params?: unknown[]): Promise<T[]> {
+  async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
     const m = sql.match(/FROM (\w+)/i);
     if (m && this.tables.has(m[1])) {
-      return this.tables.get(m[1])!.rows as T[];
+      let rows = this.tables.get(m[1])!.rows as T[];
+      // Minimal WHERE col = ? support so loadExpenses(tripId) filters correctly.
+      const wm = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+      if (wm && params && params.length > 0) {
+        const col = wm[1];
+        const val = params[0];
+        rows = rows.filter((r) => (r as Record<string, unknown>)[col] === val) as T[];
+      }
+      return rows;
     }
     return [] as T[];
   }

@@ -105,6 +105,9 @@ export default function ExpensesScreen() {
       </View>
 
       {/* Trip selector — always exactly one trip selected */}
+      <View style={styles.titleRow}>
+        <Text style={styles.screenTitle}>Expenses</Text>
+      </View>
       <Pressable style={styles.tripSelector} onPress={() => setPickerOpen(true)}>
         <Ionicons name="airplane" size={16} color={colors.primary} />
         <Text style={styles.tripSelectorText} numberOfLines={1}>
@@ -206,6 +209,14 @@ export default function ExpensesScreen() {
           />
         )}
       </Modal>
+
+      {/* FAB — pinned bottom-right */}
+      <Pressable
+        style={[styles.fab, { bottom: 90 + insets.bottom }]}
+        onPress={() => setFormOpen(true)}
+      >
+        <Ionicons name="add" size={32} color={colors.primaryForeground} />
+      </Pressable>
     </View>
   );
 }
@@ -269,6 +280,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   tripSelectorText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  titleRow: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
+  fab: {
+    position: 'absolute',
+    right: spacing.xl,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,

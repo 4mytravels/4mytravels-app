@@ -103,7 +103,9 @@ function Globe() {
         source={require('../../assets/earth-night.jpg')}
         style={[
           styles.globeImage,
-          { transform: [{ rotate: rotation.interpolate({ inputRange: [-3600, 3600], outputRange: ['-3600deg', '3600deg'] }) }] },
+          // Negative degrees = westward spin (left-to-right across the map),
+          // like travelling around the world eastward.
+          { transform: [{ rotate: rotation.interpolate({ inputRange: [-3600, 3600], outputRange: ['3600deg', '-3600deg'] }) }] },
         ]}
         resizeMode="cover"
       />
@@ -153,7 +155,8 @@ export default function HomeScreen() {
   const latestTrip = trips.find((t) => t.id === latestTripId);
 
   return (
-    <ScrollView style={[styles.container, { paddingTop: insets.top }]} contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}>
       {/* Header */}
       <View style={styles.header}>
         <View style={[styles.logoRow, { gap: spacing.md }]}>
@@ -184,7 +187,7 @@ export default function HomeScreen() {
           <Text style={styles.emptyText}>No expenses yet. Open a trip and tap + to add one.</Text>
         </View>
       ) : (
-        expenses.slice(0, 6).map((e) => (
+        expenses.slice(0, 5).map((e) => (
           <View key={e.id} style={styles.expenseCard}>
             <IconCircle icon={categoryIcons[e.category]} size={40} />
             <View style={styles.expenseDetails}>
@@ -200,38 +203,40 @@ export default function HomeScreen() {
         ))
       )}
 
-      {/* FAB — opens the Add-expense sheet directly for the most recent trip */}
-      <Pressable
-        style={[styles.fab, { bottom: 90 + insets.bottom }]}
-        onPress={() => {
-          if (latestTrip) {
-            setFormOpen(true);
-          } else {
-            router.push('/trips/new');
-          }
-        }}
-      >
-        <Ionicons name="add" size={32} color={colors.primaryForeground} />
-      </Pressable>
-
-      {/* Add-expense sheet (one tap from Home) */}
-      <Modal visible={formOpen && !!latestTrip} animationType="slide" onRequestClose={() => setFormOpen(false)}>
-        {latestTrip && (
-          <ExpenseForm
-            tripId={latestTrip.id}
-            defaultCurrency={latestTrip.defaultCurrency}
-            homeCurrency={latestTrip.homeCurrency}
-            onClose={() => setFormOpen(false)}
-            onSave={async (expense) => {
-              const { saveExpense } = await import('../../src/db/expenseRepo');
-              await saveExpense(expense);
-              setFormOpen(false);
-              setExpenses(await loadExpenses());
-            }}
-          />
-        )}
-      </Modal>
     </ScrollView>
+
+    {/* FAB — pinned outside the ScrollView so it stays fixed bottom-right */}
+    <Pressable
+      style={[styles.fab, { bottom: 90 + insets.bottom }]}
+      onPress={() => {
+        if (latestTrip) {
+          setFormOpen(true);
+        } else {
+          router.push('/trips/new');
+        }
+      }}
+    >
+      <Ionicons name="add" size={32} color={colors.primaryForeground} />
+    </Pressable>
+
+    {/* Add-expense sheet (one tap from Home) */}
+    <Modal visible={formOpen && !!latestTrip} animationType="slide" onRequestClose={() => setFormOpen(false)}>
+      {latestTrip && (
+        <ExpenseForm
+          tripId={latestTrip.id}
+          defaultCurrency={latestTrip.defaultCurrency}
+          homeCurrency={latestTrip.homeCurrency}
+          onClose={() => setFormOpen(false)}
+          onSave={async (expense) => {
+            const { saveExpense } = await import('../../src/db/expenseRepo');
+            await saveExpense(expense);
+            setFormOpen(false);
+            setExpenses(await loadExpenses());
+          }}
+        />
+      )}
+    </Modal>
+    </View>
   );
 }
 

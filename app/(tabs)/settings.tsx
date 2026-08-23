@@ -112,7 +112,12 @@ export default function SettingsScreen() {
     if (!trip) return;
     setBusy(true);
     try {
-      const doc = await DocumentPicker.getDocumentAsync({ type: 'text/csv', copyToCacheDirectory: true });
+      // 'text/csv' alone misses many file managers / downloads (Android mime
+      // matching is unreliable); accept the common CSV variants explicitly.
+      const doc = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel', 'text/plain', '*/*'],
+        copyToCacheDirectory: true,
+      });
       if (doc.canceled || !('uri' in doc) || typeof doc.uri !== 'string') { setBusy(false); return; }
       const file = new File(doc.uri);
       const text = await file.text();

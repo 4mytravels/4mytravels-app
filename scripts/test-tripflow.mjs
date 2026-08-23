@@ -102,8 +102,9 @@ const { v4: uuid } = require('uuid');
     homeCurrency: 'EUR',
     defaultCurrency: 'JPY',
     dailyBudget: 75.5,
+    countries: ['JP', 'TH'],
   };
-  await saveTrip(trip, db);
+  await saveTrip(trip, null, db);
   const trips = await loadTrips(db);
   assert(trips.length === 1, 'exact 1 trip opgeslagen (got ' + trips.length + ')');
   const back = trips[0];
@@ -111,9 +112,10 @@ const { v4: uuid } = require('uuid');
   assert(back.startDate === '2026-10-01', 'startDate round-trip correct');
   assert(back.dailyBudget === 75.5, 'dailyBudget round-trip correct (got ' + back.dailyBudget + ')');
   assert(back.defaultCurrency === 'JPY', 'defaultCurrency round-trip correct');
+  assert(Array.isArray(back.countries) && back.countries.join(',') === 'JP,TH', 'countries round-trip correct (got ' + JSON.stringify(back.countries) + ')');
 
   const edited = { ...trip, name: 'Japan Autumn Trip', dailyBudget: 80 };
-  await updateTrip(edited, db);
+  await updateTrip(edited, null, db);
   const trips2 = await loadTrips(db);
   assert(trips2.length === 1, 'edit voegt geen duplicate toe (got ' + trips2.length + ')');
   assert(trips2[0].name === 'Japan Autumn Trip', 'edit naam bijgewerkt');

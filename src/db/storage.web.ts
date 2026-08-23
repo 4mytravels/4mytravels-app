@@ -78,13 +78,32 @@ export class WebStorageAdapter implements StorageAdapter {
       return;
     }
     if (/^VACUUM/i.test(stmt)) return;
+    if (/^SELECT .+ FROM (\w+)/i.test(stmt)) {
+      // Emulate SQL strictly enough for migration probes: throw on unknown
+      // table/column so guarded migrations (e.g. ADD COLUMN checks) behave
+      // like the native adapter.
+      const name = stmt.match(/^SELECT .+ FROM (\w+)/i)![1];
+      const t = this.tables.get(name);
+      if (!t) throw new Error(`no such table: ${name}`);
+      const colMatch = stmt.match(/^SELECT (.+?) FROM/i)![1].trim();
+      if (colMatch !== '*' && !colMatch.includes(',')) {
+        const col = colMatch.replace(/^LIMIT.*$/i, '').trim();
+        if (!t.columns.includes(col)) throw new Error(`no such column: ${col}`);
+      }
+      return;
+    }
+    if (/^ALTER TABLE (\w+) ADD COLUMN (\w+)/i.test(stmt)) {
+      const m = stmt.match(/^ALTER TABLE (\w+) ADD COLUMN (\w+)/i)!;
+      const t = this.tables.get(m[1]);
+      if (t && !t.columns.includes(m[2])) t.columns.push(m[2]);
+      return;
+    }
     if (/^UPDATE (\w+)/i.test(stmt)) {
       const name = stmt.match(/^UPDATE (\w+)/i)![1];
       const t = this.tables.get(name);
       if (t) {
         const setCols = stmt.match(/SET\s+([\s\S]*?)\s+WHERE/i)?.[1] ?? '';
         const setNames = setCols.split(',').map((c) => c.trim().split(/\s+/)[0]);
-        const whereId = (stmt.match(/WHERE id = \?/i) || [])[0];
         const params = (_params as unknown[]) ?? [];
         const idVal = params[params.length - 1];
         const row = t.rows.find((r) => r.id === idVal);

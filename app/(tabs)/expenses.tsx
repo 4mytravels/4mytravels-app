@@ -1,0 +1,336 @@
+import { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  Modal,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { AppLogo } from '../../src/components/AppLogo';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { loadExpenses } from '../../src/db/expenseRepo';
+import { useTripStore } from '../../src/store/tripStore';
+import type { Expense } from '../../src/types';
+import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { IconCircle, categoryIcons, Button, StatBox } from '../../src/components/ui';
+import { ExpenseForm } from '../../src/components/ExpenseForm';
+import { EXPENSE_CATEGORIES } from '../../src/types';
+import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
+
+export default function ExpensesScreen() {
+  const params = useLocalSearchParams<{ tripId?: string; add?: string }>();
+  const insets = useSafeAreaInsets();
+  const trips = useTripStore((s) => s.trips);
+  // Exactly one trip is always selected; default to the param (deep link / FAB)
+  // or the most recent trip.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    params.tripId ?? trips[0]?.id ?? null,
+  );
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [homeCurrency, setHomeCurrency] = useState('EUR');
+  const [catFilter, setCatFilter] = useState<string>('All');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(params.add === '1');
+
+  const selectedTrip = trips.find((t) => t.id === selectedId);
+
+  useEffect(() => {
+    if (!selectedId && trips.length > 0) setSelectedId(trips[0].id);
+  }, [trips, selectedId]);
+
+  useEffect(() => {
+    setHomeCurrency(selectedTrip?.homeCurrency ?? 'EUR');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, trips.length]);
+
+  const load = async () => {
+    if (!selectedId) return;
+    setExpenses(await loadExpenses(selectedId));
+  };
+
+  // Reload on focus AND when the selected trip changes.
+  useFocusEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!selectedId) return;
+      const list = await loadExpenses(selectedId);
+      if (alive) setExpenses(list);
+    })();
+    return () => {
+      alive = false;
+    };
+  });
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  const list = expenses.filter(
+    (e) =>
+      (catFilter === 'All' || e.category === catFilter),
+  );
+
+  const totalHome = list.reduce((sum, e) => sum + toHomeCurrency(e), 0);
+
+  // Daily average: total spend divided by days elapsed since trip start (min 1).
+  const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
+  const daysElapsed = Number.isNaN(startMs)
+    ? 1
+    : Math.max(1, Math.round((Date.now() - startMs) / 86_400_000));
+  const dailyAverage = totalHome / daysElapsed;
+
+  const handleSave = async (expense: Expense) => {
+    const { saveExpense } = await import('../../src/db/expenseRepo');
+    await saveExpense(expense);
+    setFormOpen(false);
+    await load();
+  };
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <View style={styles.logoRow}>
+          <AppLogo size={36} />
+          <Text style={styles.appTitle}>4 My Travels</Text>
+        </View>
+        <Pressable style={styles.addButton} onPress={() => setFormOpen(true)}>
+          <Ionicons name="add" size={22} color={colors.primaryForeground} />
+          <Text style={styles.addButtonText}>Add</Text>
+        </Pressable>
+      </View>
+
+      {/* Trip selector — always exactly one trip selected */}
+      <Pressable style={styles.tripSelector} onPress={() => setPickerOpen(true)}>
+        <Ionicons name="airplane" size={16} color={colors.primary} />
+        <Text style={styles.tripSelectorText} numberOfLines={1}>
+          {selectedTrip ? selectedTrip.name : trips.length === 0 ? 'No trips yet' : 'Select a trip'}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
+      </Pressable>
+
+      {/* Budget stats for the selected trip (mirrors trip-detail numbers) */}
+      {selectedTrip && (
+        <View style={styles.statsRow}>
+          <StatBox label="Daily budget" value={formatMoney(selectedTrip.dailyBudget, homeCurrency)} />
+          <StatBox label="Total spend" value={formatMoney(totalHome, homeCurrency)} />
+          <StatBox label="Daily avg" value={formatMoney(dailyAverage, homeCurrency)} />
+        </View>
+      )}
+
+      <FlatList
+        data={list}
+        keyExtractor={(e) => e.id}
+        contentContainerStyle={[styles.list, { paddingBottom: 120 + insets.bottom }]}
+        ListHeaderComponent={
+          <>
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={20} color={colors.mutedForeground} />
+              <Text style={styles.searchPlaceholder}>Search notes, places, categories</Text>
+            </View>
+            <Text style={styles.totalText}>
+              {formatMoney(totalHome, homeCurrency)} total
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips}>
+              {['All', ...EXPENSE_CATEGORIES].map((c) => {
+                const active = catFilter === c;
+                return (
+                  <Pressable
+                    key={c}
+                    onPress={() => setCatFilter(c)}
+                    style={[styles.chip, active && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{c}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </>
+        }
+        renderItem={({ item }) => (
+          <ExpenseRow expense={item} homeCurrency={homeCurrency} />
+        )}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {selectedTrip ? 'No expenses for this trip yet.' : 'Create a trip first.'}
+          </Text>
+        }
+      />
+
+      {/* Trip picker modal */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
+          <View style={[styles.pickerSheet, { marginBottom: insets.bottom + 80 }]}>
+            <Text style={styles.pickerTitle}>Select trip</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {trips.map((t) => (
+                <Pressable
+                  key={t.id}
+                  style={[styles.pickerRow, t.id === selectedId && styles.pickerRowActive]}
+                  onPress={() => {
+                    setSelectedId(t.id);
+                    setPickerOpen(false);
+                  }}
+                >
+                  <Ionicons
+                    name="airplane-outline"
+                    size={18}
+                    color={t.id === selectedId ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text style={[styles.pickerRowText, t.id === selectedId && { color: colors.primary, fontWeight: '700' }]}>
+                    {t.name}
+                  </Text>
+                  {t.id === selectedId && (
+                    <Ionicons name="checkmark" size={18} color={colors.primary} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Add-expense sheet */}
+      <Modal visible={formOpen} animationType="slide" onRequestClose={() => setFormOpen(false)}>
+        {selectedTrip && (
+          <ExpenseForm
+            tripId={selectedTrip.id}
+            defaultCurrency={selectedTrip.defaultCurrency}
+            homeCurrency={selectedTrip.homeCurrency}
+            onClose={() => setFormOpen(false)}
+            onSave={handleSave}
+          />
+        )}
+      </Modal>
+    </View>
+  );
+}
+
+function ExpenseRow({ expense, homeCurrency }: { expense: Expense; homeCurrency: string }) {
+  return (
+    <View style={styles.row}>
+      <IconCircle icon={categoryIcons[expense.category]} size={50} />
+      <View style={styles.details}>
+        <Text style={styles.rowTitle}>{expense.notes || expense.category}</Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.metaText}>{expense.category}</Text>
+          <Ionicons name="time-outline" size={14} color={colors.mutedForeground} />
+          <Text style={styles.metaText}>{expense.rateDate}</Text>
+        </View>
+      </View>
+      <View style={styles.priceCol}>
+        <Text style={styles.priceMain}>
+          {formatMoney(expense.amount, expense.currency)}
+        </Text>
+        <Text style={styles.priceSub}>
+          ≈ {formatMoney(toHomeCurrency(expense), homeCurrency)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  addButtonText: { color: colors.primaryForeground, fontWeight: '700', fontSize: fontSize.md },
+  tripSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.xl,
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tripSelectorText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginHorizontal: spacing.xl,
+    marginTop: spacing.md,
+  },
+  list: { paddingHorizontal: spacing.xl },
+  totalText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.md },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  searchPlaceholder: { color: colors.mutedForeground, marginLeft: spacing.md, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  chipScroll: { marginTop: spacing.md, marginBottom: spacing.sm },
+  chips: { gap: spacing.sm, paddingRight: spacing.xl },
+  chip: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans },
+  chipTextActive: { color: colors.primaryForeground, fontWeight: '700' },
+  row: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  details: { flex: 1, marginLeft: spacing.md },
+  rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans, marginBottom: spacing.xs },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  metaText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  priceCol: { alignItems: 'flex-end' },
+  priceMain: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },
+  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
+  empty: { color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.xl, fontFamily: fontFamily.sans },
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius['3xl'],
+    borderTopRightRadius: radius['3xl'],
+    padding: spacing.xl,
+  },
+  pickerTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, marginBottom: spacing.lg },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerRowActive: {},
+  pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+});

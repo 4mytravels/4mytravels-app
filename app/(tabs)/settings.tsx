@@ -22,9 +22,17 @@ import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/t
 import { Card, SectionTitle, Button } from '../../src/components/ui';
 import { createBackup, restoreBackup } from '../../src/db/backup';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { saveExpense } from '../../src/db/expenseRepo';
+import { saveExpense, loadExpenses } from '../../src/db/expenseRepo';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
+import {
+  expensesToCsv,
+  parseCsv,
+  isOwnExpenseCsv,
+  looksLikeTravelSpendCsv,
+  parseOwnCsv,
+  parseTravelSpendCsv,
+} from '../../src/services/csv';
 
 // Update these when the repo goes live.
 const SOURCE_CODE_URL = 'https://github.com/4mytravels/4mytravels';
@@ -40,6 +48,9 @@ export default function SettingsScreen() {
   const [mode, setMode] = useState<null | 'backup' | 'restore'>(null);
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTargetTrip, setImportTargetTrip] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrateSettings();
@@ -49,6 +60,97 @@ export default function SettingsScreen() {
     setMode(null);
     setPassphrase('');
     setBusy(false);
+  };
+
+  // ---- CSV export: one trip, or everything as multiple per-trip files ----
+  const shareCsv = async (csv: string, filename: string) => {
+    const file = new File(Paths.cache, filename);
+    await file.write(csv);
+    await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Export expenses' });
+  };
+
+  const exportSingleTrip = async (tripId: string) => {
+    const trip = trips.find((t) => t.id === tripId);
+    if (!trip) return;
+    try {
+      const list = await loadExpenses(tripId);
+      if (list.length === 0) {
+        Alert.alert('Nothing to export', 'This trip has no expenses yet.');
+        return;
+      }
+      const csv = expensesToCsv(list, { [trip.id]: trip.name });
+      const safeName = trip.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      await shareCsv(csv, `4mt-expenses-${safeName || 'trip'}.csv`);
+      setExportOpen(false);
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const exportAllTrips = async () => {
+    try {
+      let total = 0;
+      for (const t of trips) {
+        const list = await loadExpenses(t.id);
+        if (list.length === 0) continue;
+        const csv = expensesToCsv(list, { [t.id]: t.name });
+        const safeName = t.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+        await shareCsv(csv, `4mt-expenses-${safeName || t.id}.csv`);
+        total += list.length;
+      }
+      setExportOpen(false);
+      if (total === 0) Alert.alert('Nothing to export', 'No trips with expenses found.');
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // ---- CSV import: own format or TravelSpend ----
+  const doCsvImport = async () => {
+    if (!importTargetTrip) return;
+    const trip = trips.find((t) => t.id === importTargetTrip);
+    if (!trip) return;
+    setBusy(true);
+    try {
+      const doc = await DocumentPicker.getDocumentAsync({ type: 'text/csv', copyToCacheDirectory: true });
+      if (doc.canceled || !('uri' in doc) || typeof doc.uri !== 'string') { setBusy(false); return; }
+      const file = new File(doc.uri);
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length < 2) throw new Error('File appears to be empty.');
+      const header = rows[0];
+      let items;
+      let skippedNote = '';
+      if (isOwnExpenseCsv(header)) {
+        items = parseOwnCsv(rows, trip.id);
+      } else if (looksLikeTravelSpendCsv(header)) {
+        const res = parseTravelSpendCsv(rows, trip.id);
+        items = res.items;
+        skippedNote = res.skipped > 0 ? ` (${res.skipped} rows skipped)` : '';
+      } else {
+        throw new Error('Unrecognized CSV format — expected a 4MyTravels or TravelSpend export.');
+      }
+      let count = 0;
+      for (const item of items) {
+        const expense = {
+          ...item,
+          id: item.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          tripId: trip.id,
+        };
+        await saveExpense(expense as never); // INSERT OR REPLACE → re-import updates
+        count++;
+      }
+      Alert.alert(
+        'Import complete',
+        `${count} expense(s) imported into "${trip.name}"${skippedNote}.`,
+      );
+      setImportOpen(false);
+      setImportTargetTrip(null);
+    } catch (e) {
+      Alert.alert('Import failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const doBackup = async () => {
@@ -116,6 +218,19 @@ export default function SettingsScreen() {
             <View style={{ height: spacing.md }} />
             <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={() => setMode('restore')} />
           </View>
+        </Card>
+
+        <SectionTitle title="CSV export & import" />
+        <Card>
+          <View style={styles.actions}>
+            <Button label="Export expenses" icon="download-outline" onPress={() => setExportOpen(true)} />
+            <View style={{ height: spacing.md }} />
+            <Button label="Import from CSV" icon="cloud-download-outline" variant="ghost" onPress={() => setImportOpen(true)} />
+          </View>
+          <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
+            Export one trip as a single CSV, or every trip as separate files. Import supports
+            4MyTravels and TravelSpend exports.
+          </Text>
         </Card>
 
         <SectionTitle title="Manual exchange rates" />
@@ -190,6 +305,71 @@ export default function SettingsScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+      {/* Export picker: single trip or all trips */}
+      <Modal visible={exportOpen} transparent animationType="fade" onRequestClose={() => setExportOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setExportOpen(false)}>
+          <View style={styles.pickerSheet}>
+            <Text style={styles.pickerTitle}>Export expenses</Text>
+            <ScrollView style={{ maxHeight: 420 }}>
+              {trips.map((t) => (
+                <Pressable key={t.id} style={styles.pickerRow} onPress={() => exportSingleTrip(t.id)}>
+                  <Ionicons name="airplane-outline" size={18} color={colors.primary} />
+                  <Text style={styles.pickerRowText}>{t.name}</Text>
+                  <Ionicons name="download-outline" size={18} color={colors.mutedForeground} />
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View style={{ marginTop: spacing.lg }}>
+              <Button
+                label={`Export ALL trips (${trips.length} CSV files)`}
+                icon="layers-outline"
+                variant="ghost"
+                onPress={exportAllTrips}
+              />
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Import: choose target trip, then pick a CSV file */}
+      <Modal visible={importOpen} transparent animationType="fade" onRequestClose={() => setImportOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setImportOpen(false)}>
+          <View style={styles.pickerSheet}>
+            <Text style={styles.pickerTitle}>Import into which trip?</Text>
+            <Text style={[styles.note, { marginBottom: spacing.md }]}>
+              Expenses are added to the selected trip. Existing entries with the same id are updated.
+            </Text>
+            <ScrollView style={{ maxHeight: 380 }}>
+              {trips.map((t) => (
+                <Pressable
+                  key={t.id}
+                  style={[styles.pickerRow, t.id === importTargetTrip && styles.pickerRowActive]}
+                  onPress={() => {
+                    if (!importTargetTrip) { setImportTargetTrip(t.id); return; }
+                    if (t.id === importTargetTrip) { setImportTargetTrip(null); return; }
+                    setImportTargetTrip(t.id);
+                  }}
+                >
+                  <Ionicons
+                    name={t.id === importTargetTrip ? 'radio-button-on' : 'radio-button-off'}
+                    size={20}
+                    color={t.id === importTargetTrip ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text style={styles.pickerRowText}>{t.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View style={{ marginTop: spacing.lg }}>
+              <Button
+                label={busy ? 'Importing…' : 'Choose CSV file'}
+                icon="cloud-download-outline"
+                disabled={!importTargetTrip || busy}
+                onPress={doCsvImport}
+              />
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -231,6 +411,24 @@ const styles = StyleSheet.create({
   aboutLabel: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   aboutValue: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '700', fontFamily: fontFamily.sans },
   aboutLink: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius['3xl'],
+    borderTopRightRadius: radius['3xl'],
+    padding: spacing.xl,
+  },
+  pickerTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, marginBottom: spacing.md },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerRowActive: {},
+  pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, flex: 1 },
   rateInput: {
     backgroundColor: colors.secondary,

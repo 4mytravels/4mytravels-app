@@ -43,25 +43,32 @@ assert(parsed[0].notes === 'Ramen, with "quotes" & comma', 'notes unescaped corr
 assert(parsed[0].amount === 12.5 && parsed[0].currency === 'JPY', 'amount/currency intact');
 assert(parsed[0].id === 'a1' && parsed[1].id === 'a2', 'ids preserved (re-import updates)');
 
-// --- TravelSpend detection & parsing (their typical export columns) ---
-const tsHeader = ['Date','Title','Amount','Currency','CategoryName','MainCategoryName','Note'];
+// --- TravelSpend detection & parsing — REAL export format (user-verified 2026) ---
+const tsHeader = [
+  'amount','amountInHomeCurrency','category','conversionRate','country','countryCode',
+  'datePaid','homeCurrency','localCurrency','notes','paidBy','paidFor','m.bakker',
+  'paymentMethod','photo','place','latitude','longitude','type','numberOfDays',
+];
 const tsRows = [
   tsHeader,
-  ['2026-07-01','Hotel Bangkok','1250.75','THB','Accommodation','Lodging','First night'],
-  ['01/07/2026','Street food','80,50','THB','Food','Eating out',''],
-  ['','broken row','','THB','','',''], // skipped
+  // "12,10" comma-decimal, datePaid dd-mm-yyyy, Transportation→Transport, Credit Card→card
+  ['"12,10"','"12,10"','Groceries','"1"','Greece','GR','08-11-2023','EUR','EUR','first night','','','12,10','Credit Card','','Spata','','37,931','Expense','1'],
+  ['"9,00"','"9,00"','Transportation','"1"','Greece','GR','09-11-2023','EUR','EUR','','','','9,00','Cash','','','','','','Expense','1'],
+  ['','','','','','','','','','','','','','','','','','','Refund','1'], // type≠Expense → skipped
 ];
-assert(csv.looksLikeTravelSpendCsv(tsRows[0]), 'TravelSpend header detected');
+assert(csv.looksLikeTravelSpendCsv(tsRows[0]), 'TravelSpend REAL header detected');
 assert(!csv.isOwnExpenseCsv(tsRows[0]), 'not mistaken for own CSV');
 const ts = csv.parseTravelSpendCsv(tsRows, 'tripX');
 assert(ts.items.length === 2, `2 valid TS rows parsed (got ${ts.items.length})`);
 assert(ts.skipped === 1, `1 row skipped (got ${ts.skipped})`);
-assert(ts.items[0].amount === 1250.75 && ts.items[0].currency === 'THB', 'TS amount/currency');
-assert(ts.items[0].category === 'Accommodation', 'TS category matched');
-assert(ts.items[0].notes === 'Hotel Bangkok', 'TS title → notes');
-assert(ts.items[0].rateDate === '2026-07-01', 'TS ISO date kept');
-assert(ts.items[1].rateDate === '2026-07-01', 'TS dd/mm/yyyy normalized');
-assert(ts.items[1].amount === 80.5, 'TS comma-decimal parsed');
+assert(ts.items[0].amount === 12.10 && ts.items[0].currency === 'EUR', 'comma-decimal amount + localCurrency');
+assert(ts.items[0].rateDate === '2023-11-08', 'datePaid dd-mm-yyyy → ISO');
+assert(ts.items[0].category === 'Groceries', 'direct category match');
+assert(ts.items[1].category === 'Transport', 'Transportation → Transport');
+assert(ts.items[0].paymentMethod === 'card', 'Credit Card → card');
+assert(ts.items[1].paymentMethod === 'cash', 'Cash → cash');
+assert(ts.items[0].rateToHome === 1, 'conversionRate parsed');
+assert(ts.items[0].country === 'GR', 'countryCode used');
 
 console.log(failed === 0 ? '\n=== CSV TESTS: ALLE PASS ===' : `\n${failed} FAILURES`);
 rmSync(cache, { recursive: true, force: true });

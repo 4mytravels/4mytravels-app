@@ -32,7 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuid } from 'uuid';
 import { useTripStore } from '../../src/store/tripStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { COUNTRIES } from '../../src/data/countries';
+import { UN_COUNTRIES } from '../../src/data/countries';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
@@ -206,7 +206,7 @@ function CountryMultiPicker({
         : [...selected, code],
     );
   };
-  const filtered = COUNTRIES.filter((c) =>
+  const filtered = UN_COUNTRIES.filter((c) =>
     c.name.toLowerCase().includes(query.toLowerCase()) || c.code.toLowerCase().includes(query.toLowerCase()),
   );
   const label =

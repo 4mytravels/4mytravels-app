@@ -32,7 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuid } from 'uuid';
 import { useTripStore } from '../../src/store/tripStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { UN_COUNTRIES } from '../../src/data/countries';
+import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
@@ -212,9 +212,11 @@ function CountryMultiPicker({
   const label =
     selected.length === 0
       ? 'Select countries'
-      : selected.length <= 3
-        ? selected.map((c) => c).join(', ')
-        : `${selected.length} countries selected`;
+      : selected.map((c) => flagEmoji(c)).join('') +
+        ' ' +
+        (selected.length <= 3
+          ? selected.map((c) => countryLabel(c).replace(/^\S+\s/, '')).join(', ')
+          : `${selected.length} countries selected`);
   return (
     <>
       <Pressable style={styles.input} onPress={() => setOpen(true)}>
@@ -252,7 +254,7 @@ function CountryMultiPicker({
                     onPress={() => toggle(item.code)}
                   >
                     <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
-                      {item.name} ({item.code})
+                      {flagEmoji(item.code)} {item.name}
                     </Text>
                     <Ionicons
                       name={active ? 'checkbox' : 'square-outline'}

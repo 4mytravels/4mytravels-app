@@ -268,6 +268,21 @@ const BY_CODE = new Map(COUNTRIES.map((c) => [c.code, c]));
 /** Entries shown in the pickers: the 195 UN member + observer states. */
 export const UN_COUNTRIES = COUNTRIES.filter((c) => c.un);
 
+/** ISO 3166-1 alpha-2 → regional-indicator flag emoji (e.g. 'NL' -> 🇳🇱). */
+export function flagEmoji(code: string): string {
+  const c = code.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  return String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+}
+
+/** 'JP' -> '🇯🇵 Japan' (falls back to the raw code for unknown/territory codes). */
+export function countryLabel(code: string): string {
+  const c = code.toUpperCase();
+  const flag = flagEmoji(c);
+  const name = BY_CODE.get(c)?.name;
+  return [flag, name ?? c].filter(Boolean).join(' ');
+}
+
 export function countryName(code: string): string {
   return BY_CODE.get(code.toUpperCase())?.name ?? code;
 }

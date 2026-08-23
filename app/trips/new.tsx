@@ -327,11 +327,14 @@ export default function NewTripScreen() {
           defaultCurrency: trip.defaultCurrency,
           dailyBudget: trip.dailyBudget,
           countries: trip.countries,
+          coverBytes,
         });
         await step('updateTrip (DB write)', () => updateTrip(trip, coverBytes));
       } else {
         setPhase('addTrip (store)');
-        addTrip(trip);
+        // Include the cover bytes in the stored object so the photo shows
+        // immediately (the DB row also carries them via saveTrip below).
+        addTrip({ ...trip, coverBytes } as Trip & { coverBytes?: Uint8Array | null });
         await step('saveTrip (DB write)', () => saveTrip(trip, coverBytes));
       }
       setPhase('navigating back');

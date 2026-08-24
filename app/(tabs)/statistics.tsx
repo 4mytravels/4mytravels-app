@@ -132,6 +132,14 @@ function Legend({ entries }: { entries: [string, number][] }) {
   );
 }
 
+// YYYY-MM → "Aug 2026" (locale-onafhankelijk, Engelse afkortingen).
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split('-').map((n) => parseInt(n, 10));
+  if (!y || !m || m < 1 || m > 12) return ym;
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${names[m - 1]} ${y}`;
+}
+
 export default function StatisticsScreen() {
   const params = useLocalSearchParams();
   const tripId = typeof params.tripId === 'string' ? params.tripId : undefined;
@@ -149,7 +157,7 @@ export default function StatisticsScreen() {
 
   const byCategory: Record<string, number> = {};
   const byCountry: Record<string, number> = {};
-  const byDay: Record<string, number> = {};
+  const byMonth: Record<string, number> = {};
   for (const e of expenses) {
     const h = toHomeCurrency(e);
     byCategory[e.category] = (byCategory[e.category] ?? 0) + h;
@@ -160,15 +168,18 @@ export default function StatisticsScreen() {
       byCountry[label] = (byCountry[label] ?? 0) + h;
     }
     const day = (e.createdAt ?? e.rateDate).slice(0, 10);
-    byDay[day] = (byDay[day] ?? 0) + h;
+    if (day.length >= 7) {
+      const month = day.slice(0, 7); // YYYY-MM
+      byMonth[month] = (byMonth[month] ?? 0) + h;
+    }
   }
 
   const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
   const countryEntries = Object.entries(byCountry).sort((a, b) => b[1] - a[1]);
-  const dayEntries = Object.entries(byDay).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const monthEntries = Object.entries(byMonth).sort((a, b) => (a[0] < b[0] ? -1 : 1));
   const maxCat = catEntries.length ? catEntries[0][1] : 1;
   const maxCountry = countryEntries.length ? countryEntries[0][1] : 1;
-  const maxDay = dayEntries.length ? dayEntries[0][1] : 1;
+  const maxMonth = monthEntries.length ? monthEntries[0][1] : 1;
   const total = expenses.reduce((s, e) => s + toHomeCurrency(e), 0);
 
   // Export as a REAL .csv file via the share sheet (was: Share.share message =
@@ -235,8 +246,8 @@ export default function StatisticsScreen() {
 
         <View style={styles.section}>
           <SectionTitle title="Over time" />
-          {dayEntries.length === 0 ? <Empty /> : dayEntries.map(([k, v]) => (
-            <Bar key={k} label={k} value={v} max={maxDay} color={colors.routeLine} />
+          {monthEntries.length === 0 ? <Empty /> : monthEntries.map(([k, v]) => (
+            <Bar key={k} label={monthLabel(k)} value={v} max={maxMonth} color={colors.routeLine} />
           ))}
         </View>
 

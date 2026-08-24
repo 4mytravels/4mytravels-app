@@ -465,7 +465,12 @@ export function ExpenseForm({
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} />
+                <Ionicons
+                  name="calendar-outline"
+                  size={20}
+                  color={colors.mutedForeground}
+                  style={{ marginLeft: 'auto', paddingHorizontal: spacing.lg }}
+                />
               </Pressable>
               <TextInput
                 style={styles.timeInput}
@@ -793,6 +798,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     color: colors.foreground,
     fontFamily: fontFamily.sans,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
   viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' },

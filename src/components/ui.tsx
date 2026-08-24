@@ -251,10 +251,11 @@ export function CategoryChip({
       <Text
         style={{
           color: colors.foreground,
-          fontSize: fontSize.md,
+          fontSize: stretch ? fontSize.sm : fontSize.md,
           fontWeight: selected ? '600' : '500',
           fontFamily: fontFamily.sans,
         }}
+        numberOfLines={stretch ? 1 : undefined}
       >
         {category}
       </Text>

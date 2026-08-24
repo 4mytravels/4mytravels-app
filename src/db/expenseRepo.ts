@@ -2,6 +2,7 @@
 // the active StorageAdapter (MVP scope §2.1, §2.2). Receipt photo is a BLOB
 // column so all local data stays encrypted (§2.2).
 import { getStorageAdapter, type StorageAdapter } from './index';
+import { bytesFromBlob } from './blob';
 import type { Expense } from '../types';
 
 function rowToExpense(r: Record<string, unknown>): Expense {
@@ -18,7 +19,7 @@ function rowToExpense(r: Record<string, unknown>): Expense {
     location: (r.location as string) || undefined,
     paymentMethod: r.payment_method as Expense['paymentMethod'],
     notes: (r.notes as string) || undefined,
-    receiptPhoto: (r.receipt_photo as Uint8Array) ?? null,
+    receiptPhoto: bytesFromBlob(r.receipt_photo),
     multiDaySplit:
       r.multi_day_split_start && r.multi_day_split_end
         ? { splitStart: r.multi_day_split_start as string, splitEnd: r.multi_day_split_end as string }

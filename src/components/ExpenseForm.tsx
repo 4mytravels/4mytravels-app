@@ -34,6 +34,7 @@ import {
   type Expense,
   type PaymentMethod,
 } from '../types';
+import { allocateSplit } from '../utils/pace';
 import { CategoryChip, Button } from './ui';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
@@ -80,6 +81,10 @@ export function ExpenseForm({
   );
   const [note, setNote] = useState(initialExpense?.notes ?? '');
   const [date, setDate] = useState(initialExpense?.rateDate ?? new Date().toISOString().slice(0, 10));
+  // Multi-day split (optional): when an end date is set, the amount is spread
+  // evenly across [date … endDate] in budget statistics (§2.2 allocateSplit).
+  const [endDate, setEndDate] = useState(initialExpense?.multiDaySplit?.splitEnd ?? '');
+  const [splitOpen, setSplitOpen] = useState(false);
   const [time, setTime] = useState(
     initialExpense ? (initialExpense.createdAt || new Date().toISOString()).slice(11, 16) : new Date().toISOString().slice(11, 16),
   );
@@ -98,6 +103,8 @@ export function ExpenseForm({
     initialExpense?.receiptPhoto ? 'data:image/jpeg;base64,' + bytesToBase64(initialExpense.receiptPhoto) : null,
   );
   const [receiptBytes, setReceiptBytes] = useState<Uint8Array | null>(initialExpense?.receiptPhoto ?? null);
+  // Fullscreen receipt viewer (tap the thumbnail to open).
+  const [receiptViewerOpen, setReceiptViewerOpen] = useState(false);
 
   const pickReceipt = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -186,6 +193,11 @@ export function ExpenseForm({
 
   const save = () => {
     if (amountNum <= 0 || !rate) return; // require a valid amount + rate
+    // Multi-day split only when the end date is a real later date.
+    const split =
+      endDate && endDate > date
+        ? { splitStart: date, splitEnd: endDate }
+        : undefined;
     const expense: Expense = {
       id: initialExpense?.id ?? uuid(),
       tripId,
@@ -202,6 +214,7 @@ export function ExpenseForm({
       paymentMethod,
       notes: note.trim() || undefined,
       receiptPhoto: receiptBytes,
+      multiDaySplit: split,
     };
     onSave(expense);
   };
@@ -317,7 +330,7 @@ export function ExpenseForm({
             )}
           </View>
 
-          {/* Category grid */}
+          {/* Category grid — chips stretch edge to edge, 3 per row */}
           <View style={styles.section}>
             <Text style={styles.label}>Category</Text>
             <View style={styles.categoryGrid}>
@@ -327,6 +340,7 @@ export function ExpenseForm({
                   category={cat}
                   selected={category === cat}
                   onSelect={setCategory}
+                  stretch
                 />
               ))}
             </View>
@@ -367,15 +381,20 @@ export function ExpenseForm({
             />
           </View>
 
-          {/* Country */}
+          {/* Country — selector sits on the same row as the label */}
           <View style={styles.section}>
-            <Text style={styles.label}>Country (optional)</Text>
-            <Pressable style={styles.input} onPress={() => setCountryOpen(true)}>
-              <Text style={[styles.pickerValue, !country && { color: colors.mutedForeground }]} numberOfLines={1}>
-                {country ? countryLabel(country) : 'Select a country'}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
-            </Pressable>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Country</Text>
+              <Pressable style={styles.countryInline} onPress={() => setCountryOpen(true)}>
+                <Text
+                  style={[styles.countryInlineText, !country && { color: colors.mutedForeground }]}
+                  numberOfLines={1}
+                >
+                  {country ? countryLabel(country) : 'Select…'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
             {country ? (
               <Pressable onPress={() => setCountry('')} hitSlop={8}>
                 <Text style={{ color: colors.destructive, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans }}>
@@ -390,7 +409,10 @@ export function ExpenseForm({
             <Text style={styles.label}>Receipt photo (optional)</Text>
             {receiptPreview ? (
               <View style={styles.receiptRow}>
-                <Image source={{ uri: receiptPreview }} style={styles.receiptThumb} />
+                {/* tap thumbnail → fullscreen viewer */}
+                <Pressable onPress={() => setReceiptViewerOpen(true)}>
+                  <Image source={{ uri: receiptPreview }} style={styles.receiptThumb} />
+                </Pressable>
                 <View style={styles.receiptActions}>
                   <Pressable style={styles.receiptBtn} onPress={pickReceipt}>
                     <Ionicons name="refresh-outline" size={16} color={colors.primaryForeground} />
@@ -414,7 +436,7 @@ export function ExpenseForm({
             <Text style={styles.receiptHint}>Stored encrypted locally. GPS/EXIF location is never saved.</Text>
           </View>
 
-          {/* Date + time */}
+          {/* Date + time (+ optional multi-day split) */}
           <View style={styles.section}>
             <Text style={styles.label}>Date & time</Text>
             <View style={styles.dateTimeRow}>
@@ -437,6 +459,42 @@ export function ExpenseForm({
                 keyboardType="numbers-and-punctuation"
               />
             </View>
+
+            {/* Multi-day split: spread this amount across a date range */}
+            {splitOpen || endDate ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Spread until (end date)</Text>
+                <View style={styles.dateContainer}>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={endDate}
+                    onChangeText={setEndDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                  <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
+                </View>
+                {(() => {
+                  if (!endDate || endDate <= date) return null;
+                  const days = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(date).getTime()) / 86_400_000) + 1);
+                  const perDay = allocateSplit(amountNum, date, endDate);
+                  return (
+                    <Text style={styles.splitHint}>
+                      {perDay.days} days · ≈ {perDay.perDay.toFixed(2)} per day{perDay.finalDayExtra ? ` (+${perDay.finalDayExtra.toFixed(2)} last day)` : ''}
+                    </Text>
+                  );
+                })()}
+                <Pressable onPress={() => { setEndDate(''); setSplitOpen(false); }} hitSlop={8}>
+                  <Text style={{ color: colors.destructive, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans }}>
+                    Remove split (single day)
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={() => setSplitOpen(true)} hitSlop={8}>
+                <Text style={styles.splitHint}>+ Spread over multiple days</Text>
+              </Pressable>
+            )}
           </View>
         </ScrollView>
 
@@ -467,6 +525,16 @@ export function ExpenseForm({
           )}
         </View>
       </View>
+
+      {/* Fullscreen receipt viewer */}
+      <Modal visible={receiptViewerOpen} transparent animationType="fade" onRequestClose={() => setReceiptViewerOpen(false)}>
+        <Pressable style={styles.viewerBackdrop} onPress={() => setReceiptViewerOpen(false)}>
+          <Image source={{ uri: receiptPreview ?? undefined }} style={styles.viewerImage} resizeMode="contain" />
+          <View style={styles.viewerClose}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Country picker modal — same offline UN list as trip creation */}
       <Modal visible={countryOpen} transparent animationType="fade" onRequestClose={() => setCountryOpen(false)}>
@@ -682,4 +750,19 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
+  countryInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.secondary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    maxWidth: '65%',
+  },
+  countryInlineText: { fontSize: fontSize.md, color: colors.foreground, fontFamily: fontFamily.sans },
+  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '90%' },
+  viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  splitHint: { color: colors.mutedForeground, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans },
 });

@@ -1,6 +1,7 @@
 // Trip repository — maps the Trip domain type to/from the encrypted DB via the
 // active StorageAdapter (MVP scope §2.1, §3). Wires persistence into the store.
 import { getStorageAdapter, type StorageAdapter } from './index';
+import { bytesFromBlob } from './blob';
 import type { Trip } from '../types';
 
 function parseCountries(raw: unknown): string[] | undefined {
@@ -13,18 +14,7 @@ function parseCountries(raw: unknown): string[] | undefined {
   }
 }
 
-// op-sqlite v18 returns BLOB columns as ArrayBuffer; all UI code expects
-// Uint8Array (.length indexing + btoa conversion). Normalize on read so
-// cover photos survive an app reload.
-function bytesFromBlob(raw: unknown): Uint8Array | null {
-  if (raw instanceof Uint8Array) return raw;
-  if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
-  if (ArrayBuffer.isView(raw)) {
-    const view = raw as ArrayBufferView;
-    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-  }
-  return null;
-}
+// op-sqlite BLOB normalization now lives in ./blob (shared with expenseRepo).
 
 function rowToTrip(r: Record<string, unknown>): Trip & { coverBytes?: Uint8Array | null } {
   return {

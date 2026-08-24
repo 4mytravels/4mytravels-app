@@ -214,10 +214,12 @@ export function CategoryChip({
   category,
   selected,
   onSelect,
+  stretch = false, // stretch to fill the row (used in the expense form grid)
 }: {
   category: ExpenseCategory;
   selected: boolean;
   onSelect?: (c: ExpenseCategory) => void;
+  stretch?: boolean;
 }) {
   return (
     <Pressable
@@ -226,6 +228,7 @@ export function CategoryChip({
         {
           flexDirection: 'row',
           alignItems: 'center',
+          justifyContent: stretch ? 'center' : 'flex-start',
           backgroundColor: selected ? colors.primary : colors.secondary,
           paddingHorizontal: spacing.lg,
           paddingVertical: spacing.md,
@@ -234,6 +237,7 @@ export function CategoryChip({
           borderColor: selected ? colors.primary : 'transparent',
           opacity: pressed ? 0.85 : 1,
         },
+        stretch && { flex: 1 },
       ]}
     >
       <Ionicons

@@ -240,7 +240,7 @@ export default function SettingsScreen() {
 
         <SectionTitle title="Exchange rates" />
         <Card>
-          <Pressable style={styles.linkRow} onPress={() => router.push({ pathname: '/settings/custom-rates', params: { homeCurrency } })}>
+          <Pressable style={styles.linkRow} onPress={() => router.push({ pathname: '/settings/exchange-rates', params: { homeCurrency } })}>
             <View style={{ flex: 1 }}>
               <Text style={styles.linkRowTitle}>Exchange rates</Text>
               <Text style={styles.linkRowSub}>

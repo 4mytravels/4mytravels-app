@@ -2,7 +2,7 @@
 // One combined list per currency: the cached ECB rate (fetched at app open)
 // plus an optional manual override. Clearing the override falls back to the
 // cached rate automatically (the expense form resolves in that same order).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +32,21 @@ export default function CustomRatesScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [cache, setCache] = useState<RateCache | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  // Y-offset of each rate row within the ScrollView content (measured on layout).
+  const rowY = useRef<Record<string, number>>({});
+
+  // When the keyboard opens for a row, scroll it well above the keyboard so
+  // what you type stays visible.
+  const startEdit = (code: string) => {
+    setEditing(code);
+    setDraft(manualRates[`${code}_${homeCurrency}`] != null ? String(manualRates[`${code}_${homeCurrency}`]) : '');
+    // Wait for the input to mount + keyboard to begin appearing.
+    setTimeout(() => {
+      const y = rowY.current[code];
+      if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+    }, 250);
+  };
 
   useEffect(() => {
     void hydrateSettings();
@@ -58,7 +75,14 @@ export default function CustomRatesScreen() {
         </Pressable>
         <Text style={styles.title}>Exchange rates</Text>
       </View>
-      <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 40 + spacing.xl }} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.body}
+        contentContainerStyle={{ paddingBottom: 40 + spacing.xl }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <SectionTitle title={`Rates → ${homeCurrency}`} />
         <Card>
           {cache && Object.keys(cache.rates).length > 0 ? (
@@ -73,7 +97,11 @@ export default function CustomRatesScreen() {
                 const currentOverride = manualRates[`${c}_${homeCurrency}`];
                 const isEditing = editing === c;
                 return (
-                  <View key={c} style={styles.rateRow}>
+                  <View
+                    key={c}
+                    style={styles.rateRow}
+                    onLayout={(e) => { rowY.current[c] = e.nativeEvent.layout.y; }}
+                  >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.rateLabel}>{c} → {homeCurrency}</Text>
                       <Text style={styles.rateSub}>
@@ -104,7 +132,7 @@ export default function CustomRatesScreen() {
                       <View style={styles.btnRow}>
                         <Pressable
                           style={[styles.rateBtn, currentOverride == null && styles.rateBtnGhost]}
-                          onPress={() => { setEditing(c); setDraft(currentOverride != null ? String(currentOverride) : ''); }}
+                          onPress={() => startEdit(c)}
                         >
                           <Text style={[styles.rateBtnText, currentOverride == null && styles.rateBtnTextGhost]}>
                             {currentOverride != null ? 'Edit' : 'Custom'}
@@ -138,6 +166,7 @@ export default function CustomRatesScreen() {
           to the cached ECB rate automatically.
         </Text>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

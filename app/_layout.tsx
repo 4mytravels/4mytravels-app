@@ -29,6 +29,10 @@ export default function RootLayout() {
         name="trips/new"
         options={{ presentation: 'modal', title: 'New trip', headerShown: false }}
       />
+      <Stack.Screen
+        name="settings/exchange-rates"
+        options={{ title: 'Exchange rates', headerShown: false }}
+      />
     </Stack>
   );
 }

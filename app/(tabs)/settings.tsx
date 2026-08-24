@@ -114,12 +114,15 @@ export default function SettingsScreen() {
     try {
       // 'text/csv' alone misses many file managers / downloads (Android mime
       // matching is unreliable); accept the common CSV variants explicitly.
+      // SDK 57 result shape: { canceled, assets: [{ uri, ... }] } — the old
+      // top-level `uri` no longer exists, which silently aborted imports.
       const doc = await DocumentPicker.getDocumentAsync({
         type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel', 'text/plain', '*/*'],
         copyToCacheDirectory: true,
       });
-      if (doc.canceled || !('uri' in doc) || typeof doc.uri !== 'string') { setBusy(false); return; }
-      const file = new File(doc.uri);
+      const picked = doc.canceled ? null : doc.assets?.[0];
+      if (!picked || typeof picked.uri !== 'string') { setBusy(false); return; }
+      const file = new File(picked.uri);
       const text = await file.text();
       const rows = parseCsv(text);
       if (rows.length < 2) throw new Error('File appears to be empty.');
@@ -185,11 +188,12 @@ export default function SettingsScreen() {
     setBusy(true);
     try {
       const doc = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
-      if (doc.canceled || !('uri' in doc) || typeof doc.uri !== 'string') {
+      const picked = doc.canceled ? null : doc.assets?.[0];
+      if (!picked || typeof picked.uri !== 'string') {
         setBusy(false);
         return;
       }
-      const file = new File(doc.uri);
+      const file = new File(picked.uri);
       const envelope = await file.text();
       const { trips, expenses } = await restoreBackup(envelope, passphrase);
       for (const t of trips) await saveTrip(t);

@@ -13,6 +13,19 @@ function parseCountries(raw: unknown): string[] | undefined {
   }
 }
 
+// op-sqlite v18 returns BLOB columns as ArrayBuffer; all UI code expects
+// Uint8Array (.length indexing + btoa conversion). Normalize on read so
+// cover photos survive an app reload.
+function bytesFromBlob(raw: unknown): Uint8Array | null {
+  if (raw instanceof Uint8Array) return raw;
+  if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
+  if (ArrayBuffer.isView(raw)) {
+    const view = raw as ArrayBufferView;
+    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  }
+  return null;
+}
+
 function rowToTrip(r: Record<string, unknown>): Trip & { coverBytes?: Uint8Array | null } {
   return {
     id: r.id as string,
@@ -23,7 +36,7 @@ function rowToTrip(r: Record<string, unknown>): Trip & { coverBytes?: Uint8Array
     defaultCurrency: r.default_currency as string,
     dailyBudget: r.daily_budget as number,
     coverPhotoId: undefined, // blob stored separately; see §2.2 receipt/cover handling
-    coverBytes: (r.cover_photo as Uint8Array) ?? null,
+    coverBytes: bytesFromBlob(r.cover_photo),
     countries: parseCountries(r.countries),
   };
 }

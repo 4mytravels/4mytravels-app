@@ -112,53 +112,66 @@ export function ExpenseForm({
   const [rateLoading, setRateLoading] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
 
-  // Fetch the currency→home rate whenever currency or date changes (§2.2).
-  // Priority: global manual override (Settings) > Frankfurter fetch.
+  // Rate resolution order (instant-first, per user request):
+  //   1. Manual override (Settings) — exact, no waiting.
+  //   2. Cached ECB rates (fetched at app open) — instant from storage.
+  //   3. Live Frankfurter fetch for the expense's date — refreshes in the
+  //      background and silently replaces the cached value when it differs.
   useEffect(() => {
     if (manualOverride != null) {
       setRate(manualOverride);
       setRateError(null);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      if (currency === homeCurrency) {
-        setRate(1);
-        setRateError(null);
-        return;
-      }
-      setRateLoading(true);
+    if (currency === homeCurrency) {
+      setRate(1);
       setRateError(null);
+      return;
+    }
+    let cancelled = false;
+
+    (async () => {
+      // STEP 1 — instant: cached rate (if any) fills the field immediately.
+      const { loadRateCache } = await import('../services/rateCache');
+      const cache = await loadRateCache(homeCurrency);
+      const cachedHomeToQuote = cache?.rates[currency];
+      if (!cancelled && cachedHomeToQuote && cachedHomeToQuote > 0) {
+        // Cache holds home→quote; invert for quote→home.
+        setRate(1 / cachedHomeToQuote);
+        setRateError(`Cached rate (${cache?.date})`);
+      }
+
+      // STEP 2 — background: live fetch for this date; replaces the cache value.
+      setRateLoading(true);
       try {
         const r = await getRate(homeCurrency, currency, date);
         if (!cancelled) {
           if (Number.isNaN(r)) {
-            setRateError('Rate unavailable (offline?)');
-            setRate(null);
+            if (!(cachedHomeToQuote && cachedHomeToQuote > 0)) {
+              setRateError('Rate unavailable (offline?)');
+              setRate(null);
+            } else if (date && date !== cache?.date) {
+              // Keep showing the cached rate but note the mismatch.
+              setRateError(`Using cached rate (${cache?.date}) — no rate published for ${date}`);
+            } else {
+              setRateError(null); // cached value is exactly right
+            }
           } else {
-            // getRate(home, currency) returns home->currency; invert for currency->home.
             setRate(1 / r);
+            setRateError(null);
           }
         }
       } catch {
-        if (!cancelled) {
-          // Live fetch failed — fall back to the cached ECB rates (app-open refresh).
-          const { loadRateCache } = await import('../services/rateCache');
-          const cache = await loadRateCache(homeCurrency);
-          const cached = cache?.rates[currency];
-          if (cached && cached > 0) {
-            // Cache holds home->quote; invert for quote->home like the live path.
-            setRate(1 / cached);
-            setRateError(`Offline — using cached rate (${cache?.date})`);
-          } else {
-            setRateError('Rate unavailable (offline?)');
-            setRate(null);
-          }
+        if (!cancelled && !(cachedHomeToQuote && cachedHomeToQuote > 0)) {
+          setRateError('Rate unavailable (offline?)');
+          setRate(null);
         }
+        // With a cache present we keep the instant value; no error needed.
       } finally {
         if (!cancelled) setRateLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };

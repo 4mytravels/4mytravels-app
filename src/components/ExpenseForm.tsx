@@ -81,7 +81,7 @@ export function ExpenseForm({
   onClose?: () => void;
 }) {
   const isEdit = !!initialExpense;
-  const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : '0.00');
+  const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : '');
   const [currency, setCurrency] = useState(initialExpense?.currency ?? defaultCurrency);
   const [category, setCategory] = useState<ExpenseCategory>(initialExpense?.category ?? 'Food');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
@@ -265,7 +265,7 @@ export function ExpenseForm({
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
-                placeholderTextColor={colors.mutedForeground}
+                placeholderTextColor="rgba(255,255,255,0.35)"
               />
               <Pressable style={styles.currencyButton} onPress={() => setShowCurrencies(true)}>
                 <Text style={styles.currencyText}>
@@ -403,15 +403,17 @@ export function ExpenseForm({
               <Text style={[styles.pickerValue, !country && { color: colors.mutedForeground }]} numberOfLines={1}>
                 {country ? countryLabel(country) : 'Select a country'}
               </Text>
+              {country ? (
+                <Pressable
+                  hitSlop={8}
+                  onPress={() => setCountry('')}
+                  style={{ paddingHorizontal: spacing.xs }}
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.destructive} />
+                </Pressable>
+              ) : null}
               <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
             </Pressable>
-            {country ? (
-              <Pressable onPress={() => setCountry('')} hitSlop={8}>
-                <Text style={{ color: colors.destructive, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans }}>
-                  Clear country
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
 
           {/* Receipt photo */}
@@ -450,7 +452,12 @@ export function ExpenseForm({
           <View style={styles.section}>
             <Text style={styles.label}>Date & time</Text>
             <View style={styles.dateTimeRow}>
-              <View style={styles.dateContainer}>
+              {/* Date field: flex row so the calendar icon sits inline at the right edge */}
+              <Pressable
+                hitSlop={4}
+                onPress={() => setDatePickerFor('date')}
+                style={styles.dateContainer}
+              >
                 <TextInput
                   style={styles.dateInput}
                   value={date}
@@ -458,10 +465,8 @@ export function ExpenseForm({
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <Pressable hitSlop={8} onPress={() => setDatePickerFor('date')}>
-                  <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
-                </Pressable>
-              </View>
+                <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} />
+              </Pressable>
               <TextInput
                 style={styles.timeInput}
                 value={time}
@@ -724,7 +729,14 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     fontFamily: fontFamily.sans,
   },
-  dateContainer: { position: 'relative', justifyContent: 'center', flex: 1 },
+  dateContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary,
+    borderRadius: radius.xl,
+    paddingLeft: spacing.xl,
+  },
   dateTimeRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
   timeInput: {
     backgroundColor: colors.secondary,
@@ -737,13 +749,10 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   dateInput: {
-    backgroundColor: colors.secondary,
-    borderRadius: radius.xl,
-    paddingHorizontal: spacing.xl,
+    flex: 1,
     paddingVertical: spacing.lg,
     fontSize: fontSize.lg,
     color: colors.foreground,
-    paddingRight: 50,
     fontFamily: fontFamily.sans,
   },
   dateIcon: { position: 'absolute', right: spacing.lg },

@@ -226,9 +226,12 @@ export function CategoryChip({
       onPress={() => onSelect?.(category)}
       style={({ pressed }) => [
         {
-          flexDirection: 'row',
+          // Stretched grid chips (expense form) stack icon above label; the
+          // inline variant keeps the horizontal chip look.
+          flexDirection: stretch ? 'column' : 'row',
           alignItems: 'center',
-          justifyContent: stretch ? 'center' : 'flex-start',
+          justifyContent: 'center',
+          gap: spacing.xs,
           backgroundColor: selected ? colors.primary : colors.secondary,
           paddingHorizontal: spacing.lg,
           paddingVertical: spacing.md,
@@ -242,9 +245,8 @@ export function CategoryChip({
     >
       <Ionicons
         name={categoryIcons[category]}
-        size={16}
+        size={stretch ? 20 : 16}
         color={colors.foreground}
-        style={{ marginRight: spacing.sm }}
       />
       <Text
         style={{

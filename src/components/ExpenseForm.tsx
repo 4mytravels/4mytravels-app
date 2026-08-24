@@ -142,8 +142,18 @@ export function ExpenseForm({
         }
       } catch {
         if (!cancelled) {
-          setRateError('Rate unavailable (offline?)');
-          setRate(null);
+          // Live fetch failed — fall back to the cached ECB rates (app-open refresh).
+          const { loadRateCache } = await import('../services/rateCache');
+          const cache = await loadRateCache(homeCurrency);
+          const cached = cache?.rates[currency];
+          if (cached && cached > 0) {
+            // Cache holds home->quote; invert for quote->home like the live path.
+            setRate(1 / cached);
+            setRateError(`Offline — using cached rate (${cache?.date})`);
+          } else {
+            setRateError('Rate unavailable (offline?)');
+            setRate(null);
+          }
         }
       } finally {
         if (!cancelled) setRateLoading(false);

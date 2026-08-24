@@ -45,10 +45,43 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-const CURRENCIES = [
-  'EUR', 'USD', 'GBP', 'JPY', 'CHF', 'THB', 'TRY', 'IDR', 'AUD', 'CAD',
-  'NZD', 'CNY', 'HKD', 'SGD', 'KRW', 'INR', 'BRL', 'MXN', 'ZAR', 'SEK',
-  'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON', 'BGN', 'HRK', 'ISK', 'ILS',
+// code → [flag emoji of representative country, full name]
+const CURRENCIES: Array<{ code: string; flag: string; name: string }> = [
+  { code: 'EUR', flag: '🇪🇺', name: 'Euro' },
+  { code: 'USD', flag: '🇺🇸', name: 'US Dollar' },
+  { code: 'GBP', flag: '🇬🇧', name: 'British Pound' },
+  { code: 'JPY', flag: '🇯🇵', name: 'Japanese Yen' },
+  { code: 'CHF', flag: '🇨🇭', name: 'Swiss Franc' },
+  { code: 'THB', flag: '🇹🇭', name: 'Thai Baht' },
+  { code: 'TRY', flag: '🇹🇷', name: 'Turkish Lira' },
+  { code: 'IDR', flag: '🇮🇩', name: 'Indonesian Rupiah' },
+  { code: 'PHP', flag: '🇵🇭', name: 'Philippine Peso' },
+  { code: 'AUD', flag: '🇦🇺', name: 'Australian Dollar' },
+  { code: 'CAD', flag: '🇨🇦', name: 'Canadian Dollar' },
+  { code: 'NZD', flag: '🇳🇿', name: 'New Zealand Dollar' },
+  { code: 'CNY', flag: '🇨🇳', name: 'Chinese Yuan' },
+  { code: 'HKD', flag: '🇭🇰', name: 'Hong Kong Dollar' },
+  { code: 'SGD', flag: '🇸🇬', name: 'Singapore Dollar' },
+  { code: 'KRW', flag: '🇰🇷', name: 'South Korean Won' },
+  { code: 'INR', flag: '🇮🇳', name: 'Indian Rupee' },
+  { code: 'BRL', flag: '🇧🇷', name: 'Brazilian Real' },
+  { code: 'MXN', flag: '🇲🇽', name: 'Mexican Peso' },
+  { code: 'ZAR', flag: '🇿🇦', name: 'South African Rand' },
+  { code: 'SEK', flag: '🇸🇪', name: 'Swedish Krona' },
+  { code: 'NOK', flag: '🇳🇴', name: 'Norwegian Krone' },
+  { code: 'DKK', flag: '🇩🇰', name: 'Danish Krone' },
+  { code: 'PLN', flag: '🇵🇱', name: 'Polish Zloty' },
+  { code: 'CZK', flag: '🇨🇿', name: 'Czech Koruna' },
+  { code: 'HUF', flag: '🇭🇺', name: 'Hungarian Forint' },
+  { code: 'RON', flag: '🇷🇴', name: 'Romanian Leu' },
+  { code: 'BGN', flag: '🇧🇬', name: 'Bulgarian Lev' },
+  { code: 'HRK', flag: '🇭🇷', name: 'Croatian Kuna' },
+  { code: 'ISK', flag: '🇮🇸', name: 'Icelandic Krona' },
+  { code: 'ILS', flag: '🇮🇱', name: 'Israeli Shekel' },
+  { code: 'VND', flag: '🇻🇳', name: 'Vietnamese Dong' },
+  { code: 'MYR', flag: '🇲🇾', name: 'Malaysian Ringgit' },
+  { code: 'EGP', flag: '🇪🇬', name: 'Egyptian Pound' },
+  { code: 'MAD', flag: '🇲🇦', name: 'Moroccan Dirham' },
 ];
 
 function CurrencyPicker({
@@ -59,32 +92,50 @@ function CurrencyPicker({
   onSelect: (c: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const filtered = CURRENCIES.filter(
+    (c) =>
+      c.code.toLowerCase().includes(query.toLowerCase()) ||
+      c.name.toLowerCase().includes(query.toLowerCase()),
+  );
+  const selected = CURRENCIES.find((c) => c.code === value);
   return (
     <>
       <Pressable style={styles.input} onPress={() => setOpen(true)}>
-        <Text style={styles.pickerValue}>{value}</Text>
+        <Text style={styles.pickerValue}>
+          {selected ? `${selected.flag} ${value}` : value}
+        </Text>
         <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setOpen(false)}>
           <View style={styles.pickerSheet}>
             <Text style={styles.pickerTitle}>Select currency</Text>
+            <TextInput
+              style={[styles.input, { marginBottom: spacing.md }]}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search currency"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+            />
             <FlatList
-              data={CURRENCIES}
-              keyExtractor={(c) => c}
+              data={filtered}
+              keyExtractor={(c) => c.code}
               style={{ maxHeight: 420 }}
               renderItem={({ item }) => (
                 <Pressable
-                  style={[styles.pickerRow, item === value && styles.pickerRowActive]}
+                  style={[styles.pickerRow, item.code === value && styles.pickerRowActive]}
                   onPress={() => {
-                    onSelect(item);
+                    onSelect(item.code);
                     setOpen(false);
+                    setQuery('');
                   }}
                 >
-                  <Text style={[styles.pickerRowText, item === value && { color: colors.primary, fontWeight: '700' }]}>
-                    {item}
+                  <Text style={[styles.pickerRowText, item.code === value && { color: colors.primary, fontWeight: '700' }]}>
+                    {item.flag} {item.code} — {item.name}
                   </Text>
-                  {item === value && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  {item.code === value && <Ionicons name="checkmark" size={18} color={colors.primary} />}
                 </Pressable>
               )}
             />
@@ -284,7 +335,22 @@ export default function NewTripScreen() {
   const [defaultCurrency, setDefaultCurrency] = useState(existing?.defaultCurrency ?? 'EUR');
   const [dailyBudget, setDailyBudget] = useState(existing ? String(existing.dailyBudget) : '');
   const [countries, setCountries] = useState<string[]>(existing?.countries ?? []);
-  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(
+    // Edit mode: preview the existing photo so it survives a save without changes.
+    (() => {
+      const b = (existing as Trip & { coverBytes?: Uint8Array | null })?.coverBytes;
+      if (!b) return null;
+      let bin = '';
+      for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+      return 'data:image/jpeg;base64,' + btoa(bin);
+    })(),
+  );
+  // Existing photo bytes — used when saving without picking a new photo so the
+  // DB write doesn't wipe the stored cover (INSERT OR REPLACE writes all cols).
+  const [existingCoverBytes] = useState<Uint8Array | null>(
+    (existing as Trip & { coverBytes?: Uint8Array | null })?.coverBytes ?? null,
+  );
+  const [coverRemoved, setCoverRemoved] = useState(false);
   const [coverBytes, setCoverBytes] = useState<Uint8Array | null>(null);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -329,9 +395,11 @@ export default function NewTripScreen() {
           defaultCurrency: trip.defaultCurrency,
           dailyBudget: trip.dailyBudget,
           countries: trip.countries,
-          coverBytes,
+          coverBytes: coverRemoved ? null : coverBytes ?? existingCoverBytes,
         });
-        await step('updateTrip (DB write)', () => updateTrip(trip, coverBytes));
+        await step('updateTrip (DB write)', () =>
+          updateTrip(trip, coverRemoved ? null : coverBytes ?? existingCoverBytes),
+        );
       } else {
         setPhase('addTrip (store)');
         // Include the cover bytes in the stored object so the photo shows
@@ -406,7 +474,7 @@ export default function NewTripScreen() {
                 <Image source={{ uri: coverPreview }} style={styles.coverThumb} />
                 <Pressable
                   style={[styles.coverBtn, { backgroundColor: colors.destructive }]}
-                  onPress={() => { setCoverBytes(null); setCoverPreview(null); }}
+                  onPress={() => { setCoverBytes(null); setCoverPreview(null); setCoverRemoved(true); }}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
                   <Text style={styles.coverBtnText}>Remove</Text>
@@ -498,6 +566,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     color: colors.foreground,
     fontFamily: fontFamily.sans,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   footer: { marginTop: spacing.sm },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },

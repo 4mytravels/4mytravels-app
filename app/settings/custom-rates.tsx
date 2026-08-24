@@ -1,5 +1,7 @@
-// Custom exchange rates — own sub-screen so Settings stays compact when the
-// rate list grows. Reached from Settings → "Manual exchange rates".
+// Exchange rates — own sub-screen reached from Settings → "Exchange rates".
+// One combined list per currency: the cached ECB rate (fetched at app open)
+// plus an optional manual override. Clearing the override falls back to the
+// cached rate automatically (the expense form resolves in that same order).
 import { useEffect, useState } from 'react';
 import {
   View,
@@ -25,7 +27,8 @@ export default function CustomRatesScreen() {
   const setManualRate = useSettingsStore((s) => s.setManualRate);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const homeCurrency = hcParam ?? 'EUR';
-  const [rateFrom, setRateFrom] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const [cache, setCache] = useState<RateCache | null>(null);
 
   useEffect(() => {
@@ -33,85 +36,107 @@ export default function CustomRatesScreen() {
     void loadRateCache(homeCurrency).then(setCache);
   }, [hydrateSettings, homeCurrency]);
 
+  const save = async (code: string) => {
+    if (draft.trim() === '') {
+      // Empty input clears the override → back to cached rate.
+      await setManualRate(code, homeCurrency, null);
+    } else {
+      const n = parseFloat(draft.replace(',', '.'));
+      if (!Number.isNaN(n) && n > 0) {
+        await setManualRate(code, homeCurrency, n);
+      }
+    }
+    setEditing(null);
+    setDraft('');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.foreground} />
         </Pressable>
-        <Text style={styles.title}>Manual exchange rates</Text>
+        <Text style={styles.title}>Exchange rates</Text>
       </View>
       <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 40 + spacing.xl }} showsVerticalScrollIndicator={false}>
-        <SectionTitle title="Latest ECB rates" />
+        <SectionTitle title={`Rates → ${homeCurrency}`} />
         <Card>
           {cache && Object.keys(cache.rates).length > 0 ? (
             <>
               <Text style={styles.note}>
-                Fetched automatically when the app opens (ECB via Frankfurter). Used as fallback
-                when a live fetch fails. Publication date: {cache.date}.
+                ECB rates fetched automatically when the app opens ({cache.date}). Every expense
+                uses this rate unless you set a custom one below.
               </Text>
-              <View style={styles.cacheGrid}>
-                {RATE_CURRENCIES.filter((c) => c !== homeCurrency).map((c) => {
-                  const r = cache.rates[c];
-                  return (
-                    <View key={c} style={styles.cacheRow}>
-                      <Text style={styles.cacheLabel}>{c} → {homeCurrency}</Text>
-                      <Text style={styles.cacheValue}>
-                        {r ? (1 / r).toPrecision(6) : '—'}
+              {RATE_CURRENCIES.filter((c) => c !== homeCurrency).map((c) => {
+                const r = cache.rates[c];
+                const cachedDisplay = r ? (1 / r).toPrecision(6) : null;
+                const currentOverride = manualRates[`${c}_${homeCurrency}`];
+                const isEditing = editing === c;
+                return (
+                  <View key={c} style={styles.rateRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rateLabel}>{c} → {homeCurrency}</Text>
+                      <Text style={styles.rateSub}>
+                        {currentOverride != null ? (
+                          <>
+                            <Text style={styles.overrideActive}>custom: {currentOverride}</Text>
+                            {' · cached: '}
+                            {cachedDisplay ?? '—'}
+                          </>
+                        ) : (
+                          <>ECB: {cachedDisplay ?? '—'}</>
+                        )}
                       </Text>
                     </View>
-                  );
-                })}
-              </View>
+                    {isEditing ? (
+                      <TextInput
+                        style={styles.rateInput}
+                        autoFocus
+                        keyboardType="decimal-pad"
+                        placeholder="rate"
+                        placeholderTextColor={colors.mutedForeground}
+                        value={draft}
+                        onChangeText={setDraft}
+                        onSubmitEditing={() => void save(c)}
+                        onBlur={() => void save(c)}
+                      />
+                    ) : (
+                      <View style={styles.btnRow}>
+                        <Pressable
+                          style={[styles.rateBtn, currentOverride == null && styles.rateBtnGhost]}
+                          onPress={() => { setEditing(c); setDraft(currentOverride != null ? String(currentOverride) : ''); }}
+                        >
+                          <Text style={[styles.rateBtnText, currentOverride == null && styles.rateBtnTextGhost]}>
+                            {currentOverride != null ? 'Edit' : 'Custom'}
+                          </Text>
+                        </Pressable>
+                        {currentOverride != null && (
+                          <Pressable
+                            style={styles.clearBtn}
+                            hitSlop={8}
+                            onPress={() => void setManualRate(c, homeCurrency, null)}
+                          >
+                            <Ionicons name="close-circle" size={22} color={colors.destructive} />
+                          </Pressable>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </>
           ) : (
             <Text style={styles.note}>
-              No cached rates yet. Open the app with an internet connection once — rates are then
-              fetched at startup and stored encrypted on-device.
+              No cached rates yet. Open the app once with an internet connection — ECB rates are
+              then fetched at startup and stored encrypted on-device.
             </Text>
           )}
         </Card>
 
-        <SectionTitle title={`Manual rates → ${homeCurrency}`} />
-        <Card>
-          <Text style={styles.note}>
-            Optional. One fixed rate per currency → {homeCurrency}, applied to all trips and every
-            new expense (overrides the live rate). Leave empty to fetch the daily rate.
-          </Text>
-          {RATE_CURRENCIES.filter((c) => c !== homeCurrency).map((c) => {
-            const open = rateFrom === c;
-            const current = manualRates[`${c}_${homeCurrency}`];
-            return (
-              <View key={c} style={styles.rateRow}>
-                <Text style={styles.rateLabel}>
-                  {c} → {homeCurrency}
-                  {current != null ? ` = ${current}` : ''}
-                </Text>
-                {open ? (
-                  <TextInput
-                    style={styles.rateInput}
-                    autoFocus
-                    keyboardType="decimal-pad"
-                    placeholder="rate"
-                    placeholderTextColor={colors.mutedForeground}
-                    onSubmitEditing={(ev) => {
-                      const n = parseFloat(ev.nativeEvent.text.replace(',', '.'));
-                      if (!Number.isNaN(n) && n > 0) {
-                        void setManualRate(c, homeCurrency, n);
-                      }
-                      setRateFrom(null);
-                    }}
-                    onEndEditing={() => setRateFrom(null)}
-                  />
-                ) : (
-                  <Pressable style={styles.rateBtn} onPress={() => setRateFrom(c)}>
-                    <Text style={styles.rateBtnText}>{current != null ? 'Edit' : 'Set'}</Text>
-                  </Pressable>
-                )}
-              </View>
-            );
-          })}
-        </Card>
+        <Text style={styles.footerNote}>
+          Custom rates apply to all trips and every new expense. Clearing a custom rate falls back
+          to the cached ECB rate automatically.
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -131,12 +156,18 @@ const styles = StyleSheet.create({
   title: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, flex: 1 },
   body: { flex: 1, paddingHorizontal: spacing.xl },
   note: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, lineHeight: 22, marginBottom: spacing.lg },
-  cacheGrid: { gap: spacing.xs },
-  cacheRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.sm },
-  cacheLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-  cacheValue: { color: colors.primary, fontSize: fontSize.md, fontWeight: '700', fontFamily: fontFamily.sans },
-  rateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, flex: 1 },
+  rateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  rateSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
+  overrideActive: { color: colors.primary, fontWeight: '700' },
+  btnRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rateInput: {
     backgroundColor: colors.secondary,
     borderRadius: radius.lg,
@@ -154,5 +185,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
+  rateBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   rateBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm },
+  rateBtnTextGhost: { color: colors.primary },
+  clearBtn: { padding: spacing.xs },
+  footerNote: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, lineHeight: 20, marginTop: spacing.lg },
 });

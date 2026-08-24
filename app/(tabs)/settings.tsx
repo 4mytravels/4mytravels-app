@@ -238,15 +238,15 @@ export default function SettingsScreen() {
           </Text>
         </Card>
 
-        <SectionTitle title="Manual exchange rates" />
+        <SectionTitle title="Exchange rates" />
         <Card>
           <Pressable style={styles.linkRow} onPress={() => router.push({ pathname: '/settings/custom-rates', params: { homeCurrency } })}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.linkRowTitle}>Custom rates</Text>
+              <Text style={styles.linkRowTitle}>Exchange rates</Text>
               <Text style={styles.linkRowSub}>
                 {Object.keys(manualRates).length > 0
-                  ? `${Object.keys(manualRates).length} manual rate(s) active — overrides the daily rate`
-                  : `Set fixed rates per currency → ${homeCurrency}`}
+                  ? `Latest ECB rates cached at startup · ${Object.keys(manualRates).length} custom rate(s) active`
+                  : 'Latest ECB rates, fetched when the app opens'}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />

@@ -36,11 +36,19 @@ import {
 } from '../types';
 import { allocateSplit } from '../utils/pace';
 import { CategoryChip, Button } from './ui';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
 import { v4 as uuid } from 'uuid';
 
 // base64 helpers (React Native exposes atob/btoa globally)
+// Split an array into fixed-size rows (category grid: 3 per row).
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -85,6 +93,9 @@ export function ExpenseForm({
   // evenly across [date … endDate] in budget statistics (§2.2 allocateSplit).
   const [endDate, setEndDate] = useState(initialExpense?.multiDaySplit?.splitEnd ?? '');
   const [splitOpen, setSplitOpen] = useState(false);
+  // Native date pickers (calendar icon buttons). 'date' = start date,
+  // 'end' = multi-day split end date.
+  const [datePickerFor, setDatePickerFor] = useState<'date' | 'end' | null>(null);
   const [time, setTime] = useState(
     initialExpense ? (initialExpense.createdAt || new Date().toISOString()).slice(11, 16) : new Date().toISOString().slice(11, 16),
   );
@@ -330,18 +341,22 @@ export function ExpenseForm({
             )}
           </View>
 
-          {/* Category grid — chips stretch edge to edge, 3 per row */}
+          {/* Category grid — 3 per row (last row holds the remainder) */}
           <View style={styles.section}>
             <Text style={styles.label}>Category</Text>
             <View style={styles.categoryGrid}>
-              {EXPENSE_CATEGORIES.map((cat) => (
-                <CategoryChip
-                  key={cat}
-                  category={cat}
-                  selected={category === cat}
-                  onSelect={setCategory}
-                  stretch
-                />
+              {chunk(EXPENSE_CATEGORIES, 3).map((row, ri) => (
+                <View key={ri} style={styles.categoryRow}>
+                  {row.map((cat) => (
+                    <CategoryChip
+                      key={cat}
+                      category={cat}
+                      selected={category === cat}
+                      onSelect={setCategory}
+                      stretch
+                    />
+                  ))}
+                </View>
               ))}
             </View>
           </View>
@@ -381,20 +396,15 @@ export function ExpenseForm({
             />
           </View>
 
-          {/* Country — selector sits on the same row as the label */}
+          {/* Country — same full-width input style as the other fields */}
           <View style={styles.section}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Country</Text>
-              <Pressable style={styles.countryInline} onPress={() => setCountryOpen(true)}>
-                <Text
-                  style={[styles.countryInlineText, !country && { color: colors.mutedForeground }]}
-                  numberOfLines={1}
-                >
-                  {country ? countryLabel(country) : 'Select…'}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
+            <Text style={styles.label}>Country</Text>
+            <Pressable style={styles.input} onPress={() => setCountryOpen(true)}>
+              <Text style={[styles.pickerValue, !country && { color: colors.mutedForeground }]} numberOfLines={1}>
+                {country ? countryLabel(country) : 'Select a country'}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
+            </Pressable>
             {country ? (
               <Pressable onPress={() => setCountry('')} hitSlop={8}>
                 <Text style={{ color: colors.destructive, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans }}>
@@ -448,7 +458,9 @@ export function ExpenseForm({
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
+                <Pressable hitSlop={8} onPress={() => setDatePickerFor('date')}>
+                  <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
+                </Pressable>
               </View>
               <TextInput
                 style={styles.timeInput}
@@ -472,7 +484,9 @@ export function ExpenseForm({
                     placeholder="YYYY-MM-DD"
                     placeholderTextColor={colors.mutedForeground}
                   />
-                  <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
+                  <Pressable hitSlop={8} onPress={() => setDatePickerFor('end')}>
+                    <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
+                  </Pressable>
                 </View>
                 {(() => {
                   if (!endDate || endDate <= date) return null;
@@ -525,6 +539,27 @@ export function ExpenseForm({
           )}
         </View>
       </View>
+
+      {/* Native date picker — opened via the calendar icon next to a date field */}
+      {datePickerFor !== null && (
+        <DateTimePicker
+          value={(() => {
+            const current = datePickerFor === 'end' ? endDate || date : date;
+            const t = Date.parse(`${current}T12:00:00`);
+            return Number.isNaN(t) ? new Date() : new Date(t);
+          })()}
+          mode="date"
+          display="default"
+          onChange={(_e, selected) => {
+            // Android fires once and unmounts; iOS needs an explicit dismiss.
+            if (Platform.OS === 'android') setDatePickerFor(null);
+            if (!selected) return;
+            const iso = `${selected.getFullYear()}-${String(selected.getMonth() + 1).padStart(2, '0')}-${String(selected.getDate()).padStart(2, '0')}`;
+            if (datePickerFor === 'end') setEndDate(iso);
+            else setDate(iso);
+          }}
+        />
+      )}
 
       {/* Fullscreen receipt viewer */}
       <Modal visible={receiptViewerOpen} transparent animationType="fade" onRequestClose={() => setReceiptViewerOpen(false)}>
@@ -664,7 +699,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontFamily: fontFamily.sans,
   },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  categoryGrid: { gap: spacing.sm },
+  categoryRow: { flexDirection: 'row', gap: spacing.sm },
   payRow: { flexDirection: 'row', gap: spacing.sm },
   payChip: {
     flexDirection: 'row',
@@ -750,17 +786,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
-  countryInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.secondary,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    maxWidth: '65%',
-  },
-  countryInlineText: { fontSize: fontSize.md, color: colors.foreground, fontFamily: fontFamily.sans },
   viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: '100%', height: '90%' },
   viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },

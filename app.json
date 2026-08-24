@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "4MyTravels",
+    "slug": "4mytravels",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "fourmytravels",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.fourmytravels"
+    },
+    "android": {
+      "package": "app.fourmytravels",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-dev-client"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "390e21f1-ffdb-46ec-8e40-725c625708ad"
+      }
+    },
+    "owner": "matthyb"
+  }
+}

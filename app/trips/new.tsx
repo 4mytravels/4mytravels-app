@@ -33,6 +33,7 @@ import { v4 as uuid } from 'uuid';
 import { useTripStore } from '../../src/store/tripStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
+import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
@@ -45,44 +46,8 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-// code → [flag emoji of representative country, full name]
-const CURRENCIES: Array<{ code: string; flag: string; name: string }> = [
-  { code: 'EUR', flag: '🇪🇺', name: 'Euro' },
-  { code: 'USD', flag: '🇺🇸', name: 'US Dollar' },
-  { code: 'GBP', flag: '🇬🇧', name: 'British Pound' },
-  { code: 'JPY', flag: '🇯🇵', name: 'Japanese Yen' },
-  { code: 'CHF', flag: '🇨🇭', name: 'Swiss Franc' },
-  { code: 'THB', flag: '🇹🇭', name: 'Thai Baht' },
-  { code: 'TRY', flag: '🇹🇷', name: 'Turkish Lira' },
-  { code: 'IDR', flag: '🇮🇩', name: 'Indonesian Rupiah' },
-  { code: 'PHP', flag: '🇵🇭', name: 'Philippine Peso' },
-  { code: 'AUD', flag: '🇦🇺', name: 'Australian Dollar' },
-  { code: 'CAD', flag: '🇨🇦', name: 'Canadian Dollar' },
-  { code: 'NZD', flag: '🇳🇿', name: 'New Zealand Dollar' },
-  { code: 'CNY', flag: '🇨🇳', name: 'Chinese Yuan' },
-  { code: 'HKD', flag: '🇭🇰', name: 'Hong Kong Dollar' },
-  { code: 'SGD', flag: '🇸🇬', name: 'Singapore Dollar' },
-  { code: 'KRW', flag: '🇰🇷', name: 'South Korean Won' },
-  { code: 'INR', flag: '🇮🇳', name: 'Indian Rupee' },
-  { code: 'BRL', flag: '🇧🇷', name: 'Brazilian Real' },
-  { code: 'MXN', flag: '🇲🇽', name: 'Mexican Peso' },
-  { code: 'ZAR', flag: '🇿🇦', name: 'South African Rand' },
-  { code: 'SEK', flag: '🇸🇪', name: 'Swedish Krona' },
-  { code: 'NOK', flag: '🇳🇴', name: 'Norwegian Krone' },
-  { code: 'DKK', flag: '🇩🇰', name: 'Danish Krone' },
-  { code: 'PLN', flag: '🇵🇱', name: 'Polish Zloty' },
-  { code: 'CZK', flag: '🇨🇿', name: 'Czech Koruna' },
-  { code: 'HUF', flag: '🇭🇺', name: 'Hungarian Forint' },
-  { code: 'RON', flag: '🇷🇴', name: 'Romanian Leu' },
-  { code: 'BGN', flag: '🇧🇬', name: 'Bulgarian Lev' },
-  { code: 'HRK', flag: '🇭🇷', name: 'Croatian Kuna' },
-  { code: 'ISK', flag: '🇮🇸', name: 'Icelandic Krona' },
-  { code: 'ILS', flag: '🇮🇱', name: 'Israeli Shekel' },
-  { code: 'VND', flag: '🇻🇳', name: 'Vietnamese Dong' },
-  { code: 'MYR', flag: '🇲🇾', name: 'Malaysian Ringgit' },
-  { code: 'EGP', flag: '🇪🇬', name: 'Egyptian Pound' },
-  { code: 'MAD', flag: '🇲🇦', name: 'Moroccan Dirham' },
-];
+// Currency catalogue lives in src/data/currencies.ts (shared with the expense form).
+const CURRENCIES = SHARED_CURRENCIES;
 
 function CurrencyPicker({
   value,

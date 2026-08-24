@@ -122,6 +122,7 @@ export default function HomeScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   // Reload on every focus so new expenses appear without an app restart.
   useFocusEffect(() => {
@@ -177,7 +178,6 @@ export default function HomeScreen() {
       {/* Recent expenses */}
       <View style={styles.sectionHead}>
         <Text style={styles.sectionTitle}>Recent expenses</Text>
-        <Text style={styles.sectionCount}>{expenses.length} entries</Text>
       </View>
 
       {loading ? (
@@ -188,7 +188,7 @@ export default function HomeScreen() {
         </View>
       ) : (
         expenses.slice(0, 5).map((e) => (
-          <View key={e.id} style={styles.expenseCard}>
+          <Pressable key={e.id} style={styles.expenseCard} onPress={() => { setEditingExpense(e); setFormOpen(true); }}>
             <IconCircle icon={categoryIcons[e.category]} size={40} />
             <View style={styles.expenseDetails}>
               <Text style={styles.expenseTitle}>{e.notes || e.category}</Text>
@@ -199,7 +199,7 @@ export default function HomeScreen() {
             <Text style={styles.expensePrice}>
               {formatMoney(e.amount, e.currency)}
             </Text>
-          </View>
+          </Pressable>
         ))
       )}
 
@@ -219,18 +219,27 @@ export default function HomeScreen() {
       <Ionicons name="add" size={32} color={colors.primaryForeground} />
     </Pressable>
 
-    {/* Add-expense sheet (one tap from Home) */}
-    <Modal visible={formOpen && !!latestTrip} animationType="slide" onRequestClose={() => setFormOpen(false)}>
+    {/* Add/edit-expense sheet (one tap from Home; rows open in edit mode) */}
+    <Modal visible={formOpen && (!!latestTrip || !!editingExpense)} animationType="slide" onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
       {latestTrip && (
         <ExpenseForm
-          tripId={latestTrip.id}
+          tripId={editingExpense?.tripId ?? latestTrip.id}
           defaultCurrency={latestTrip.defaultCurrency}
           homeCurrency={latestTrip.homeCurrency}
-          onClose={() => setFormOpen(false)}
+          initialExpense={editingExpense ?? undefined}
+          onClose={() => { setFormOpen(false); setEditingExpense(null); }}
           onSave={async (expense) => {
             const { saveExpense } = await import('../../src/db/expenseRepo');
             await saveExpense(expense);
             setFormOpen(false);
+            setEditingExpense(null);
+            setExpenses(await loadExpenses());
+          }}
+          onDelete={async (expense) => {
+            const { deleteExpense } = await import('../../src/db/expenseRepo');
+            await deleteExpense(expense.id);
+            setFormOpen(false);
+            setEditingExpense(null);
             setExpenses(await loadExpenses());
           }}
         />

@@ -35,6 +35,7 @@ export default function ExpensesScreen() {
   const [catFilter, setCatFilter] = useState<string>('All');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(params.add === '1');
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   const selectedTrip = trips.find((t) => t.id === selectedId);
 
@@ -155,7 +156,14 @@ export default function ExpensesScreen() {
           </>
         }
         renderItem={({ item }) => (
-          <ExpenseRow expense={item} homeCurrency={homeCurrency} />
+          <ExpenseRow
+            expense={item}
+            homeCurrency={homeCurrency}
+            onPress={() => {
+              setEditingExpense(item);
+              setFormOpen(true);
+            }}
+          />
         )}
         ListEmptyComponent={
           <Text style={styles.empty}>
@@ -197,15 +205,23 @@ export default function ExpensesScreen() {
         </Pressable>
       </Modal>
 
-      {/* Add-expense sheet */}
-      <Modal visible={formOpen} animationType="slide" onRequestClose={() => setFormOpen(false)}>
+      {/* Add/edit-expense sheet */}
+      <Modal visible={formOpen} animationType="slide" onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
         {selectedTrip && (
           <ExpenseForm
             tripId={selectedTrip.id}
             defaultCurrency={selectedTrip.defaultCurrency}
             homeCurrency={selectedTrip.homeCurrency}
-            onClose={() => setFormOpen(false)}
+            initialExpense={editingExpense ?? undefined}
+            onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={handleSave}
+            onDelete={async (expense) => {
+              const { deleteExpense } = await import('../../src/db/expenseRepo');
+              await deleteExpense(expense.id);
+              setFormOpen(false);
+              setEditingExpense(null);
+              await load();
+            }}
           />
         )}
       </Modal>
@@ -221,9 +237,17 @@ export default function ExpensesScreen() {
   );
 }
 
-function ExpenseRow({ expense, homeCurrency }: { expense: Expense; homeCurrency: string }) {
+function ExpenseRow({
+  expense,
+  homeCurrency,
+  onPress,
+}: {
+  expense: Expense;
+  homeCurrency: string;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.row}>
+    <Pressable style={styles.row} onPress={onPress}>
       <IconCircle icon={categoryIcons[expense.category]} size={50} />
       <View style={styles.details}>
         <Text style={styles.rowTitle}>{expense.notes || expense.category}</Text>
@@ -241,7 +265,7 @@ function ExpenseRow({ expense, homeCurrency }: { expense: Expense; homeCurrency:
           ≈ {formatMoney(toHomeCurrency(expense), homeCurrency)}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

@@ -15,10 +15,12 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../data/countries';
+import { CURRENCIES as SHARED_CURRENCIES, currencyInfo } from '../data/currencies';
 import {
   colors,
   fontFamily,
@@ -50,7 +52,6 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-const POPULAR_CURRENCIES = ['EUR', 'USD', 'GBP', 'JPY', 'CHF', 'THB', 'TRY', 'IDR'];
 const PAYMENT_METHODS: PaymentMethod[] = ['card', 'cash'];
 
 export function ExpenseForm({
@@ -59,6 +60,7 @@ export function ExpenseForm({
   homeCurrency,
   initialExpense,
   onSave,
+  onDelete,
   onClose,
 }: {
   tripId: string;
@@ -66,6 +68,7 @@ export function ExpenseForm({
   homeCurrency: string; // ISO 4217, the trip's home currency
   initialExpense?: Expense;
   onSave: (expense: Expense) => void;
+  onDelete?: (expense: Expense) => void;
   onClose?: () => void;
 }) {
   const isEdit = !!initialExpense;
@@ -83,6 +86,7 @@ export function ExpenseForm({
   const [country, setCountry] = useState(initialExpense?.country ?? '');
   const [countryOpen, setCountryOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState('');
+  const [currencyQuery, setCurrencyQuery] = useState('');
   const [showCurrencies, setShowCurrencies] = useState(false);
   // Global manual FX overrides (Settings) — when one exists for this pair the
   // fetched Frankfurter rate is ignored (§2.5, now app-wide per user request).
@@ -228,9 +232,7 @@ export function ExpenseForm({
           <View style={styles.section}>
             <View style={styles.labelRow}>
               <Text style={styles.label}>Amount</Text>
-              <Pressable onPress={() => setShowCurrencies((v) => !v)}>
-                <Text style={styles.label}>Currency</Text>
-              </Pressable>
+              <Text style={styles.label}>Currency</Text>
             </View>
             <View style={styles.amountRow}>
               <TextInput
@@ -241,39 +243,60 @@ export function ExpenseForm({
                 placeholder="0.00"
                 placeholderTextColor={colors.mutedForeground}
               />
-              <Pressable style={styles.currencyButton} onPress={() => setShowCurrencies((v) => !v)}>
-                <Text style={styles.currencyText}>{currency}</Text>
+              <Pressable style={styles.currencyButton} onPress={() => setShowCurrencies(true)}>
+                <Text style={styles.currencyText}>
+                  {currencyInfo(currency).flag ? currencyInfo(currency).flag + ' ' : ''}
+                  {currency}
+                </Text>
                 <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
               </Pressable>
             </View>
-            {showCurrencies && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.currencyScroll}
-                contentContainerStyle={styles.currencyRow}
-              >
-                {POPULAR_CURRENCIES.map((c) => (
-                  <Pressable
-                    key={c}
-                    style={[styles.currencyChip, c === currency && styles.currencyChipActive]}
-                    onPress={() => {
-                      setCurrency(c);
-                      setShowCurrencies(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.currencyChipText,
-                        c === currency && { color: colors.primaryForeground, fontWeight: '600' },
-                      ]}
-                    >
-                      {c}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
+            {/* Currency selection modal — same shared list as New Trip */}
+            <Modal visible={showCurrencies} transparent animationType="fade" onRequestClose={() => setShowCurrencies(false)}>
+              <Pressable style={styles.pickerBackdrop} onPress={() => setShowCurrencies(false)}>
+                <Pressable style={styles.pickerSheet} onPress={() => {}}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+                    <Text style={styles.pickerTitle}>Select currency</Text>
+                    <Pressable onPress={() => setShowCurrencies(false)}>
+                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
+                    value={currencyQuery}
+                    onChangeText={setCurrencyQuery}
+                    placeholder="Search currency"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                  <ScrollView style={{ maxHeight: 380 }}>
+                    {SHARED_CURRENCIES.filter(
+                      (c) =>
+                        c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
+                        c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
+                    ).map((c) => {
+                      const active = currency === c.code;
+                      return (
+                        <Pressable
+                          key={c.code}
+                          style={[styles.pickerRow, active && styles.pickerRowActive]}
+                          onPress={() => {
+                            setCurrency(c.code);
+                            setShowCurrencies(false);
+                            setCurrencyQuery('');
+                          }}
+                        >
+                          <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
+                            {c.flag} {c.code} — {c.name}
+                          </Text>
+                          {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </Pressable>
+              </Pressable>
+            </Modal>
             {/* rate line */}
             <View style={styles.rateRow}>
               {rateLoading ? (
@@ -419,6 +442,29 @@ export function ExpenseForm({
 
         <View style={styles.footer}>
           <Button label={isEdit ? 'Save changes' : 'Save expense'} disabled={!canSave} onPress={save} />
+          {isEdit && onDelete && initialExpense && (
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                label="Delete expense"
+                icon="trash-outline"
+                variant="ghost"
+                onPress={() => {
+                  Alert.alert(
+                    'Delete expense',
+                    `${initialExpense.notes || initialExpense.category} — ${initialExpense.amount} ${initialExpense.currency}?`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => onDelete(initialExpense),
+                      },
+                    ],
+                  );
+                }}
+              />
+            </View>
+          )}
         </View>
       </View>
 

@@ -18,21 +18,27 @@ export interface RateCache {
 export async function loadRateCache(base?: string): Promise<RateCache | null> {
   try {
     const db = getStorageAdapter();
+    // NOTE: 'rate_cache:%' would MISS the meta keys (rate_cache_date has an
+    // underscore, not a colon) — match the whole prefix deliberately.
     const rows = await db.query<{ key: string; value: string }>(
-      "SELECT key, value FROM app_settings WHERE key LIKE 'rate_cache:%'",
+      "SELECT key, value FROM app_settings WHERE key LIKE 'rate_cache%'",
     );
     if (rows.length === 0) return null;
     const rates: Record<string, number> = {};
     let date = '';
     let cachedBase = '';
+    let fetchedAt = '';
+    const FETCHED_KEY = 'rate_cache_fetched_at';
     for (const r of rows) {
       const n = parseFloat(r.value);
       if (r.key === DATE_KEY) { date = r.value; continue; }
       if (r.key === BASE_KEY) { cachedBase = r.value; continue; }
+      if (r.key === FETCHED_KEY) { fetchedAt = r.value; continue; }
       if (!Number.isNaN(n)) rates[r.key.replace(CACHE_PREFIX, '')] = n;
     }
+    if (Object.keys(rates).length === 0) return null;
     if (base && cachedBase && cachedBase !== base) return null; // wrong base → ignore
-    return { base: cachedBase || base || 'EUR', date, rates, fetchedAt: date };
+    return { base: cachedBase || base || 'EUR', date, rates, fetchedAt: fetchedAt || date };
   } catch {
     return null;
   }
@@ -42,9 +48,13 @@ export async function loadRateCache(base?: string): Promise<RateCache | null> {
 export async function saveRateCache(base: string, date: string, rates: Record<string, number>): Promise<void> {
   const db = getStorageAdapter();
   // Clear old entries first (currency set may change between ECB publications).
-  await db.exec("DELETE FROM app_settings WHERE key LIKE 'rate_cache:%'");
+  await db.exec("DELETE FROM app_settings WHERE key LIKE 'rate_cache%'");
   await db.exec('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [DATE_KEY, date]);
   await db.exec('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [BASE_KEY, base]);
+  await db.exec(
+    'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)',
+    ['rate_cache_fetched_at', new Date().toISOString()],
+  );
   for (const [quote, rate] of Object.entries(rates)) {
     await db.exec(
       'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)',

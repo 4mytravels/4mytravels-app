@@ -5,32 +5,29 @@ import { Alert } from 'react-native';
 import { getStorageAdapter } from './index';
 import { loadTrips, saveTrip, deleteTrip } from './tripRepo';
 import { useTripStore } from '../store/tripStore';
-import { getRatesMap } from '../services/frankfurter';
+import { getRates } from '../services/frankfurter';
 import { saveRateCache } from '../services/rateCache';
 
 // Refresh the ECB rate cache at app open (best-effort; silent on failure —
 // the expense form falls back to the previously cached rates).
+// Single API call: /v2/rates rows each carry their publication date, so we
+// take the newest date from the response itself (no second request).
 export async function refreshRateCache(base = 'EUR'): Promise<boolean> {
   try {
-    const rates = await getRatesMap(base);
-    const date = Object.keys(rates).length > 0 ? (await getRateDate(base)) ?? new Date().toISOString().slice(0, 10) : '';
+    const rows = await getRates(base);
+    if (rows.length === 0) return false;
+    const date = [...rows].sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.date;
     if (!date) return false;
+    const rates: Record<string, number> = { [base]: 1 };
+    for (const r of rows) {
+      if (r.base === base && typeof r.rate === 'number' && r.rate > 0) {
+        rates[r.quote] = r.rate;
+      }
+    }
     await saveRateCache(base, date, rates);
     return true;
   } catch {
     return false;
-  }
-}
-
-// The /v2/rates rows carry the publication date; grab the newest one.
-async function getRateDate(base: string): Promise<string | null> {
-  try {
-    const res = await fetch(`https://api.frankfurter.dev/v2/rates?base=${encodeURIComponent(base)}`);
-    if (!res.ok) return null;
-    const rows = (await res.json()) as Array<{ date: string }>;
-    return rows.length ? [...rows].sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.date ?? null : null;
-  } catch {
-    return null;
   }
 }
 

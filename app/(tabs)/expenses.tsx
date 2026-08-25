@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   Pressable,
   StyleSheet,
   ScrollView,
@@ -21,6 +21,7 @@ import { IconCircle, categoryIcons, Button, StatBox } from '../../src/components
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { EXPENSE_CATEGORIES } from '../../src/types';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
+import { groupByDay } from '../../src/utils/days';
 
 export default function ExpensesScreen() {
   const params = useLocalSearchParams<{ tripId?: string; add?: string }>();
@@ -85,6 +86,13 @@ export default function ExpensesScreen() {
 
   const totalHome = list.reduce((sum, e) => sum + toHomeCurrency(e), 0);
 
+  // Per-day sections (newest first): header shows a friendly day label
+  // (Today / Yesterday / 28 Aug 2026) plus the day's total in home currency.
+  const sections = groupByDay(list).map((s) => ({
+    ...s,
+    dayTotal: s.data.reduce((sum, e) => sum + toHomeCurrency(e), 0),
+  }));
+
   // Daily average: total spend divided by days elapsed since trip start (min 1).
   const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
   const daysElapsed = Number.isNaN(startMs)
@@ -133,9 +141,17 @@ export default function ExpensesScreen() {
         </View>
       )}
 
-      <FlatList
-        data={list}
+      <SectionList
+        sections={sections}
         keyExtractor={(e) => e.id}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.dayHeader}>
+            <Text style={styles.dayLabel}>{section.label}</Text>
+            <Text style={styles.dayTotal}>
+              {formatMoney(section.dayTotal, homeCurrency)}
+            </Text>
+          </View>
+        )}
         contentContainerStyle={[styles.list, { paddingBottom: 120 + insets.bottom }]}
         ListHeaderComponent={
           <>
@@ -350,6 +366,30 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   list: { paddingHorizontal: spacing.xl },
+  dayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    marginTop: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  dayLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    fontFamily: fontFamily.heading,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dayTotal: {
+    color: colors.foreground,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    fontFamily: fontFamily.sans,
+  },
   totalText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.md },
   searchBar: {
     flexDirection: 'row',

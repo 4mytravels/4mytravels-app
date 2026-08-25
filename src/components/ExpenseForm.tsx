@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { processPhoto } from '../utils/image';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../data/countries';
 import { CURRENCIES as SHARED_CURRENCIES, currencyInfo } from '../data/currencies';
 import {
@@ -124,8 +125,10 @@ export function ExpenseForm({
       quality: 0.7,
     });
     if (!res.canceled && res.assets[0]?.base64) {
-      const b64 = res.assets[0].base64;
-      const bytes = base64ToBytes(b64);
+      // Resize to ≤2000px / ≤500KB + strip ALL EXIF/GPS bytes via JPEG
+      // re-encode (§2.2 image cap + true EXIF strip, was a follow-up).
+      const bytes = await processPhoto(res.assets[0].base64);
+      const b64 = bytesToBase64(bytes);
       setReceiptBytes(bytes);
       setReceiptPreview('data:image/jpeg;base64,' + b64);
     }

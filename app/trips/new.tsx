@@ -32,20 +32,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuid } from 'uuid';
 import { useTripStore } from '../../src/store/tripStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
+import { processPhoto } from '../../src/utils/image';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
 
-// base64 helper (receipt/cover bytes are stored as BLOBs in the encrypted DB)
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
+// bytesToBase64 lives in src/utils/image.ts (shared with the expense form).
+import { bytesToBase64 } from '../../src/utils/image';
 // Currency catalogue lives in src/data/currencies.ts (shared with the expense form).
 const CURRENCIES = SHARED_CURRENCIES;
 
@@ -457,8 +452,10 @@ export default function NewTripScreen() {
                     aspect: [4, 3],
                   });
                   if (!res.canceled && res.assets[0]?.base64) {
-                    setCoverBytes(base64ToBytes(res.assets[0].base64));
-                    setCoverPreview('data:image/jpeg;base64,' + res.assets[0].base64);
+                    // Resize ≤2000px/≤500KB + true EXIF/GPS strip (§2.2).
+                    const bytes = await processPhoto(res.assets[0].base64);
+                    setCoverBytes(bytes);
+                    setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
                   }
                 }}
               >

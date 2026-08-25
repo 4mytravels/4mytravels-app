@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ScrollView,
   Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
@@ -33,6 +34,7 @@ export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [homeCurrency, setHomeCurrency] = useState('EUR');
   const [catFilter, setCatFilter] = useState<string>('All');
+  const [query, setQuery] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(params.add === '1');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -73,7 +75,12 @@ export default function ExpensesScreen() {
 
   const list = expenses.filter(
     (e) =>
-      (catFilter === 'All' || e.category === catFilter),
+      (catFilter === 'All' || e.category === catFilter) &&
+      // Search across notes, category, country and location.
+      (query.trim() === '' ||
+        [e.notes, e.category, e.country, e.location]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(query.trim().toLowerCase()))),
   );
 
   const totalHome = list.reduce((sum, e) => sum + toHomeCurrency(e), 0);
@@ -134,7 +141,19 @@ export default function ExpensesScreen() {
           <>
             <View style={styles.searchBar}>
               <Ionicons name="search" size={20} color={colors.mutedForeground} />
-              <Text style={styles.searchPlaceholder}>Search notes, places, categories</Text>
+              <TextInput
+                style={styles.searchInput}
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search notes, places, categories"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+              />
+              {query !== '' && (
+                <Pressable hitSlop={8} onPress={() => setQuery('')}>
+                  <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
+                </Pressable>
+              )}
             </View>
             <Text style={styles.totalText}>
               {formatMoney(totalHome, homeCurrency)} total
@@ -253,8 +272,11 @@ function ExpenseRow({
         <Text style={styles.rowTitle}>{expense.notes || expense.category}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{expense.category}</Text>
-          <Ionicons name="time-outline" size={14} color={colors.mutedForeground} />
           <Text style={styles.metaText}>{expense.rateDate}</Text>
+          {expense.location ? <Text style={styles.metaText}>· {expense.location}</Text> : null}
+          {expense.multiDaySplit ? (
+            <Text style={styles.metaText}>· split {expense.multiDaySplit.splitStart} → {expense.multiDaySplit.splitEnd}</Text>
+          ) : null}
         </View>
       </View>
       <View style={styles.priceCol}>
@@ -338,7 +360,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     marginTop: spacing.sm,
   },
-  searchPlaceholder: { color: colors.mutedForeground, marginLeft: spacing.md, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  searchInput: { flex: 1, color: colors.foreground, marginLeft: spacing.md, fontSize: fontSize.md, fontFamily: fontFamily.sans, paddingVertical: 0 },
   chipScroll: { marginTop: spacing.md, marginBottom: spacing.sm },
   chips: { gap: spacing.sm, paddingRight: spacing.xl },
   chip: {

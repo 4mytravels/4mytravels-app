@@ -21,6 +21,7 @@ import { router } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Card, SectionTitle, Button } from '../../src/components/ui';
 import { createBackup, restoreBackup } from '../../src/db/backup';
+import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
 import { saveExpense, loadExpenses } from '../../src/db/expenseRepo';
 import { useTripStore } from '../../src/store/tripStore';
@@ -49,11 +50,16 @@ export default function SettingsScreen() {
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [nudge, setNudge] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importTargetTrip, setImportTargetTrip] = useState<string | null>(null);
 
   useEffect(() => {
     void hydrateSettings();
+    // Schedule the recurring local notification on native (no-op on web) and
+    // evaluate the in-app nudge fallback.
+    void scheduleBackupReminder();
+    void shouldNudgeBackup().then(setNudge);
   }, [hydrateSettings]);
 
   const close = () => {
@@ -169,6 +175,7 @@ export default function SettingsScreen() {
     setBusy(true);
     try {
       const envelope = await createBackup(passphrase);
+      await markBackupDone(); // reset the reminder clock (§2.2 backup reminders)
       const file = new File(Paths.cache, '4mytravels-backup.json');
       await file.write(envelope);
       await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save encrypted backup' });
@@ -222,6 +229,11 @@ export default function SettingsScreen() {
           <Text style={styles.note}>
             Local encrypted backup. The passphrase is the only key — if you lose it, the backup is unrecoverable.
           </Text>
+          {nudge && (
+            <Text style={[styles.note, { color: colors.accent, marginBottom: spacing.md }]}>
+              It's been a while since your last backup — your trips exist only on this device.
+            </Text>
+          )}
           <View style={styles.actions}>
             <Button label="Create backup" icon="cloud-upload-outline" onPress={() => setMode('backup')} />
             <View style={{ height: spacing.md }} />

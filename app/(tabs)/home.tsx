@@ -139,8 +139,16 @@ export default function HomeScreen() {
     };
   });
 
+  // Total spent across all trips, shown in the most-used trip home currency
+  // (was hardcoded EUR — wrong whenever the first/only trip uses another one).
   const totalSpent = expenses.reduce((sum, e) => sum + toHomeCurrency(e), 0);
   const trips = useTripStore((s) => s.trips);
+  const homeCurrencyCounts: Record<string, number> = {};
+  for (const t of trips) {
+    homeCurrencyCounts[t.homeCurrency] = (homeCurrencyCounts[t.homeCurrency] ?? 0) + 1;
+  }
+  const displayCurrency =
+    Object.entries(homeCurrencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
   // Unique countries: from trip country tags first, falling back to per-expense country.
   const countrySet = new Set<string>();
   for (const t of trips) {
@@ -172,7 +180,7 @@ export default function HomeScreen() {
       {/* Stats */}
       <View style={styles.statsRow}>
         <Pill icon="location-outline" text={`${countries} countries`} />
-        <Pill icon="wallet-outline" text={`${formatMoney(totalSpent, 'EUR')} spent`} />
+        <Pill icon="wallet-outline" text={`${formatMoney(totalSpent, displayCurrency)} spent`} />
       </View>
 
       {/* Recent expenses */}

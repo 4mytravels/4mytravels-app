@@ -80,6 +80,10 @@ export async function updateTrip(trip: Trip, coverPhoto?: Uint8Array | null, db:
 }
 
 export async function deleteTrip(id: string, db: StorageAdapter = getStorageAdapter()): Promise<void> {
+  // Delete children explicitly — SQLite only enforces ON DELETE CASCADE when
+  // PRAGMA foreign_keys=ON, which op-sqlite does not enable by default. Without
+  // this the expenses would linger as orphans (GDPR erasure §2.2).
+  await db.exec('DELETE FROM expenses WHERE trip_id = ?', [id]);
   await db.exec('DELETE FROM trips WHERE id = ?', [id]);
   // GDPR erasure (§2.2): compact so deleted ciphertext does not linger on disk.
   await db.compact();

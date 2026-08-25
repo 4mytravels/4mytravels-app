@@ -27,7 +27,7 @@ const PIE_COLORS = [
 ];
 
 // Simple bar chart (no external chart lib — FLOSS / privacy-first).
-function Bar({ label, value, max, color = colors.primary }: { label: string; value: number; max: number; color?: string }) {
+function Bar({ label, value, max, displayCurrency, color = colors.primary }: { label: string; value: number; max: number; displayCurrency: string; color?: string }) {
   const pct = max > 0 ? Math.min(1, value / max) : 0;
   return (
     <View style={styles.barRow}>
@@ -35,7 +35,7 @@ function Bar({ label, value, max, color = colors.primary }: { label: string; val
       <View style={styles.barTrack}>
         <View style={[styles.barFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
       </View>
-      <Text style={styles.barValue}>{formatMoney(value, 'EUR')}</Text>
+      <Text style={styles.barValue}>{formatMoney(value, displayCurrency)}</Text>
     </View>
   );
 }
@@ -145,8 +145,14 @@ export default function StatisticsScreen() {
   const tripId = typeof params.tripId === 'string' ? params.tripId : undefined;
   const trips = useTripStore((s) => s.trips);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  // Use the first trip's home currency for display (global view). Falls back to EUR.
-  const homeCurrency = trips[0]?.homeCurrency ?? 'EUR';
+  // Use the most-used trip home currency for display (global view). Falls back to EUR.
+  const homeCurrencyCounts: Record<string, number> = {};
+  for (const t of trips) {
+    homeCurrencyCounts[t.homeCurrency] = (homeCurrencyCounts[t.homeCurrency] ?? 0) + 1;
+  }
+  const displayCurrency =
+    Object.entries(homeCurrencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
+  const homeCurrency = displayCurrency;
 
   useEffect(() => {
     (async () => {
@@ -230,7 +236,7 @@ export default function StatisticsScreen() {
               <Pie entries={catEntries} />
               <View style={{ marginTop: spacing.md }}>
                 {catEntries.map(([k, v]) => (
-                  <Bar key={k} label={k} value={v} max={maxCat} />
+                  <Bar key={k} label={k} value={v} max={maxCat} displayCurrency={displayCurrency} />
                 ))}
               </View>
             </>
@@ -240,14 +246,14 @@ export default function StatisticsScreen() {
         <View style={styles.section}>
           <SectionTitle title="By country" />
           {countryEntries.length === 0 ? <Empty text="No countries tagged yet." /> : countryEntries.map(([k, v]) => (
-            <Bar key={k} label={k} value={v} max={maxCountry} color={colors.accent} />
+            <Bar key={k} label={k} value={v} max={maxCountry} displayCurrency={displayCurrency} color={colors.accent} />
           ))}
         </View>
 
         <View style={styles.section}>
           <SectionTitle title="Over time" />
           {monthEntries.length === 0 ? <Empty /> : monthEntries.map(([k, v]) => (
-            <Bar key={k} label={monthLabel(k)} value={v} max={maxMonth} color={colors.routeLine} />
+            <Bar key={k} label={monthLabel(k)} value={v} max={maxMonth} displayCurrency={displayCurrency} color={colors.routeLine} />
           ))}
         </View>
 

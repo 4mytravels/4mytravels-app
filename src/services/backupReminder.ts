@@ -57,6 +57,11 @@ export async function shouldNudgeBackup(now = Date.now()): Promise<boolean> {
 export async function scheduleBackupReminder(): Promise<boolean> {
   try {
     if (Platform.OS === 'web') return false; // web uses the in-app fallback
+    // Guard: builds without the expo-notifications native module (it was
+    // removed from build #10 while debugging a startup crash) must skip
+    // silently — requireNativeModule would throw otherwise.
+    const { requireOptionalNativeModule } = await import('expo-modules-core');
+    if (!requireOptionalNativeModule('ExpoNotificationScheduler')) return false;
     const Notifications = await import('expo-notifications');
     // Re-schedule unconditionally (idempotent — replaces the previous one).
     const perm = await Notifications.requestPermissionsAsync();

@@ -57,12 +57,15 @@ export async function shouldNudgeBackup(now = Date.now()): Promise<boolean> {
 export async function scheduleBackupReminder(): Promise<boolean> {
   try {
     if (Platform.OS === 'web') return false; // web uses the in-app fallback
-    // Guard: builds without the expo-notifications native module (it was
-    // removed from build #10 while debugging a startup crash) must skip
-    // silently — requireNativeModule would throw otherwise.
+    // expo-notifications is NOT in the bundle right now (removed while
+    // bisecting the build-#9 startup crash). When it is re-added as a
+    // dependency, this guard lets the same code work unchanged: the optional
+    // native-module probe skips old/missing builds silently and the dynamic
+    // import keeps the package out of the Metro graph until then.
     const { requireOptionalNativeModule } = await import('expo-modules-core');
     if (!requireOptionalNativeModule('ExpoNotificationScheduler')) return false;
-    const Notifications = await import('expo-notifications');
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const Notifications = await (new Function('return import("expo-notifications")'))() as any;
     // Re-schedule unconditionally (idempotent — replaces the previous one).
     const perm = await Notifications.requestPermissionsAsync();
     if (!perm.granted) return false;

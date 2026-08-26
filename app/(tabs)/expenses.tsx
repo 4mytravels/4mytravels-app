@@ -135,9 +135,11 @@ export default function ExpensesScreen() {
       {/* Budget stats for the selected trip (mirrors trip-detail numbers) */}
       {selectedTrip && (
         <View style={styles.statsRow}>
-          <StatBox label="Daily budget" value={formatMoney(selectedTrip.dailyBudget, homeCurrency)} />
+          <StatBox
+            label="Daily avg / budget"
+            value={`${formatMoney(dailyAverage, homeCurrency)} / ${formatMoney(selectedTrip.dailyBudget, homeCurrency)}`}
+          />
           <StatBox label="Total spend" value={formatMoney(totalHome, homeCurrency)} />
-          <StatBox label="Daily avg" value={formatMoney(dailyAverage, homeCurrency)} />
         </View>
       )}
 

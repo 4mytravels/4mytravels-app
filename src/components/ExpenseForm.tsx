@@ -109,8 +109,31 @@ export function ExpenseForm({
         })(),
   );
   const [country, setCountry] = useState(initialExpense?.country ?? '');
+  // Remembered default: the last country used on THIS trip (per-trip memory,
+  // stored in app_settings). Falls back to '' until the user picks one.
   const [countryOpen, setCountryOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState('');
+  const [rememberedCountry, setRememberedCountry] = useState('');
+  useEffect(() => {
+    if (initialExpense) return; // edit mode keeps its own value
+    let alive = true;
+    (async () => {
+      try {
+        const db = (await import('../db/index')).getStorageAdapter();
+        const rows = await db.query<{ key: string; value: string }>(
+          "SELECT value FROM app_settings WHERE key = ?",
+          [`last_country:${tripId}`],
+        );
+        if (alive && rows[0]?.value) {
+          setRememberedCountry(rows[0].value);
+          setCountry((cur) => cur || rows[0].value);
+        }
+      } catch {
+        // table missing or adapter not ready — no remembered default
+      }
+    })();
+    return () => { alive = false; };
+  }, [tripId, initialExpense]);
   const [currencyQuery, setCurrencyQuery] = useState('');
   const [showCurrencies, setShowCurrencies] = useState(false);
   // Global manual FX overrides (Settings) — when one exists for this pair the
@@ -238,6 +261,21 @@ export function ExpenseForm({
       receiptPhoto: receiptBytes,
       multiDaySplit: split,
     };
+    // Remember the country per trip so the next expense starts pre-filled.
+    if (country.trim()) {
+      void (async () => {
+        try {
+          const db = (await import('../db/index')).getStorageAdapter();
+          await db.exec(
+            'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)',
+            [`last_country:${tripId}`, country.trim()],
+          );
+          setRememberedCountry(country.trim());
+        } catch {
+          // non-fatal
+        }
+      })();
+    }
     onSave(expense);
   };
 
@@ -356,7 +394,13 @@ export function ExpenseForm({
           <View style={styles.section}>
             <Text style={styles.label}>Category</Text>
             <View style={styles.categoryGrid}>
-              {chunk(EXPENSE_CATEGORIES, 3).map((row, ri) => (
+              {chunk(
+                [
+                  ...EXPENSE_CATEGORIES.filter((c) => c !== 'Accommodation'),
+                  'Accommodation' as ExpenseCategory, // last → gets the wider final cell
+                ],
+                3,
+              ).map((row, ri) => (
                 <View key={ri} style={styles.categoryRow}>
                   {row.map((cat) => (
                     <CategoryChip
@@ -463,12 +507,9 @@ export function ExpenseForm({
           <View style={styles.section}>
             <Text style={styles.label}>Date & time</Text>
             <View style={styles.dateTimeRow}>
-              {/* Date field: flex row so the calendar icon sits inline at the right edge */}
-              <Pressable
-                hitSlop={4}
-                onPress={() => setDatePickerFor('date')}
-                style={styles.dateContainer}
-              >
+              {/* Date field: type directly, or tap the calendar icon for the picker.
+                  The input is NOT wrapped in the Pressable so typing isn't hijacked. */}
+              <View style={styles.dateContainer}>
                 <TextInput
                   style={styles.dateInput}
                   value={date}
@@ -476,13 +517,15 @@ export function ExpenseForm({
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <Ionicons
-                  name="calendar-outline"
-                  size={20}
-                  color={colors.mutedForeground}
-                  style={{ marginLeft: 'auto', paddingHorizontal: spacing.lg }}
-                />
-              </Pressable>
+                <Pressable hitSlop={8} onPress={() => setDatePickerFor('date')}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={20}
+                    color={colors.mutedForeground}
+                    style={{ paddingHorizontal: spacing.lg }}
+                  />
+                </Pressable>
+              </View>
               <TextInput
                 style={styles.timeInput}
                 value={time}

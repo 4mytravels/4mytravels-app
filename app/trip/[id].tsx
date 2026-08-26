@@ -4,7 +4,7 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  ScrollView,
+  SectionList,
   Modal,
   Alert,
   Image,
@@ -15,6 +15,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useTripStore } from '../../src/store/tripStore';
 import { loadExpenses, saveExpense, deleteExpense } from '../../src/db/expenseRepo';
 import type { Expense } from '../../src/types';
+import { groupByDay } from '../../src/utils/days';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Card, StatBox, SectionTitle, Button, IconCircle, categoryIcons } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
@@ -70,6 +71,7 @@ export default function TripDetailScreen() {
   const dailyAverage = cumulativeSpend / daysActive;
 
   const coverBytes = (trip as typeof trip & { coverBytes?: Uint8Array | null }).coverBytes;
+  const dayHeaderPad = { paddingHorizontal: spacing.xl };
   const coverUri = coverBytes
     ? 'data:image/jpeg;base64,' +
       (() => {
@@ -122,78 +124,99 @@ export default function TripDetailScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        {/* Cover photo — full width hero when the trip has one */}
-        {coverUri && (
-          <Image source={{ uri: coverUri }} style={styles.coverHero} resizeMode="cover" />
-        )}
-        <Card>
-          <View style={styles.statRow}>
-            <StatBox label="Daily budget" value={formatMoney(trip.dailyBudget, trip.homeCurrency)} />
-            <StatBox
-              label="Total"
-              value={pace.projectedTotalBudget ? formatMoney(pace.projectedTotalBudget, trip.homeCurrency) : '—'}
-            />
-            <StatBox label="Spent" value={formatMoney(cumulativeSpend, trip.homeCurrency)} />
-          </View>
-          <View style={styles.statRow}>
-            <StatBox label="Daily average" value={formatMoney(dailyAverage, trip.homeCurrency)} />
-            <StatBox label="Days" value={String(daysActive)} />
-          </View>
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${Math.min(1, cumulativeSpend / (pace.projectedTotalBudget || 1)) * 100}%` },
-              ]}
-            />
-          </View>
-          <Text style={styles.paceText}>
-            {pace.status === 'over_budget' ? 'Over budget' : 'On track'} · Day {pace.daysElapsed}
-          </Text>
-        </Card>
+      <SectionList
+        style={styles.body}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+        sections={groupByDay(expenses)}
+        keyExtractor={(e) => e.id}
+        ListHeaderComponent={
+          <>
+            {/* Cover photo — full width hero when the trip has one */}
+            {coverUri && (
+              <Image source={{ uri: coverUri }} style={styles.coverHero} resizeMode="cover" />
+            )}
+            <Card>
+              <View style={styles.statRow}>
+                <StatBox
+                  label="Daily avg / budget"
+                  value={`${formatMoney(dailyAverage, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget, trip.homeCurrency)}`}
+                />
+                <StatBox label="Total spend" value={formatMoney(cumulativeSpend, trip.homeCurrency)} />
+              </View>
+              <View style={styles.statRow}>
+                <StatBox label="Days" value={String(daysActive)} />
+                <StatBox
+                  label="Expected total"
+                  value={pace.projectedTotalBudget ? formatMoney(pace.projectedTotalBudget, trip.homeCurrency) : '—'}
+                />
+              </View>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.min(1, cumulativeSpend / (pace.projectedTotalBudget || 1)) * 100}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.paceText}>
+                {pace.status === 'over_budget' ? 'Over budget' : 'On track'} · Day {pace.daysElapsed}
+              </Text>
+            </Card>
 
-        <View style={styles.sectionHead}>
-          <SectionTitle title={`Expenses (${expenses.length})`} />
-        </View>
-        {expenses.length === 0 ? (
-          <Text style={styles.placeholder}>No expenses yet. Tap + to add the first one.</Text>
-        ) : (
-          <View style={styles.expList}>
-            {expenses.map((item) => (
-              <View key={item.id} style={styles.row}>
-                <Pressable
-                  style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
-                  onPress={() => {
-                    setEditingExpense(item);
-                    setExpenseOpen(true);
-                  }}
-                >
-                  <IconCircle icon={categoryIcons[item.category]} size={50} />
-                  <View style={styles.details}>
-                    <Text style={styles.rowTitle}>{item.notes || item.category}</Text>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaText}>{item.category}</Text>
-                      <Text style={styles.metaText}>{item.rateDate}</Text>
-                    </View>
-                  </View>
-                </Pressable>
-                <View style={styles.priceCol}>
-                  <Text style={styles.priceMain}>
-                    {formatMoney(item.amount, item.currency)}
-                  </Text>
-                  <Text style={styles.priceSub}>
-                    ≈ {formatMoney(toHomeCurrency(item), trip.homeCurrency)}
+            <View style={styles.sectionHead}>
+              <SectionTitle title={`Expenses (${expenses.length})`} />
+            </View>
+          </>
+        }
+        renderSectionHeader={({ section }) => (
+          <View style={[styles.dayHeader, dayHeaderPad]}>
+            <Text style={styles.dayLabel}>{section.label}</Text>
+            <Text style={styles.dayTotal}>
+              {formatMoney(section.data.reduce((s, e) => s + toHomeCurrency(e), 0), trip.homeCurrency)}
+            </Text>
+          </View>
+        )}
+        renderSectionFooter={() => <View style={{ height: spacing.md }} />}
+        renderItem={({ item }) => (
+          <View style={[styles.row, { marginBottom: spacing.md }]}>
+            <Pressable
+              style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
+              onPress={() => {
+                setEditingExpense(item);
+                setExpenseOpen(true);
+              }}
+            >
+              <IconCircle icon={categoryIcons[item.category]} size={50} />
+              <View style={styles.details}>
+                <Text style={styles.rowTitle}>{item.notes || item.category}</Text>
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaText}>{item.category}</Text>
+                  <Text style={styles.metaText}>
+                    {(item.createdAt || item.rateDate).includes('T')
+                      ? new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : ''}
                   </Text>
                 </View>
-                <Pressable onPress={() => handleDelete(item)} hitSlop={8} style={styles.rowDelete}>
-                  <Ionicons name="trash-outline" size={18} color={colors.destructive} />
-                </Pressable>
               </View>
-            ))}
+            </Pressable>
+            <View style={styles.priceCol}>
+              <Text style={styles.priceMain}>
+                {formatMoney(item.amount, item.currency)}
+              </Text>
+              <Text style={styles.priceSub}>
+                ≈ {formatMoney(toHomeCurrency(item), trip.homeCurrency)}
+              </Text>
+            </View>
+            <Pressable onPress={() => handleDelete(item)} hitSlop={8} style={styles.rowDelete}>
+              <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+            </Pressable>
           </View>
         )}
-      </ScrollView>
+        ListEmptyComponent={
+          <Text style={styles.placeholder}>No expenses yet. Tap + to add the first one.</Text>
+        }
+      />
 
       {/* FAB */}
       <Pressable style={styles.fab} onPress={() => setExpenseOpen(true)}>
@@ -240,7 +263,30 @@ const styles = StyleSheet.create({
   paceText: { color: colors.mutedForeground, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans },
   sectionHead: { marginTop: spacing.xl },
   placeholder: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.sm },
-  expList: { paddingBottom: spacing.lg, gap: spacing.md },
+  dayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    marginTop: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  dayLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    fontFamily: fontFamily.heading,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dayTotal: {
+    color: colors.foreground,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    fontFamily: fontFamily.sans,
+  },
   row: {
     flexDirection: 'row',
     backgroundColor: colors.card,

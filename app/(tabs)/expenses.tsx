@@ -21,7 +21,7 @@ import { IconCircle, categoryIcons, Button, StatBox } from '../../src/components
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { EXPENSE_CATEGORIES } from '../../src/types';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { groupByDay } from '../../src/utils/days';
+import { groupByDaySplitAware } from '../../src/utils/days';
 
 export default function ExpensesScreen() {
   const params = useLocalSearchParams<{ tripId?: string; add?: string }>();
@@ -88,9 +88,14 @@ export default function ExpensesScreen() {
 
   // Per-day sections (newest first): header shows a friendly day label
   // (Today / Yesterday / 28 Aug 2026) plus the day's total in home currency.
-  const sections = groupByDay(list).map((s) => ({
+  // Multi-day-split expenses are expanded: each covered day shows its share
+  // and contributes that share to the day total.
+  const sections = groupByDaySplitAware(list).map((s) => ({
     ...s,
-    dayTotal: s.data.reduce((sum, e) => sum + toHomeCurrency(e), 0),
+    dayTotal: s.data.reduce(
+      (sum, entry) => sum + (entry.splitShare ?? toHomeCurrency(entry.expense)),
+      0,
+    ),
   }));
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).
@@ -145,7 +150,7 @@ export default function ExpensesScreen() {
 
       <SectionList
         sections={sections}
-        keyExtractor={(e) => e.id}
+        keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
         renderSectionHeader={({ section }) => (
           <View style={styles.dayHeader}>
             <Text style={styles.dayLabel}>{section.label}</Text>
@@ -194,10 +199,11 @@ export default function ExpensesScreen() {
         }
         renderItem={({ item }) => (
           <ExpenseRow
-            expense={item}
+            expense={item.expense}
             homeCurrency={homeCurrency}
+            splitShare={item.splitShare}
             onPress={() => {
-              setEditingExpense(item);
+              setEditingExpense(item.expense);
               setFormOpen(true);
             }}
           />
@@ -278,11 +284,15 @@ function ExpenseRow({
   expense,
   homeCurrency,
   onPress,
+  splitShare = null,
 }: {
   expense: Expense;
   homeCurrency: string;
   onPress: () => void;
+  /** Set when this row is one day of a multi-day split: shows the share. */
+  splitShare?: number | null;
 }) {
+  const isSplitDay = splitShare != null;
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <IconCircle icon={categoryIcons[expense.category]} size={50} />
@@ -290,20 +300,30 @@ function ExpenseRow({
         <Text style={styles.rowTitle}>{expense.notes || expense.category}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{expense.category}</Text>
-          <Text style={styles.metaText}>{expense.rateDate}</Text>
-          {expense.location ? <Text style={styles.metaText}>· {expense.location}</Text> : null}
-          {expense.multiDaySplit ? (
-            <Text style={styles.metaText}>· split {expense.multiDaySplit.splitStart} → {expense.multiDaySplit.splitEnd}</Text>
-          ) : null}
+          {isSplitDay ? (
+            <>
+              <Ionicons name="layers-outline" size={14} color={colors.mutedForeground} />
+              <Text style={styles.metaText}>
+                day share · split {expense.multiDaySplit?.splitStart} → {expense.multiDaySplit?.splitEnd}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.metaText}>{expense.rateDate}</Text>
+              {expense.location ? <Text style={styles.metaText}>· {expense.location}</Text> : null}
+            </>
+          )}
         </View>
       </View>
       <View style={styles.priceCol}>
         <Text style={styles.priceMain}>
-          {formatMoney(expense.amount, expense.currency)}
+          {formatMoney(isSplitDay ? (splitShare as number) : expense.amount, expense.currency)}
         </Text>
-        <Text style={styles.priceSub}>
-          ≈ {formatMoney(toHomeCurrency(expense), homeCurrency)}
-        </Text>
+        {!isSplitDay && (
+          <Text style={styles.priceSub}>
+            ≈ {formatMoney(toHomeCurrency(expense), homeCurrency)}
+          </Text>
+        )}
       </View>
     </Pressable>
   );

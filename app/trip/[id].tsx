@@ -15,7 +15,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useTripStore } from '../../src/store/tripStore';
 import { loadExpenses, saveExpense, deleteExpense } from '../../src/db/expenseRepo';
 import type { Expense } from '../../src/types';
-import { groupByDay } from '../../src/utils/days';
+import { groupByDaySplitAware } from '../../src/utils/days';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Card, StatBox, SectionTitle, Button, IconCircle, categoryIcons } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
@@ -128,8 +128,8 @@ export default function TripDetailScreen() {
         style={styles.body}
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
-        sections={groupByDay(expenses)}
-        keyExtractor={(e) => e.id}
+        sections={groupByDaySplitAware(expenses)}
+        keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
         ListHeaderComponent={
           <>
             {/* Cover photo — full width hero when the trip has one */}
@@ -173,46 +173,62 @@ export default function TripDetailScreen() {
           <View style={[styles.dayHeader, dayHeaderPad]}>
             <Text style={styles.dayLabel}>{section.label}</Text>
             <Text style={styles.dayTotal}>
-              {formatMoney(section.data.reduce((s, e) => s + toHomeCurrency(e), 0), trip.homeCurrency)}
+              {formatMoney(
+                section.data.reduce(
+                  (s, entry) => s + (entry.splitShare ?? toHomeCurrency(entry.expense)),
+                  0,
+                ),
+                trip.homeCurrency,
+              )}
             </Text>
           </View>
         )}
         renderSectionFooter={() => <View style={{ height: spacing.md }} />}
-        renderItem={({ item }) => (
-          <View style={[styles.row, { marginBottom: spacing.md }]}>
-            <Pressable
-              style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
-              onPress={() => {
-                setEditingExpense(item);
-                setExpenseOpen(true);
-              }}
-            >
-              <IconCircle icon={categoryIcons[item.category]} size={50} />
-              <View style={styles.details}>
-                <Text style={styles.rowTitle}>{item.notes || item.category}</Text>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaText}>{item.category}</Text>
-                  <Text style={styles.metaText}>
-                    {(item.createdAt || item.rateDate).includes('T')
-                      ? new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : ''}
-                  </Text>
+        renderItem={({ item }) => {
+          const e = item.expense;
+          const isSplitDay = item.splitShare != null;
+          return (
+            <View style={[styles.row, { marginBottom: spacing.md }]}>
+              <Pressable
+                style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
+                onPress={() => {
+                  setEditingExpense(e);
+                  setExpenseOpen(true);
+                }}
+              >
+                <IconCircle icon={categoryIcons[e.category]} size={50} />
+                <View style={styles.details}>
+                  <Text style={styles.rowTitle}>{e.notes || e.category}</Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaText}>{e.category}</Text>
+                    {isSplitDay ? (
+                      <Ionicons name="layers-outline" size={14} color={colors.mutedForeground} />
+                    ) : (
+                      <Text style={styles.metaText}>
+                        {(e.createdAt || e.rateDate).includes('T')
+                          ? new Date(e.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </Text>
+                    )}
+                  </View>
                 </View>
+              </Pressable>
+              <View style={styles.priceCol}>
+                <Text style={styles.priceMain}>
+                  {formatMoney(isSplitDay ? (item.splitShare as number) : e.amount, e.currency)}
+                </Text>
+                {!isSplitDay && (
+                  <Text style={styles.priceSub}>
+                    ≈ {formatMoney(toHomeCurrency(e), trip.homeCurrency)}
+                  </Text>
+                )}
               </View>
-            </Pressable>
-            <View style={styles.priceCol}>
-              <Text style={styles.priceMain}>
-                {formatMoney(item.amount, item.currency)}
-              </Text>
-              <Text style={styles.priceSub}>
-                ≈ {formatMoney(toHomeCurrency(item), trip.homeCurrency)}
-              </Text>
+              <Pressable onPress={() => handleDelete(e)} hitSlop={8} style={styles.rowDelete}>
+                <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+              </Pressable>
             </View>
-            <Pressable onPress={() => handleDelete(item)} hitSlop={8} style={styles.rowDelete}>
-              <Ionicons name="trash-outline" size={18} color={colors.destructive} />
-            </Pressable>
-          </View>
-        )}
+          );
+        }}
         ListEmptyComponent={
           <Text style={styles.placeholder}>No expenses yet. Tap + to add the first one.</Text>
         }

@@ -99,7 +99,20 @@ export function ExpenseForm({
   const [splitOpen, setSplitOpen] = useState(false);
   // Native date pickers (calendar icon buttons). 'date' = start date,
   // 'end' = multi-day split end date.
+  // The picker's initial Date is pinned in STATE at open time: passing a fresh
+  // Date each render makes the Android picker reset (and fire onChange) to
+  // today whenever any unrelated re-render happens (e.g. the rate fetch
+  // resolving ~1s later) — that was the "snaps back to today" bug.
   const [datePickerFor, setDatePickerFor] = useState<'date' | 'end' | null>(null);
+  const [pickerInitial, setPickerInitial] = useState<Date>(new Date());
+  const openDatePicker = (which: 'date' | 'end') => {
+    const current = which === 'end' ? endDate || date : date;
+    const t = Date.parse(`${current}T12:00:00`);
+    const d = Number.isNaN(t) ? new Date() : new Date(t);
+    d.setHours(12, 0, 0, 0);
+    setPickerInitial(d);
+    setDatePickerFor(which);
+  };
   const [time, setTime] = useState(
     initialExpense
       ? (initialExpense.createdAt || new Date().toISOString()).slice(11, 16)
@@ -517,7 +530,7 @@ export function ExpenseForm({
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <Pressable hitSlop={8} onPress={() => setDatePickerFor('date')}>
+                <Pressable hitSlop={8} onPress={() => openDatePicker('date')}>
                   <Ionicons
                     name="calendar-outline"
                     size={20}
@@ -548,7 +561,7 @@ export function ExpenseForm({
                     placeholder="YYYY-MM-DD"
                     placeholderTextColor={colors.mutedForeground}
                   />
-                  <Pressable hitSlop={8} onPress={() => setDatePickerFor('end')}>
+                  <Pressable hitSlop={8} onPress={() => openDatePicker('end')}>
                     <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
                   </Pressable>
                 </View>
@@ -607,11 +620,7 @@ export function ExpenseForm({
       {/* Native date picker — opened via the calendar icon next to a date field */}
       {datePickerFor !== null && (
         <DateTimePicker
-          value={(() => {
-            const current = datePickerFor === 'end' ? endDate || date : date;
-            const t = Date.parse(`${current}T12:00:00`);
-            return Number.isNaN(t) ? new Date() : new Date(t);
-          })()}
+          value={pickerInitial}
           mode="date"
           display="default"
           onChange={(_e, selected) => {

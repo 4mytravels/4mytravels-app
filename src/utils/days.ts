@@ -42,9 +42,22 @@ export function groupByDay<T extends { createdAt?: string; rateDate: string }>(
 ): Array<{ day: string; label: string; data: T[] }> {
   const byDay = new Map<string, T[]>();
   for (const e of items) {
-    // Use the local day of createdAt when it carries a time-of-day; else the
-    // picked rateDate. slice(0,10) keeps everything in calendar-day space.
-    const day = (e.createdAt && e.createdAt.includes('T') ? e.createdAt : e.rateDate).slice(0, 10);
+    // Local calendar day: createdAt with a time-of-day is converted to the
+    // DEVICE's timezone first (toISOString() would give the UTC day, which
+    // lags a day behind for evening entries in UTC+ zones); a bare rateDate
+    // is already a picked calendar day and is used as-is.
+    let day: string;
+    if (e.createdAt && e.createdAt.includes('T')) {
+      const t = Date.parse(e.createdAt);
+      day = Number.isNaN(t)
+        ? e.rateDate.slice(0, 10)
+        : (() => {
+            const d = new Date(t);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          })();
+    } else {
+      day = e.rateDate.slice(0, 10);
+    }
     const bucket = byDay.get(day);
     if (bucket) bucket.push(e);
     else byDay.set(day, [e]);

@@ -89,7 +89,10 @@ export function ExpenseForm({
     initialExpense?.paymentMethod ?? 'card',
   );
   const [note, setNote] = useState(initialExpense?.notes ?? '');
-  const [date, setDate] = useState(initialExpense?.rateDate ?? new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(initialExpense?.rateDate ?? (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })());
   // Multi-day split (optional): when an end date is set, the amount is spread
   // evenly across [date … endDate] in budget statistics (§2.2 allocateSplit).
   const [endDate, setEndDate] = useState(initialExpense?.multiDaySplit?.splitEnd ?? '');
@@ -98,7 +101,12 @@ export function ExpenseForm({
   // 'end' = multi-day split end date.
   const [datePickerFor, setDatePickerFor] = useState<'date' | 'end' | null>(null);
   const [time, setTime] = useState(
-    initialExpense ? (initialExpense.createdAt || new Date().toISOString()).slice(11, 16) : new Date().toISOString().slice(11, 16),
+    initialExpense
+      ? (initialExpense.createdAt || new Date().toISOString()).slice(11, 16)
+      : (() => {
+          const d = new Date();
+          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        })(),
   );
   const [country, setCountry] = useState(initialExpense?.country ?? '');
   const [countryOpen, setCountryOpen] = useState(false);

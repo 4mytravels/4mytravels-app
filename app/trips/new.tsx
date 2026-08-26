@@ -289,7 +289,10 @@ export default function NewTripScreen() {
   const addTrip = useTripStore((s) => s.addTrip);
   const updateTripStore = useTripStore((s) => s.updateTrip);
   const [name, setName] = useState(existing?.name ?? '');
-  const [startDate, setStartDate] = useState(existing?.startDate ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(existing?.startDate ?? (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })());
   const [endDate, setEndDate] = useState(existing?.endDate ?? '');
   const [homeCurrency, setHomeCurrency] = useState(existing?.homeCurrency ?? 'EUR');
   const [defaultCurrency, setDefaultCurrency] = useState(existing?.defaultCurrency ?? 'EUR');

@@ -201,31 +201,29 @@ function TripCard({
               </Text>
             </View>
           </View>
-          <View style={styles.cardActions}>
-            <Pressable onPress={onEdit} hitSlop={8}>
-              <Ionicons name="pencil-outline" size={18} color={colors.mutedForeground} />
-            </Pressable>
-            <Pressable onPress={onDelete} hitSlop={8} style={{ marginLeft: spacing.md }}>
-              <Ionicons name="trash-outline" size={18} color={colors.destructive} />
-            </Pressable>
-          </View>
         </View>
 
+        {/* Date row with edit/delete actions at its end */}
         <View style={styles.metaRow}>
           <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
-          <Text style={styles.metaText}>
+          <Text style={[styles.metaText, { flex: 1 }]}>
             {trip.startDate}
             {trip.endDate ? ` - ${trip.endDate}` : ' - open'}
           </Text>
+          <Pressable onPress={onEdit} hitSlop={8}>
+            <Ionicons name="pencil-outline" size={18} color={colors.mutedForeground} />
+          </Pressable>
+          <Pressable onPress={onDelete} hitSlop={8} style={{ marginLeft: spacing.md }}>
+            <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+          </Pressable>
         </View>
 
         <View style={styles.statsRow}>
-          <StatBox label="Daily budget" value={formatMoney(trip.dailyBudget, trip.homeCurrency)} />
           <StatBox
-            label="Total"
-            value={pace.projectedTotalBudget ? formatMoney(pace.projectedTotalBudget, trip.homeCurrency) : '—'}
+            label="Daily avg / budget"
+            value={`${formatMoney(trip.dailyBudget > 0 ? spent / Math.max(1, pace.daysElapsed) : 0, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget, trip.homeCurrency)}`}
           />
-          <StatBox label="Spent" value={formatMoney(spent, trip.homeCurrency)} />
+          <StatBox label="Total spend" value={formatMoney(spent, trip.homeCurrency)} />
         </View>
 
         <View style={styles.progressTrack}>

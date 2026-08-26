@@ -37,7 +37,7 @@ import {
 } from '../types';
 import { allocateSplit } from '../utils/pace';
 import { CategoryChip, Button } from './ui';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
 import { v4 as uuid } from 'uuid';
@@ -110,6 +110,26 @@ export function ExpenseForm({
     const t = Date.parse(`${current}T12:00:00`);
     const d = Number.isNaN(t) ? new Date() : new Date(t);
     d.setHours(12, 0, 0, 0);
+    if (Platform.OS === 'android') {
+      // Imperative API: the dialog is presented once and is immune to
+      // re-renders of this component (the declarative <DateTimePicker> re-opened
+      // on every render because onChange is an inline function, resetting the
+      // picked date ~1s later when the rate fetch resolved).
+      DateTimePickerAndroid.open({
+        value: d,
+        mode: 'date',
+        is24Hour: true,
+        onValueChange: (_e, selected) => {
+          if (!selected) return;
+          const iso = `${selected.getFullYear()}-${String(selected.getMonth() + 1).padStart(2, '0')}-${String(
+            selected.getDate(),
+          ).padStart(2, '0')}`;
+          if (which === 'end') setEndDate(iso);
+          else setDate(iso);
+        },
+      });
+      return;
+    }
     setPickerInitial(d);
     setDatePickerFor(which);
   };

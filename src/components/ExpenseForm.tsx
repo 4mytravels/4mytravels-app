@@ -582,7 +582,12 @@ export function ExpenseForm({
                     placeholderTextColor={colors.mutedForeground}
                   />
                   <Pressable hitSlop={8} onPress={() => openDatePicker('end')}>
-                    <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} style={styles.dateIcon} />
+                    <Ionicons
+                      name="calendar-outline"
+                      size={20}
+                      color={colors.mutedForeground}
+                      style={{ paddingHorizontal: spacing.lg }}
+                    />
                   </Pressable>
                 </View>
                 {(() => {
@@ -843,7 +848,6 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     fontFamily: fontFamily.sans,
   },
-  dateIcon: { position: 'absolute', right: spacing.lg },
   footer: { marginTop: spacing.sm },
   receiptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   receiptThumb: { width: 72, height: 72, borderRadius: radius.lg, backgroundColor: colors.secondary },

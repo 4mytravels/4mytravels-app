@@ -10,15 +10,19 @@ import { getStorageAdapter } from '../db/index';
 interface SettingsState {
   /** Map like { "USD_EUR": 0.92 } — FROM_TO, rate = TO per 1 FROM. */
   manualRates: Record<string, number>;
+  /** Global default home currency, applied to new trips (overridable per trip). */
+  defaultHomeCurrency: string;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setManualRate: (from: string, to: string, rate: number | null) => Promise<void>;
+  setDefaultHomeCurrency: (c: string) => Promise<void>;
 }
 
 const keyFor = (from: string, to: string) => `manual_rate:${from}_${to}`;
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   manualRates: {},
+  defaultHomeCurrency: 'EUR',
   hydrated: false,
   hydrate: async () => {
     if (get().hydrated) return;
@@ -32,7 +36,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const n = parseFloat(r.value);
         if (!Number.isNaN(n) && n > 0) rates[r.key.replace('manual_rate:', '')] = n;
       }
-      set({ manualRates: rates, hydrated: true });
+      // Global default home currency (Settings → Preferences), falls back to EUR.
+      const defRows = await db.query<{ key: string; value: string }>(
+        "SELECT value FROM app_settings WHERE key = 'default_home_currency'",
+      );
+      const defaultHomeCurrency = defRows[0]?.value || 'EUR';
+      set({ manualRates: rates, defaultHomeCurrency, hydrated: true });
     } catch {
       // Table may not exist yet (older DB) — treat as no overrides.
       set({ hydrated: true });
@@ -53,6 +62,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       );
       set({ manualRates: { ...get().manualRates, [`${from}_${to}`]: rate } });
     }
+  },
+  setDefaultHomeCurrency: async (c: string) => {
+    const db = getStorageAdapter();
+    await db.exec(
+      'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)',
+      ['default_home_currency', c],
+    );
+    set({ defaultHomeCurrency: c });
   },
 }));
 

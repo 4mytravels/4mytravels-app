@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  scroll: { paddingHorizontal: spacing.xl, paddingBottom: 120 },
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: 40 },
   totalLabel: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   totalValue: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading, marginTop: spacing.xs },
   totalSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },

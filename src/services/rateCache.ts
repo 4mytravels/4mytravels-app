@@ -37,7 +37,12 @@ export async function loadRateCache(base?: string): Promise<RateCache | null> {
       if (!Number.isNaN(n)) rates[r.key.replace(CACHE_PREFIX, '')] = n;
     }
     if (Object.keys(rates).length === 0) return null;
-    if (base && cachedBase && cachedBase !== base) return null; // wrong base → ignore
+    // NOTE: previously we returned null on a base mismatch (cachedBase !==
+    // base). That broke multi-currency trips: the cache is filled once per app
+    // open for the first trip's home currency, so a trip with a different home
+    // currency got an empty cache and the form then blocked on the live fetch.
+    // The cache is always EUR-based; the form only reads rates[quote], so we
+    // return it regardless of which home currency asked.
     return { base: cachedBase || base || 'EUR', date, rates, fetchedAt: fetchedAt || date };
   } catch {
     return null;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -86,6 +86,9 @@ export default function ExpensesScreen() {
 
   const totalHome = list.reduce((sum, e) => sum + toHomeCurrency(e), 0);
 
+  // Local "today" key (YYYY-MM-DD) for the jump-to-Today affordance.
+  const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+
   // Per-day sections (newest first): header shows a friendly day label
   // (Today / Yesterday / 28 Aug 2026) plus the day's total in home currency.
   // Multi-day-split expenses are expanded: each covered day shows its share
@@ -97,6 +100,23 @@ export default function ExpensesScreen() {
       0,
     ),
   }));
+
+  // Index of the Today section (sections are newest-first, so Today is usually 0).
+  const todayIndex = sections.findIndex((s) => s.day === todayStr);
+
+  // Jump-to-Today: appears only once the user scrolls away from Today, then
+  // snaps the list back to the top section.
+  const listRef = useRef<SectionList<any, any>>(null);
+  const [showToday, setShowToday] = useState(true);
+  const scrollY = useRef(0);
+  const handleScroll = (e: any) => {
+    scrollY.current = e.nativeEvent.contentOffset.y;
+  };
+  const handleScrollEnd = () => setShowToday(scrollY.current <= 12);
+  const jumpToToday = () => {
+    if (todayIndex >= 0)
+      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
+  };
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).
   const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
@@ -149,8 +169,12 @@ export default function ExpensesScreen() {
       )}
 
       <SectionList
+        ref={listRef}
         sections={sections}
         keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
+        onScroll={handleScroll}
+        onMomentumScrollEnd={handleScrollEnd}
+        scrollEventThrottle={16}
         renderSectionHeader={({ section }) => (
           <View style={styles.dayHeader}>
             <Text style={styles.dayLabel}>{section.label}</Text>
@@ -159,7 +183,7 @@ export default function ExpensesScreen() {
             </Text>
           </View>
         )}
-        contentContainerStyle={[styles.list, { paddingBottom: 120 + insets.bottom }]}
+      contentContainerStyle={[styles.list, { paddingBottom: 80 + insets.bottom }]}
         ListHeaderComponent={
           <>
             <View style={styles.searchBar}>
@@ -269,9 +293,18 @@ export default function ExpensesScreen() {
         )}
       </Modal>
 
+      {!showToday && todayIndex >= 0 && (
+        <View style={styles.todayWrap}>
+          <Pressable style={styles.todayPill} onPress={jumpToToday}>
+            <Ionicons name="arrow-up" size={16} color={colors.primaryForeground} />
+            <Text style={styles.todayPillText}>Today</Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* FAB — pinned bottom-right */}
       <Pressable
-        style={[styles.fab, { bottom: 90 + insets.bottom }]}
+        style={[styles.fab, { bottom: insets.bottom + 24 }]}
         onPress={() => setFormOpen(true)}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
@@ -317,9 +350,17 @@ function ExpenseRow({
       </View>
       <View style={styles.priceCol}>
         <Text style={styles.priceMain}>
-          {formatMoney(isSplitDay ? (splitShare as number) : expense.amount, expense.currency)}
+          {isSplitDay
+            ? formatMoney(splitShare as number, homeCurrency)
+            : formatMoney(expense.amount, expense.currency)}
         </Text>
-        {!isSplitDay && (
+        {isSplitDay ? (
+          <Text style={styles.priceSub}>
+            {expense.rateToHome > 0
+              ? `${formatMoney((splitShare as number) / expense.rateToHome, expense.currency)} ${expense.currency}`
+              : expense.currency}
+          </Text>
+        ) : (
           <Text style={styles.priceSub}>
             ≈ {formatMoney(toHomeCurrency(expense), homeCurrency)}
           </Text>
@@ -381,6 +422,28 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  todayWrap: {
+    position: 'absolute',
+    bottom: 88,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  todayPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  todayPillText: { color: colors.primaryForeground, fontWeight: '700', fontSize: fontSize.md, fontFamily: fontFamily.sans },
   statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,

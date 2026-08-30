@@ -3,6 +3,8 @@
 // days — an expense entered in another timezone must stay on the day the user
 // picked, so we compare YYYY-MM-DD strings, not timestamps.
 
+import { toHomeCurrency } from './currency';
+
 export type DayLabel = 'Today' | 'Yesterday' | 'Tomorrow' | string;
 
 function toLocalYMD(d: Date): string {
@@ -94,7 +96,7 @@ function addDays(ymd: string, n: number): string {
  * with splitShare === null. Sections sorted newest-first.
  */
 export function groupByDaySplitAware<
-  T extends { createdAt?: string; rateDate: string; amount: number; currency: string },
+  T extends { createdAt?: string; rateDate: string; amount: number; currency: string; rateToHome: number },
 >(
   items: T[],
 ): Array<{ day: string; label: string; data: Array<SplitAwareEntry<T>> }> {
@@ -127,9 +129,13 @@ export function groupByDaySplitAware<
         1,
         Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86_400_000) + 1,
       );
-      const perDay = Math.floor((e.amount / days) * 100) / 100;
+      // SplitShare is expressed in the TRIP HOME currency (like toHomeCurrency)
+      // so day-totals and trip-totals sum correctly. The per-row UI converts it
+      // back to the expense's own currency for display.
+      const homeTotal = toHomeCurrency(e);
+      const perDay = Math.floor((homeTotal / days) * 100) / 100;
       const allocated = perDay * days;
-      const remainder = Math.round((e.amount - allocated) * 100) / 100;
+      const remainder = Math.round((homeTotal - allocated) * 100) / 100;
       for (let i = 0; i < days; i++) {
         // Rounding remainder lands on the last day (same as allocateSplit).
         const share = i === days - 1 ? Math.round((perDay + remainder) * 100) / 100 : perDay;

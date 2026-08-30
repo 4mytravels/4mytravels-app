@@ -10,9 +10,8 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
+  Keyboard,
   Image,
   Modal,
   Alert,
@@ -198,15 +197,35 @@ export function ExpenseForm({
     }
   };
   const [rate, setRate] = useState<number | null>(initialExpense ? initialExpense.rateToHome : null);
-  const [rateLoading, setRateLoading] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
+
+  // Track the on-screen keyboard height so the Save footer can sit ABOVE the
+  // keyboard (instead of behind it) without shifting the whole sheet — this
+  // avoids the KeyboardAvoidingView lag while keeping Save always tappable.
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const show = (e: { endCoordinates?: { height?: number } }) =>
+      setKbHeight(e.endCoordinates?.height ?? 0);
+    const hide = () => setKbHeight(0);
+    const subShow = Keyboard.addListener('keyboardDidShow', show as never);
+    const subHide = Keyboard.addListener('keyboardDidHide', hide as never);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
   // Rate resolution order (instant-first, per user request):
   //   1. Manual override (Settings) — exact, no waiting.
-  //   2. Cached ECB rates (fetched at app open) — instant from storage.
-  //   3. Live Frankfurter fetch for the expense's date — refreshes in the
-  //      background and silently replaces the cached value when it differs.
+  //   2. Cached ECB rates (fetched at app open / background refresh) — instant
+  //      from storage. This is the SOURCE OF TRUTH shown in the form.
+  //   3. Background-only live Frankfurter fetch — refines the cached value
+  //      SILENTLY (no spinner, no block). Never surfaces an error or nulls the
+  //      rate when a cache is present.
+  // The form NEVER shows a loading state: the cached rate is immediate, and the
+  // live fetch refines it in the background while the user can already type/save.
   useEffect(() => {
+    if (isEdit) return; // keep the original rateToHome; do not re-fetch
     if (manualOverride != null) {
       setRate(manualOverride);
       setRateError(null);
@@ -220,44 +239,40 @@ export function ExpenseForm({
     let cancelled = false;
 
     (async () => {
-      // STEP 1 — instant: cached rate (if any) fills the field immediately.
+      // STEP 1 — instant: cached rate fills the field immediately (source of truth).
       const { loadRateCache } = await import('../services/rateCache');
       const cache = await loadRateCache(homeCurrency);
       const cachedHomeToQuote = cache?.rates[currency];
-      if (!cancelled && cachedHomeToQuote && cachedHomeToQuote > 0) {
+      const hasCache = !!(cachedHomeToQuote && cachedHomeToQuote > 0);
+      if (!cancelled && hasCache) {
         // Cache holds home→quote; invert for quote→home.
         setRate(1 / cachedHomeToQuote);
         setRateError(`Cached rate (${cache?.date})`);
+      } else if (!cancelled) {
+        // No cache at all (e.g. very first open, offline) — soft note, but still
+        // let the background fetch try. The user can type/save; rate is provisional.
+        setRateError('Fetching rate…');
       }
 
-      // STEP 2 — background: live fetch for this date; replaces the cache value.
-      setRateLoading(true);
+      // STEP 2 — background-only: live fetch refines the cached value. NEVER sets
+      // a loading spinner. If it fails, we keep the cached rate silently.
       try {
-        const r = await getRate(homeCurrency, currency, date);
-        if (!cancelled) {
-          if (Number.isNaN(r)) {
-            if (!(cachedHomeToQuote && cachedHomeToQuote > 0)) {
-              setRateError('Rate unavailable (offline?)');
-              setRate(null);
-            } else if (date && date !== cache?.date) {
-              // Keep showing the cached rate but note the mismatch.
-              setRateError(`Using cached rate (${cache?.date}) — no rate published for ${date}`);
-            } else {
-              setRateError(null); // cached value is exactly right
-            }
-          } else {
-            setRate(1 / r);
-            setRateError(null);
+        let r = NaN;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            r = await getRate(homeCurrency, currency, date);
+            if (!Number.isNaN(r) && r > 0) break;
+          } catch {
+            // fall through
           }
+          if (attempt < 1) await new Promise((res) => setTimeout(res, 350));
+        }
+        if (!cancelled && !Number.isNaN(r) && r > 0) {
+          setRate(1 / r);
+          setRateError(null); // live value is authoritative when it succeeds
         }
       } catch {
-        if (!cancelled && !(cachedHomeToQuote && cachedHomeToQuote > 0)) {
-          setRateError('Rate unavailable (offline?)');
-          setRate(null);
-        }
-        // With a cache present we keep the instant value; no error needed.
-      } finally {
-        if (!cancelled) setRateLoading(false);
+        // Offline / API hiccup — silently keep the cached rate. No spinner, no null.
       }
     })();
 
@@ -312,13 +327,11 @@ export function ExpenseForm({
     onSave(expense);
   };
 
-  const canSave = amountNum > 0 && rate != null && !rateLoading;
+  const canSave = amountNum > 0 && rate != null;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      <View style={styles.backdrop} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <View style={styles.header}>
@@ -405,8 +418,8 @@ export function ExpenseForm({
             </Modal>
             {/* rate line */}
             <View style={styles.rateRow}>
-              {rateLoading ? (
-                <ActivityIndicator size="small" color={colors.mutedForeground} />
+              {isEdit ? (
+                <Text style={styles.rateLocked}>Rate locked to entry date — not changed on edit.</Text>
               ) : rateError ? (
                 <Text style={styles.rateError}>{rateError}</Text>
               ) : rate != null ? (
@@ -614,9 +627,9 @@ export function ExpenseForm({
           </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, kbHeight > 0 && { paddingBottom: kbHeight + spacing.lg }]}>
           <Button label={isEdit ? 'Save changes' : 'Save expense'} disabled={!canSave} onPress={save} />
-          {isEdit && onDelete && initialExpense && (
+          {isEdit && onDelete && initialExpense && !showCurrencies && !countryOpen && (
             <View style={{ marginTop: spacing.md }}>
               <Button
                 label="Delete expense"
@@ -715,12 +728,13 @@ export function ExpenseForm({
           </Pressable>
         </Pressable>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  container: { flex: 1, backgroundColor: colors.background },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     backgroundColor: colors.background,
     borderTopLeftRadius: radius['3xl'],
@@ -783,6 +797,7 @@ const styles = StyleSheet.create({
   currencyChipText: { color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans },
   rateRow: { marginTop: spacing.sm, minHeight: 20 },
   rateText: { color: colors.success, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  rateLocked: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   rateError: { color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   overrideRow: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   overrideLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, flex: 1 },
@@ -848,7 +863,13 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     fontFamily: fontFamily.sans,
   },
-  footer: { marginTop: spacing.sm },
+  footer: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.background,
+    // Stops the white flicker when the keyboard opens/closes: the footer would
+    // otherwise briefly expose the (white) Android window behind the sheet.
+    paddingTop: spacing.sm,
+  },
   receiptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   receiptThumb: { width: 72, height: 72, borderRadius: radius.lg, backgroundColor: colors.secondary },
   receiptActions: { flexDirection: 'column', gap: spacing.sm },

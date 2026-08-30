@@ -9,26 +9,73 @@ import { getRates } from '../services/frankfurter';
 import { saveRateCache } from '../services/rateCache';
 
 // Refresh the ECB rate cache at app open (best-effort; silent on failure —
-// the expense form falls back to the previously cached rates).
-// Single API call: /v2/rates rows each carry their publication date, so we
-// take the newest date from the response itself (no second request).
+// the expense form falls back to the previously cached rates, or lets the user
+// type a manual rate). Single API call: /v2/rates rows each carry their
+// publication date, so we take the newest date from the response itself.
+// Only writes when we actually got rates, so a failed fetch never wipes a
+// previously good cache.
 export async function refreshRateCache(base = 'EUR'): Promise<boolean> {
-  try {
-    const rows = await getRates(base);
-    if (rows.length === 0) return false;
-    const date = [...rows].sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.date;
-    if (!date) return false;
-    const rates: Record<string, number> = { [base]: 1 };
-    for (const r of rows) {
-      if (r.base === base && typeof r.rate === 'number' && r.rate > 0) {
-        rates[r.quote] = r.rate;
+  // Small retry so a transient boot-time network blip doesn't leave the cache
+  // empty (which would force the form onto the live fetch / manual entry).
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const rows = await getRates(base);
+      if (rows.length === 0) {
+        if (attempt < 2) continue;
+        return false;
       }
+      const date = [...rows].sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.date;
+      if (!date) return false;
+      const rates: Record<string, number> = { [base]: 1 };
+      for (const r of rows) {
+        if (r.base === base && typeof r.rate === 'number' && r.rate > 0) {
+          rates[r.quote] = r.rate;
+        }
+      }
+      if (Object.keys(rates).length <= 1) {
+        if (attempt < 2) continue;
+        return false;
+      }
+      await saveRateCache(base, date, rates);
+      return true;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
+        continue;
+      }
+      return false;
     }
-    await saveRateCache(base, date, rates);
-    return true;
-  } catch {
-    return false;
   }
+  return false;
+}
+
+// Background refresh ~10s after app becomes usable (user request: keep the
+// cached rates fresh in the background without ever blocking the UI). Runs
+// once per app foreground; if it fails (offline/weekend) it silently keeps the
+// existing cache.
+export function useBackgroundRateRefresh(delayMs = 10000) {
+  const { ready } = useStorageInit();
+  useEffect(() => {
+    if (!ready) return;
+    let mounted = true;
+    const t = setTimeout(() => {
+      if (!mounted) return;
+      void (async () => {
+        try {
+          const db = getStorageAdapter();
+          const trips = await loadTrips(db);
+          const base = trips[0]?.homeCurrency ?? 'EUR';
+          await refreshRateCache(base);
+        } catch {
+          // silent — keep existing cache
+        }
+      })();
+    }, delayMs);
+    return () => {
+      mounted = false;
+      clearTimeout(t);
+    };
+  }, [ready, delayMs]);
 }
 
 export function useStorageInit() {

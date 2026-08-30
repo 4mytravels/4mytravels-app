@@ -26,6 +26,7 @@ import { saveTrip, updateTrip } from '../../src/db/tripRepo';
 import { saveExpense, loadExpenses } from '../../src/db/expenseRepo';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
+import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
 import {
   expensesToCsv,
   parseCsv,
@@ -39,10 +40,14 @@ import {
 const SOURCE_CODE_URL = 'https://github.com/4mytravels/4mytravels';
 const ISSUES_URL = 'https://github.com/4mytravels/4mytravels/issues';
 
+const CURRENCIES = SHARED_CURRENCIES;
+
 export default function SettingsScreen() {
   const setTrips = useTripStore((s) => s.setTrips);
   const manualRates = useSettingsStore((s) => s.manualRates);
   const setManualRate = useSettingsStore((s) => s.setManualRate);
+  const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
+  const setDefaultHomeCurrency = useSettingsStore((s) => s.setDefaultHomeCurrency);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const trips = useTripStore((s) => s.trips);
   const homeCurrency = trips[0]?.homeCurrency ?? 'EUR';
@@ -53,6 +58,8 @@ export default function SettingsScreen() {
   const [nudge, setNudge] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importTargetTrip, setImportTargetTrip] = useState<string | null>(null);
+  const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
+  const [currencyQuery, setCurrencyQuery] = useState('');
 
   useEffect(() => {
     void hydrateSettings();
@@ -223,7 +230,7 @@ export default function SettingsScreen() {
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
       </View>
-      <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 40 + spacing.xl }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
         <SectionTitle title="Data" />
         <Card>
           <Text style={styles.note}>
@@ -251,6 +258,23 @@ export default function SettingsScreen() {
           <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
             Export one trip as a single CSV, or every trip as separate files. Import supports
             4MyTravels and TravelSpend exports.
+          </Text>
+        </Card>
+
+        <SectionTitle title="Preferences" />
+        <Card>
+          <View style={styles.rateRow}>
+            <Text style={styles.rateLabel}>Default home currency</Text>
+            <Pressable
+              style={styles.currencyPill}
+              onPress={() => setCurrencyPickerOpen(true)}
+            >
+              <Text style={styles.currencyPillText}>{defaultHomeCurrency}</Text>
+              <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
+            </Pressable>
+          </View>
+          <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
+            Used as the home currency for new trips. You can still change it per trip in the trip editor.
           </Text>
         </Card>
 
@@ -289,6 +313,49 @@ export default function SettingsScreen() {
           </Pressable>
         </Card>
       </ScrollView>
+
+      {/* Default home currency picker */}
+      <Modal visible={currencyPickerOpen} transparent animationType="fade" onRequestClose={() => setCurrencyPickerOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setCurrencyPickerOpen(false)}>
+          <View style={styles.pickerSheet}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+              <Text style={styles.pickerTitle}>Default home currency</Text>
+              <Pressable onPress={() => setCurrencyPickerOpen(false)}>
+                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
+              </Pressable>
+            </View>
+            <TextInput
+              style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
+              value={currencyQuery}
+              onChangeText={setCurrencyQuery}
+              placeholder="Search currency"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+            />
+            <ScrollView style={{ maxHeight: 380 }}>
+              {CURRENCIES.filter(
+                (c) =>
+                  c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
+                  c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
+              ).map((c) => {
+                const active = c.code === defaultHomeCurrency;
+                return (
+                  <Pressable
+                    key={c.code}
+                    style={[styles.pickerRow, active && styles.pickerRowActive]}
+                    onPress={() => { void setDefaultHomeCurrency(c.code); setCurrencyPickerOpen(false); setCurrencyQuery(''); }}
+                  >
+                    <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
+                      {c.flag} {c.code} — {c.name}
+                    </Text>
+                    {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={mode !== null} animationType="slide" onRequestClose={close}>
         <SafeAreaView style={styles.sheet}>
@@ -400,7 +467,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  body: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: 120 },
+  body: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: 0 },
   note: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, lineHeight: 22, marginBottom: spacing.lg },
   actions: { marginTop: spacing.sm },
   sheet: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing['2xl'], paddingTop: spacing.xl },
@@ -451,6 +518,15 @@ const styles = StyleSheet.create({
   pickerRowActive: {},
   pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, flex: 1 },
+  currencyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  currencyPillText: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '700', fontFamily: fontFamily.sans },
   rateInput: {
     backgroundColor: colors.secondary,
     borderRadius: radius.lg,

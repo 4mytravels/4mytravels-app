@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuid } from 'uuid';
 import { useTripStore } from '../../src/store/tripStore';
+import { useSettingsStore } from '../../src/store/settingsStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
 import { processPhoto } from '../../src/utils/image';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
@@ -294,7 +295,7 @@ export default function NewTripScreen() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })());
   const [endDate, setEndDate] = useState(existing?.endDate ?? '');
-  const [homeCurrency, setHomeCurrency] = useState(existing?.homeCurrency ?? 'EUR');
+  const [homeCurrency, setHomeCurrency] = useState(existing?.homeCurrency ?? (useSettingsStore.getState().defaultHomeCurrency || 'EUR'));
   const [defaultCurrency, setDefaultCurrency] = useState(existing?.defaultCurrency ?? 'EUR');
   const [dailyBudget, setDailyBudget] = useState(existing ? String(existing.dailyBudget) : '');
   const [countries, setCountries] = useState<string[]>(existing?.countries ?? []);
@@ -320,6 +321,15 @@ export default function NewTripScreen() {
   const [phase, setPhase] = useState<string | null>(null);
 
   const isEdit = !!existing;
+  // Seed the home currency from the global default (Settings) for new trips.
+  // The user can still override it per trip in the form below.
+  const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
+  const hydrateSettings = useSettingsStore((s) => s.hydrate);
+  const [homeTouched, setHomeTouched] = useState(false);
+  useEffect(() => { void hydrateSettings(); }, [hydrateSettings]);
+  useEffect(() => {
+    if (!isEdit && !homeTouched && defaultHomeCurrency) setHomeCurrency(defaultHomeCurrency);
+  }, [defaultHomeCurrency, isEdit, homeTouched]);
   const canSave = name.trim().length > 0 && dailyBudget.trim().length > 0;
 
   const save = async () => {
@@ -417,7 +427,7 @@ export default function NewTripScreen() {
           </View>
           <View style={styles.row}>
             <Field label="Home currency" style={{ flex: 1, marginRight: spacing.md }}>
-              <CurrencyPicker value={homeCurrency} onSelect={setHomeCurrency} />
+              <CurrencyPicker value={homeCurrency} onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }} />
             </Field>
             <Field label="Default currency" style={{ flex: 1 }}>
               <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
@@ -471,7 +481,7 @@ export default function NewTripScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <Button label={saving ? 'Saving…' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
+          <Button label={saving ? 'Saving…' : isEdit ? 'Update trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
           {errorMsg ? (
             <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: radius.lg }}>
               <Text style={{ color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>{errorMsg}</Text>

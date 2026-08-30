@@ -21,8 +21,11 @@ import { Pill, IconCircle, categoryIcons } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { loadExpenses } from '../../src/db/expenseRepo';
 import { useTripStore } from '../../src/store/tripStore';
+import { useSettingsStore } from '../../src/store/settingsStore';
+import { loadRateCache } from '../../src/services/rateCache';
 import type { Expense } from '../../src/types';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
+import { groupByDaySplitAware } from '../../src/utils/days';
 
 // Rotating night-side earth hero (Lovable "My Travel Compass" design).
 // Spins slowly on its own; the user can grab and spin it (drag = rotate,
@@ -139,16 +142,59 @@ export default function HomeScreen() {
     };
   });
 
-  // Total spent across all trips, shown in the most-used trip home currency
-  // (was hardcoded EUR — wrong whenever the first/only trip uses another one).
-  const totalSpent = expenses.reduce((sum, e) => sum + toHomeCurrency(e), 0);
   const trips = useTripStore((s) => s.trips);
-  const homeCurrencyCounts: Record<string, number> = {};
-  for (const t of trips) {
-    homeCurrencyCounts[t.homeCurrency] = (homeCurrencyCounts[t.homeCurrency] ?? 0) + 1;
-  }
-  const displayCurrency =
-    Object.entries(homeCurrencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
+  // Home-wide display currency = the global default home currency from Settings
+  // (not the per-trip currency), so the totals follow what the user set there.
+  const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
+  const displayCurrency = defaultHomeCurrency || 'EUR';
+
+  // EUR-based cached rates (rates[quote] = quote per 1 EUR). Used to convert any
+  // expense currency into the display (default home) currency consistently.
+  const [cachedRates, setCachedRates] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadRateCache('EUR').then((c) => { if (alive) setCachedRates(c?.rates ?? null); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // Convert an amount in `from` currency into the display (default home) currency.
+  const toDisplay = (amount: number, from: string): number | null => {
+    if (from === displayCurrency) return amount;
+    if (!cachedRates) return null;
+    const rFrom = cachedRates[from];
+    const rTo = cachedRates[displayCurrency];
+    if (!rFrom || !rTo) return null;
+    return (amount / rFrom) * rTo; // via EUR
+  };
+
+  // Total spent across all trips, shown in the display (default home) currency.
+  const totalSpent = expenses.reduce((sum, e) => {
+    const converted = toDisplay(e.amount, e.currency);
+    return sum + (converted != null ? converted : toHomeCurrency(e));
+  }, 0);
+
+  // Local "today" key (YYYY-MM-DD).
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  // Split-aware "today": expand multi-day expenses so each covered day shows its
+  // per-day share (mirrors the Expenses tab's Today section). The single Today
+  // section gives both the cards (with shares) and the running today total.
+  const todaySection = groupByDaySplitAware(expenses).find((s) => s.day === todayStr);
+  const todayEntries = todaySection?.data ?? [];
+  const todaysExpenses = todayEntries.map((entry) => entry.expense);
+  const todayTotal = todayEntries.reduce((sum, entry) => {
+    const e = entry.expense;
+    // Day-part in the EXPENSE currency: for splits it's the per-day share
+    // (splitShare is in trip-home currency, so divide back by rateToHome),
+    // otherwise the full amount. Convert to the display (default home) currency.
+    const dayPartExpense =
+      entry.splitShare != null
+        ? (e.rateToHome > 0 ? entry.splitShare / e.rateToHome : e.amount)
+        : e.amount;
+    const converted = toDisplay(dayPartExpense, e.currency);
+    const dayPartHome = entry.splitShare ?? toHomeCurrency(e);
+    return sum + (converted != null ? converted : dayPartHome);
+  }, 0);
+
   // Unique countries: from trip country tags first, falling back to per-expense country.
   const countrySet = new Set<string>();
   for (const t of trips) {
@@ -165,7 +211,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-    <ScrollView style={styles.container} contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.scroll, { paddingBottom: 80 + insets.bottom }]}>
       {/* Header */}
       <View style={styles.header}>
         <View style={[styles.logoRow, { gap: spacing.md }]}>
@@ -183,39 +229,67 @@ export default function HomeScreen() {
         <Pill icon="wallet-outline" text={`${formatMoney(totalSpent, displayCurrency)} spent`} />
       </View>
 
-      {/* Recent expenses */}
+      {/* Expenses today */}
       <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Recent expenses</Text>
+        <Text style={styles.sectionTitle}>Expenses today</Text>
+        <Text style={styles.sectionTotal}>{formatMoney(todayTotal, displayCurrency)}</Text>
       </View>
 
       {loading ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
-      ) : expenses.length === 0 ? (
+      ) : todaysExpenses.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>No expenses yet. Open a trip and tap + to add one.</Text>
+          <Text style={styles.emptyText}>No expenses logged today.</Text>
         </View>
       ) : (
-        expenses.slice(0, 5).map((e) => (
-          <Pressable key={e.id} style={styles.expenseCard} onPress={() => { setEditingExpense(e); setFormOpen(true); }}>
-            <IconCircle icon={categoryIcons[e.category]} size={40} />
-            <View style={styles.expenseDetails}>
-              <Text style={styles.expenseTitle}>{e.notes || e.category}</Text>
-              <Text style={styles.expenseSub}>
-                {e.category} · {e.rateDate}
-              </Text>
-            </View>
-            <Text style={styles.expensePrice}>
-              {formatMoney(e.amount, e.currency)}
-            </Text>
-          </Pressable>
-        ))
+        todayEntries.map((entry) => {
+          const e = entry.expense;
+          const isSplitDay = entry.splitShare != null;
+          return (
+            <Pressable
+              key={`${e.id}@${entry.day}`}
+              style={styles.expenseCard}
+              onPress={() => { setEditingExpense(e); setFormOpen(true); }}
+            >
+              <IconCircle icon={categoryIcons[e.category]} size={40} />
+              <View style={styles.expenseDetails}>
+                <Text style={styles.expenseTitle}>{e.notes || e.category}</Text>
+                <Text style={styles.expenseSub}>
+                  {e.category} · {isSplitDay ? "today's share" : e.rateDate}
+                </Text>
+              </View>
+              <View style={styles.expensePriceCol}>
+                <Text style={styles.expensePrice}>
+                  {isSplitDay
+                    ? formatMoney(
+                        e.rateToHome > 0 ? (entry.splitShare as number) / e.rateToHome : e.amount,
+                        e.currency,
+                      )
+                    : formatMoney(e.amount, e.currency)}
+                </Text>
+                <Text style={styles.expensePriceSub}>
+                  {(() => {
+                    const dayPartExpense =
+                      entry.splitShare != null
+                        ? (e.rateToHome > 0 ? (entry.splitShare as number) / e.rateToHome : e.amount)
+                        : e.amount;
+                    const converted = toDisplay(dayPartExpense, e.currency);
+                    return converted != null
+                      ? `≈ ${formatMoney(converted, displayCurrency)}`
+                      : `≈ ${formatMoney(toHomeCurrency(e), displayCurrency)}`;
+                  })()}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })
       )}
 
     </ScrollView>
 
     {/* FAB — pinned outside the ScrollView so it stays fixed bottom-right */}
     <Pressable
-      style={[styles.fab, { bottom: 90 + insets.bottom }]}
+      style={[styles.fab, { bottom: insets.bottom + 24 }]}
       onPress={() => {
         if (latestTrip) {
           setFormOpen(true);
@@ -259,7 +333,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingHorizontal: spacing.xl },
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: 80 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -283,6 +357,7 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   sectionTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
+  sectionTotal: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },
   sectionCount: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   emptyCard: {
     backgroundColor: colors.card,
@@ -302,6 +377,8 @@ const styles = StyleSheet.create({
   expenseTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
   expenseSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   expensePrice: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
+  expensePriceCol: { alignItems: 'flex-end' },
+  expensePriceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   fab: {
     position: 'absolute',
     right: spacing.xl,

@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  list: { paddingHorizontal: spacing.xl, paddingBottom: 120 },
+  list: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },

@@ -6,10 +6,9 @@ import {
   StyleSheet,
   SectionList,
   Modal,
-  Alert,
   Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useTripStore } from '../../src/store/tripStore';
@@ -28,6 +27,7 @@ export default function TripDetailScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const insets = useSafeAreaInsets();
 
   const load = async () => {
     if (!id) return;
@@ -96,24 +96,6 @@ export default function TripDetailScreen() {
     await load();
   };
 
-  const handleDelete = (expense: Expense) => {
-    Alert.alert('Delete expense', `${expense.notes || expense.category} — ${formatMoney(expense.amount, expense.currency)}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteExpense(expense.id);
-            await load();
-          } catch (e) {
-            Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
-          }
-        },
-      },
-    ]);
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -126,7 +108,7 @@ export default function TripDetailScreen() {
 
       <SectionList
         style={styles.body}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
         showsVerticalScrollIndicator={false}
         sections={groupByDaySplitAware(expenses)}
         keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
@@ -231,9 +213,6 @@ export default function TripDetailScreen() {
                   </Text>
                 )}
               </View>
-              <Pressable onPress={() => handleDelete(e)} hitSlop={10} style={styles.rowDelete}>
-                <Ionicons name="trash-outline" size={20} color={colors.destructive} />
-              </Pressable>
             </View>
           );
         }}
@@ -243,7 +222,7 @@ export default function TripDetailScreen() {
       />
 
       {/* FAB */}
-      <Pressable style={styles.fab} onPress={() => setExpenseOpen(true)}>
+      <Pressable style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setExpenseOpen(true)}>
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
 
@@ -279,7 +258,7 @@ const styles = StyleSheet.create({
   },
   back: { padding: spacing.xs },
   headerTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, flex: 1, textAlign: 'center' },
-  body: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: 120 },
+  body: { flex: 1, paddingHorizontal: spacing.xl },
   coverHero: {
     width: '100%',
     height: 180,
@@ -347,6 +326,5 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  rowDelete: { marginLeft: spacing.md, padding: spacing.sm, width: 28, alignItems: 'center', justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing['3xl'] },
 });

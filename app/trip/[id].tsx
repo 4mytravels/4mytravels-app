@@ -215,16 +215,24 @@ export default function TripDetailScreen() {
               </Pressable>
               <View style={styles.priceCol}>
                 <Text style={styles.priceMain}>
-                  {formatMoney(isSplitDay ? (item.splitShare as number) : e.amount, e.currency)}
+                  {isSplitDay
+                    ? formatMoney(item.splitShare as number, trip.homeCurrency)
+                    : formatMoney(e.amount, e.currency)}
                 </Text>
-                {!isSplitDay && (
+                {isSplitDay ? (
+                  <Text style={styles.priceSub}>
+                    {e.rateToHome > 0
+                      ? `${formatMoney((item.splitShare as number) / e.rateToHome, e.currency)} ${e.currency}`
+                      : e.currency}
+                  </Text>
+                ) : (
                   <Text style={styles.priceSub}>
                     ≈ {formatMoney(toHomeCurrency(e), trip.homeCurrency)}
                   </Text>
                 )}
               </View>
-              <Pressable onPress={() => handleDelete(e)} hitSlop={8} style={styles.rowDelete}>
-                <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+              <Pressable onPress={() => handleDelete(e)} hitSlop={10} style={styles.rowDelete}>
+                <Ionicons name="trash-outline" size={20} color={colors.destructive} />
               </Pressable>
             </View>
           );
@@ -247,6 +255,12 @@ export default function TripDetailScreen() {
           initialExpense={editingExpense ?? undefined}
           onClose={() => { setExpenseOpen(false); setEditingExpense(null); }}
           onSave={handleSave}
+          onDelete={async (expense) => {
+            await deleteExpense(expense.id);
+            setExpenseOpen(false);
+            setEditingExpense(null);
+            await load();
+          }}
         />
       </Modal>
     </SafeAreaView>
@@ -333,6 +347,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  rowDelete: { marginLeft: spacing.md, padding: spacing.xs },
+  rowDelete: { marginLeft: spacing.md, padding: spacing.sm, width: 28, alignItems: 'center', justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing['3xl'] },
 });

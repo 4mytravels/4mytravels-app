@@ -50,11 +50,11 @@ export async function refreshRateCache(base = 'EUR'): Promise<boolean> {
 }
 
 // Background refresh ~10s after app becomes usable (user request: keep the
-// cached rates fresh in the background without ever blocking the UI). Runs
-// once per app foreground; if it fails (offline/weekend) it silently keeps the
-// existing cache.
-export function useBackgroundRateRefresh(delayMs = 10000) {
-  const { ready } = useStorageInit();
+// cached rates fresh in the background without ever blocking the UI). Takes the
+// already-available `ready` flag from the single useStorageInit() instance in
+// the root layout — do NOT call useStorageInit() again here, or the native
+// adapter would be initialised twice and crash the app (reload loop).
+export function useBackgroundRateRefresh(ready: boolean, delayMs = 10000) {
   useEffect(() => {
     if (!ready) return;
     let mounted = true;

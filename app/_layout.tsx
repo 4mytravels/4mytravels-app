@@ -23,8 +23,9 @@ export default function RootLayout() {
   );
 
   // Background refresh ~10s after the app is usable: keeps the cached ECB rates
-  // fresh without ever blocking the UI (user request).
-  useBackgroundRateRefresh(10000);
+  // fresh without ever blocking the UI (user request). Pass the single `ready`
+  // flag so we never re-init the native adapter (would crash → reload loop).
+  useBackgroundRateRefresh(ready, 10000);
 
   if (!fontsLoaded || !ready) {
     return (

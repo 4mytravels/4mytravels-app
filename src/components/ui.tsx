@@ -28,6 +28,8 @@ export function Card({
           backgroundColor: colors.card,
           borderRadius: radius['2xl'],
           padding: spacing.lg,
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.12)',
         },
         style,
       ]}

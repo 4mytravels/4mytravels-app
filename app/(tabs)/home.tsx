@@ -371,6 +371,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: spacing.lg,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     marginBottom: spacing.md,
   },
   expenseDetails: { flex: 1, marginLeft: spacing.md },

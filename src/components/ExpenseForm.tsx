@@ -765,6 +765,8 @@ const styles = StyleSheet.create({
   amountInput: {
     flex: 1,
     backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -775,6 +777,8 @@ const styles = StyleSheet.create({
   },
   currencyButton: {
     backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: radius.xl,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
@@ -830,6 +834,8 @@ const styles = StyleSheet.create({
   payTextActive: { color: colors.primaryForeground, fontWeight: '700' },
   noteInput: {
     backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -842,12 +848,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: radius.xl,
     paddingLeft: spacing.xl,
   },
   dateTimeRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
   timeInput: {
     backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -900,6 +910,8 @@ const styles = StyleSheet.create({
   pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   input: {
     backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,

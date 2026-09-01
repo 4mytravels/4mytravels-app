@@ -104,15 +104,9 @@ export default function ExpensesScreen() {
   // Index of the Today section (sections are newest-first, so Today is usually 0).
   const todayIndex = sections.findIndex((s) => s.day === todayStr);
 
-  // Jump-to-Today: appears only once the user scrolls away from Today, then
-  // snaps the list back to the top section.
+  // Jump-to-Today: always visible when there is a Today section and the user
+  // is not currently looking at it. Tapping it snaps the list back to Today.
   const listRef = useRef<SectionList<any, any>>(null);
-  const [showToday, setShowToday] = useState(true);
-  const scrollY = useRef(0);
-  const handleScroll = (e: any) => {
-    scrollY.current = e.nativeEvent.contentOffset.y;
-  };
-  const handleScrollEnd = () => setShowToday(scrollY.current <= 12);
   const jumpToToday = () => {
     if (todayIndex >= 0)
       listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
@@ -149,7 +143,7 @@ export default function ExpensesScreen() {
       <View style={styles.titleRow}>
         <Text style={styles.screenTitle}>Expenses</Text>
       </View>
-      <Pressable style={styles.tripSelector} onPress={() => setPickerOpen(true)}>
+      <Pressable style={[styles.tripSelector, { marginBottom: insets.bottom + 24 }]} onPress={() => setPickerOpen(true)}>
         <Ionicons name="airplane" size={16} color={colors.primary} />
         <Text style={styles.tripSelectorText} numberOfLines={1}>
           {selectedTrip ? selectedTrip.name : trips.length === 0 ? 'No trips yet' : 'Select a trip'}
@@ -172,9 +166,6 @@ export default function ExpensesScreen() {
         ref={listRef}
         sections={sections}
         keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
-        onScroll={handleScroll}
-        onMomentumScrollEnd={handleScrollEnd}
-        scrollEventThrottle={16}
         renderSectionHeader={({ section }) => (
           <View style={styles.dayHeader}>
             <Text style={styles.dayLabel}>{section.label}</Text>
@@ -293,7 +284,7 @@ export default function ExpensesScreen() {
         )}
       </Modal>
 
-      {!showToday && todayIndex >= 0 && (
+      {todayIndex >= 0 && (
         <View style={styles.todayWrap}>
           <Pressable style={styles.todayPill} onPress={jumpToToday}>
             <Ionicons name="arrow-up" size={16} color={colors.primaryForeground} />
@@ -424,7 +415,7 @@ const styles = StyleSheet.create({
   },
   todayWrap: {
     position: 'absolute',
-    bottom: 88,
+    bottom: 110,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -458,6 +449,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     marginTop: spacing.xs,
+    marginBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },

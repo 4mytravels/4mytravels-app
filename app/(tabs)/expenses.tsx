@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginHorizontal: spacing.xl,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   list: { paddingHorizontal: spacing.xl },
   dayHeader: {

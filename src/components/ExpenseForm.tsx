@@ -37,7 +37,6 @@ import {
 import { allocateSplit } from '../utils/pace';
 import { CategoryChip, Button } from './ui';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
 import { v4 as uuid } from 'uuid';
 
@@ -215,17 +214,15 @@ export function ExpenseForm({
     };
   }, []);
 
-  // Rate resolution order (instant-first, per user request):
+  // Rate resolution order (instant-only at open, per user request):
   //   1. Manual override (Settings) — exact, no waiting.
-  //   2. Cached ECB rates (fetched at app open / background refresh) — instant
-  //      from storage. This is the SOURCE OF TRUTH shown in the form.
-  //   3. Background-only live Frankfurter fetch — refines the cached value
-  //      SILENTLY (no spinner, no block). Never surfaces an error or nulls the
-  //      rate when a cache is present.
-  // The form NEVER shows a loading state: the cached rate is immediate, and the
-  // live fetch refines it in the background while the user can already type/save.
+  //   2. Cached ECB rates (app_settings) — instant local read, source of truth.
+  //   3. Background-only live Frankfurter fetch — refreshes the cache silently
+  //      via useBackgroundRateRefresh(); ExpenseForm never triggers it.
+  // The form NEVER blocks on a live fetch when opening. It shows the cached
+  // rate immediately and lets the user type/save without any network wait.
   useEffect(() => {
-    if (isEdit) return; // keep the original rateToHome; do not re-fetch
+    if (isEdit) return; // keep the original rateToHome; do not touch
     if (manualOverride != null) {
       setRate(manualOverride);
       setRateError(null);
@@ -237,45 +234,18 @@ export function ExpenseForm({
       return;
     }
     let cancelled = false;
-
     (async () => {
-      // STEP 1 — instant: cached rate fills the field immediately (source of truth).
       const { loadRateCache } = await import('../services/rateCache');
       const cache = await loadRateCache(homeCurrency);
       const cachedHomeToQuote = cache?.rates[currency];
-      const hasCache = !!(cachedHomeToQuote && cachedHomeToQuote > 0);
-      if (!cancelled && hasCache) {
-        // Cache holds home→quote; invert for quote→home.
+      if (!cancelled && cachedHomeToQuote && cachedHomeToQuote > 0) {
         setRate(1 / cachedHomeToQuote);
-        setRateError(`Cached rate (${cache?.date})`);
+        setRateError(null);
       } else if (!cancelled) {
-        // No cache at all (e.g. very first open, offline) — soft note, but still
-        // let the background fetch try. The user can type/save; rate is provisional.
-        setRateError('Fetching rate…');
-      }
-
-      // STEP 2 — background-only: live fetch refines the cached value. NEVER sets
-      // a loading spinner. If it fails, we keep the cached rate silently.
-      try {
-        let r = NaN;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            r = await getRate(homeCurrency, currency, date);
-            if (!Number.isNaN(r) && r > 0) break;
-          } catch {
-            // fall through
-          }
-          if (attempt < 1) await new Promise((res) => setTimeout(res, 350));
-        }
-        if (!cancelled && !Number.isNaN(r) && r > 0) {
-          setRate(1 / r);
-          setRateError(null); // live value is authoritative when it succeeds
-        }
-      } catch {
-        // Offline / API hiccup — silently keep the cached rate. No spinner, no null.
+        setRate(null);
+        setRateError('No cached rate yet');
       }
     })();
-
     return () => {
       cancelled = true;
     };

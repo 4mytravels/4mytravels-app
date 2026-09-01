@@ -153,6 +153,8 @@ export function StatBox({
           borderRadius: radius.lg,
           padding: spacing.lg,
           alignItems: 'center',
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.12)',
         },
         style,
       ]}

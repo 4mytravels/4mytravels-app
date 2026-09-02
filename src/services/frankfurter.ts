@@ -48,19 +48,23 @@ export async function getRatesMap(base: string, date?: string): Promise<Record<s
   return arrayToRates(rows, base, date_);
 }
 
-/** Single-pair rate. Falls back to the latest published rate when the exact
- *  date has none (weekends/holidays — ECB publishes business days only). */
+/** Single-pair rate. Returns NaN when neither exact-date nor latest fallback
+ *  yields a usable rate. */
 export async function getRate(base: string, quote: string, date?: string): Promise<number> {
-  const url = `${FRANKFURTER_BASE}/v2/rate/${encodeURIComponent(base)}/${encodeURIComponent(
-    quote
-  )}${date ? `?date=${encodeURIComponent(date)}` : ''}`;
+  let url = `${FRANKFURTER_BASE}/v2/rate/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
+  if (date) url += `?date=${encodeURIComponent(date)}`;
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`Frankfurter ${res.status}`);
   const rows = (await res.json()) as FrankfurterRate[];
   let rate = rows[0]?.rate;
   if ((rate == null || Number.isNaN(rate)) && date) {
-    // Retry without date → most recent published rate.
-    return getRate(base, quote);
+    const fallbackUrl = `${FRANKFURTER_BASE}/v2/rate/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`;
+    const fallbackRes = await fetch(fallbackUrl, { headers: { Accept: 'application/json' } });
+    if (fallbackRes.ok) {
+      const fallbackRows = (await fallbackRes.json()) as FrankfurterRate[];
+      rate = fallbackRows[0]?.rate;
+    }
   }
-  return rate ?? NaN;
+  if (rate == null || Number.isNaN(rate)) return NaN;
+  return rate;
 }

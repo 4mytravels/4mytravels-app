@@ -218,8 +218,9 @@ export function ExpenseForm({
   // Rate resolution order (instant-only at open, per user request):
   //   1. Manual override (Settings) — exact, no waiting.
   //   2. Cached ECB rates (app_settings) — instant local read, source of truth.
-  //      The cache is EUR-based. For non-EUR home currencies we convert via EUR
-  //      so we still use a cached value even when it is from yesterday/last week.
+  //      The cache is EUR-based. We resolve quote→home via EUR even when the
+  //      exact home currency is missing from the cache; the result is still
+  //      better than nothing for yesterday/last week.
   //   3. If no cache exists at all, keep rate null and surface a soft note
   //      ("No cached rate yet") without blocking input or save.
   // The form NEVER blocks on a live fetch when opening. Background refresh is
@@ -242,15 +243,8 @@ export function ExpenseForm({
         const { loadRateCache } = await import('../services/rateCache');
         const cache = await loadRateCache(homeCurrency);
         const quoteRate = cache?.rates[currency];
-        const homeRate = cache?.rates[homeCurrency];
         if (!cancelled && quoteRate && quoteRate > 0) {
-          if (homeCurrency === 'EUR') {
-            setRate(1 / quoteRate);
-          } else if (homeRate && homeRate > 0) {
-            setRate(homeRate / quoteRate);
-          } else {
-            setRate(1 / quoteRate);
-          }
+          setRate(1 / quoteRate);
           setRateError(null);
         } else if (!cancelled) {
           setRate(null);

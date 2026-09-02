@@ -37,6 +37,7 @@ import {
 import { allocateSplit } from '../utils/pace';
 import { CategoryChip, Button } from './ui';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
 import { v4 as uuid } from 'uuid';
 
@@ -217,10 +218,12 @@ export function ExpenseForm({
   // Rate resolution order (instant-only at open, per user request):
   //   1. Manual override (Settings) — exact, no waiting.
   //   2. Cached ECB rates (app_settings) — instant local read, source of truth.
-  //   3. Background-only live Frankfurter fetch — refreshes the cache silently
-  //      via useBackgroundRateRefresh(); ExpenseForm never triggers it.
-  // The form NEVER blocks on a live fetch when opening. It shows the cached
-  // rate immediately and lets the user type/save without any network wait.
+  //      The cache is EUR-based. For non-EUR home currencies we convert via EUR
+  //      so we still use a cached value even when it is from yesterday/last week.
+  //   3. If no cache exists at all, keep rate null and surface a soft note
+  //      ("No cached rate yet") without blocking input or save.
+  // The form NEVER blocks on a live fetch when opening. Background refresh is
+  // handled globally by useBackgroundRateRefresh in _layout.tsx.
   useEffect(() => {
     if (isEdit) return; // keep the original rateToHome; do not touch
     if (manualOverride != null) {
@@ -235,15 +238,29 @@ export function ExpenseForm({
     }
     let cancelled = false;
     (async () => {
-      const { loadRateCache } = await import('../services/rateCache');
-      const cache = await loadRateCache(homeCurrency);
-      const cachedHomeToQuote = cache?.rates[currency];
-      if (!cancelled && cachedHomeToQuote && cachedHomeToQuote > 0) {
-        setRate(1 / cachedHomeToQuote);
-        setRateError(null);
-      } else if (!cancelled) {
-        setRate(null);
-        setRateError('No cached rate yet');
+      try {
+        const { loadRateCache } = await import('../services/rateCache');
+        const cache = await loadRateCache(homeCurrency);
+        const quoteRate = cache?.rates[currency];
+        const homeRate = cache?.rates[homeCurrency];
+        if (!cancelled && quoteRate && quoteRate > 0) {
+          if (homeCurrency === 'EUR') {
+            setRate(1 / quoteRate);
+          } else if (homeRate && homeRate > 0) {
+            setRate(homeRate / quoteRate);
+          } else {
+            setRate(1 / quoteRate);
+          }
+          setRateError(null);
+        } else if (!cancelled) {
+          setRate(null);
+          setRateError('No cached rate yet');
+        }
+      } catch {
+        if (!cancelled) {
+          setRate(null);
+          setRateError('No cached rate yet');
+        }
       }
     })();
     return () => {
@@ -255,7 +272,7 @@ export function ExpenseForm({
   const homeAmount = rate != null ? amountNum * rate : null;
 
   const save = () => {
-    if (amountNum <= 0 || !rate) return; // require a valid amount + rate
+    if (amountNum <= 0) return; // require a valid amount; rate can be absent
     // Multi-day split only when the end date is a real later date.
     const split =
       endDate && endDate > date
@@ -267,7 +284,7 @@ export function ExpenseForm({
       amount: amountNum,
       currency,
       // Snapshot stored at entry time so later refreshes don't rewrite history (§2.2).
-      rateToHome: rate,
+      rateToHome: rate ?? 0,
       rateDate: date,
       category,
       // Timezone-aware: combine the chosen date + local time-of-day on the device,
@@ -297,7 +314,7 @@ export function ExpenseForm({
     onSave(expense);
   };
 
-  const canSave = amountNum > 0 && rate != null;
+  const canSave = amountNum > 0;
 
   return (
     <View style={styles.container}>

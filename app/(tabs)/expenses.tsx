@@ -143,7 +143,7 @@ export default function ExpensesScreen() {
       <View style={styles.titleRow}>
         <Text style={styles.screenTitle}>Expenses</Text>
       </View>
-      <Pressable style={[styles.tripSelector, { marginBottom: insets.bottom + 24 }]} onPress={() => setPickerOpen(true)}>
+      <Pressable style={[styles.tripSelector, { marginBottom: spacing.md }]} onPress={() => setPickerOpen(true)}>
         <Ionicons name="airplane" size={16} color={colors.primary} />
         <Text style={styles.tripSelectorText} numberOfLines={1}>
           {selectedTrip ? selectedTrip.name : trips.length === 0 ? 'No trips yet' : 'Select a trip'}
@@ -440,6 +440,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginHorizontal: spacing.xl,
     marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   list: { paddingHorizontal: spacing.xl },
   dayHeader: {

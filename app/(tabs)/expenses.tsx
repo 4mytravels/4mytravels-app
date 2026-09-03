@@ -104,20 +104,12 @@ export default function ExpensesScreen() {
   // Index of the Today section (sections are newest-first, so Today is usually 0).
   const todayIndex = sections.findIndex((s) => s.day === todayStr);
 
-  // Jump to Today: snap so Today sits just above the Today button/FAB.
+  // Jump-to-Today: always visible when there is a Today section and the user
+  // is not currently looking at it. Tapping it snaps the list back to Today.
   const listRef = useRef<SectionList<any, any>>(null);
-
-  // Auto-scroll to "Today" when opening the Expenses tab.
-  useEffect(() => {
-    if (todayIndex < 0) return;
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: -110 });
-    });
-  }, [todayIndex]);
-
   const jumpToToday = () => {
     if (todayIndex >= 0)
-      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: -110 });
+      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
   };
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).

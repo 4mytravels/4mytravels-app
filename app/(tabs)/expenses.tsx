@@ -107,6 +107,15 @@ export default function ExpensesScreen() {
   // Jump-to-Today: always visible when there is a Today section and the user
   // is not currently looking at it. Tapping it snaps the list back to Today.
   const listRef = useRef<SectionList<any, any>>(null);
+
+  // Auto-scroll to "Today" when opening the Expenses tab.
+  useEffect(() => {
+    if (todayIndex < 0) return;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
+    });
+  }, [todayIndex]);
+
   const jumpToToday = () => {
     if (todayIndex >= 0)
       listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });

@@ -221,8 +221,9 @@ export function ExpenseForm({
   //      The cache is EUR-based. We resolve quote→home via EUR even when the
   //      exact home currency is missing from the cache; the result is still
   //      better than nothing for yesterday/last week.
-  //   3. If no cache exists at all, reuse the last known rate for this currency
-  //      from an existing expense. This keeps the form fully usable offline.
+  //   3. If no cache exists at all, reuse the last known rate for this pair
+  //      from `lastKnownRates` in settingsStore. This makes the form fully
+  //      usable offline for ANY currency pair that was used before.
   //   4. Only then show a soft note ("No cached rate yet") without blocking.
   // The form NEVER blocks on a live fetch when opening. Background refresh is
   // handled globally by useBackgroundRateRefresh in _layout.tsx.
@@ -242,7 +243,7 @@ export function ExpenseForm({
     (async () => {
       try {
         const { loadRateCache } = await import('../services/rateCache');
-        const { loadExpenses } = await import('../../src/db/expenseRepo');
+        const { useSettingsStore } = await import('../../src/store/settingsStore');
         const cache = await loadRateCache(homeCurrency);
         const quoteRate = cache?.rates[currency];
         if (!cancelled && quoteRate && quoteRate > 0) {
@@ -250,12 +251,9 @@ export function ExpenseForm({
           setRateError(null);
           return;
         }
-        const existing = await loadExpenses(tripId);
-        const last = existing
-          .filter((e) => e.currency === currency && e.rateToHome > 0)
-          .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-        if (!cancelled && last.length > 0) {
-          setRate(last[last.length - 1].rateToHome);
+        const lastKnown = await useSettingsStore.getState().getLastKnownRate(currency, homeCurrency);
+        if (!cancelled && lastKnown && lastKnown > 0) {
+          setRate(lastKnown);
           setRateError(null);
         } else if (!cancelled) {
           setRate(null);
@@ -271,7 +269,7 @@ export function ExpenseForm({
     return () => {
       cancelled = true;
     };
-  }, [currency, date, homeCurrency, manualOverride, tripId]);
+  }, [currency, date, homeCurrency, manualOverride]);
 
   const amountNum = parseFloat(amount) || 0;
   const homeAmount = rate != null ? amountNum * rate : null;
@@ -311,6 +309,18 @@ export function ExpenseForm({
             [`last_country:${tripId}`, country.trim()],
           );
           setRememberedCountry(country.trim());
+        } catch {
+          // non-fatal
+        }
+      })();
+    }
+    // Persist this rate as a last-known offline fallback for this currency pair.
+    if (rate && rate > 0 && currency !== homeCurrency) {
+      void (async () => {
+        try {
+          const { useSettingsStore } = await import('../../src/store/settingsStore');
+          const { setLastKnownRate } = useSettingsStore.getState();
+          await setLastKnownRate(currency, homeCurrency, rate);
         } catch {
           // non-fatal
         }

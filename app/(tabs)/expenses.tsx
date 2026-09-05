@@ -107,26 +107,27 @@ export default function ExpensesScreen() {
     listRef.current?.scrollToLocation({ sectionIndex: targetIndex, itemIndex: 0, viewOffset: 0 });
   };
 
-  // Auto-scroll to Today when the screen opens/focuses. Waits one frame so the
-  // SectionList has measured its sections before jumping.
+  // Safety net: SectionList requires onScrollToIndexFailed when scrollToLocation
+  // is called without getItemLayout (dynamic section heights). Without it, RN
+  // throws an invariant violation crash.
   const onScrollToIndexFailed = useCallback(
-    (info: { index: number; highestMeasuredFrameIndex: number }) => {
-      // Fallback: scroll to the highest measured frame if target is offscreen
-      listRef.current?.scrollToLocation({
-        sectionIndex: 0,
-        itemIndex: info.highestMeasuredFrameIndex,
-        viewOffset: 0,
-      });
+    (_info: { index: number; highestMeasuredFrameIndex: number }) => {
+      // Silently swallow — Today section is likely already visible or near top
     },
     [],
   );
 
+  // Auto-scroll to Today on open/focus. Multiple attempts with increasing
+  // delays to handle lists that haven't measured all sections yet.
   useEffect(() => {
     if (todayIndex < 0) return;
-    const raf = requestAnimationFrame(() => {
-      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
-    });
-    return () => cancelAnimationFrame(raf);
+    const attempts = [50, 200, 500];
+    const timers = attempts.map((delay) =>
+      setTimeout(() => {
+        listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
+      }, delay),
+    );
+    return () => timers.forEach(clearTimeout);
   }, [todayIndex]);
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).

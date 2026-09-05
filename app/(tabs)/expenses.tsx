@@ -108,26 +108,19 @@ export default function ExpensesScreen() {
   };
 
   // Safety net: SectionList requires onScrollToIndexFailed when scrollToLocation
-  // is called without getItemLayout (dynamic section heights). Without it, RN
-  // throws an invariant violation crash.
-  const onScrollToIndexFailed = useCallback(
-    (_info: { index: number; highestMeasuredFrameIndex: number }) => {
-      // Silently swallow — Today section is likely already visible or near top
-    },
-    [],
-  );
+  // is called without getItemLayout (dynamic section heights).
+  const onScrollToIndexFailed = useCallback(() => {
+    // Silently swallow — Today section is likely already visible or near top
+  }, []);
 
-  // Auto-scroll to Today on open/focus. Multiple attempts with increasing
-  // delays to handle lists that haven't measured all sections yet.
+  // Auto-scroll to Today on open/focus. Only needed when Today is NOT the first
+  // section (sections are newest-first, so Today is usually index 0 = visible).
   useEffect(() => {
-    if (todayIndex < 0) return;
-    const attempts = [50, 200, 500];
-    const timers = attempts.map((delay) =>
-      setTimeout(() => {
-        listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
-      }, delay),
-    );
-    return () => timers.forEach(clearTimeout);
+    if (todayIndex <= 0) return; // Already at top or no Today section
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
+    }, 300);
+    return () => clearTimeout(timer);
   }, [todayIndex]);
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).

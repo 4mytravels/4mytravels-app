@@ -32,90 +32,13 @@ import { groupByDaySplitAware } from '../../src/utils/days';
 // Spins slowly on its own; the user can grab and spin it (drag = rotate,
 // release keeps momentum via a gentle decay back to idle speed).
 function Globe() {
-  const rotation = useRef(new Animated.Value(0)).current;
-  const offset = useRef(0); // accumulated degrees from drags
-  const autoAnim = useRef<Animated.CompositeAnimation | null>(null);
-
-  const startAutoSpin = () => {
-    autoAnim.current?.stop();
-    // Loop: each iteration adds a slow full turn.
-    const loop = () => {
-      Animated.timing(rotation, {
-        toValue: offset.current + 360,
-        duration: 60000, // one calm revolution per minute
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) {
-          offset.current = (offset.current + 360) % 360000;
-          loop();
-        }
-      });
-    };
-    loop();
-  };
-
-  useEffect(() => {
-    startAutoSpin();
-    return () => autoAnim.current?.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        // Pause auto-spin; freeze current angle as the drag baseline.
-        autoAnim.current?.stop();
-        rotation.stopAnimation((v) => {
-          offset.current = v;
-        });
-      },
-      onPanResponderMove: (_e, g) => {
-        rotation.setValue(offset.current + g.dx * 0.5);
-      },
-      onPanResponderRelease: (_e, g) => {
-        offset.current += g.dx * 0.5;
-        // Fling: let momentum carry briefly, then resume the calm idle spin.
-        if (Math.abs(g.vx) > 0.3) {
-          Animated.decay(rotation, {
-            velocity: g.vx * 0.5,
-            deceleration: 0.995,
-            useNativeDriver: true,
-          }).start(({ finished }) => {
-            if (finished) {
-              rotation.stopAnimation((v) => {
-                offset.current = v;
-                startAutoSpin();
-              });
-            }
-          });
-        } else {
-          rotation.stopAnimation((v) => {
-            offset.current = v;
-            startAutoSpin();
-          });
-        }
-      },
-    }),
-  ).current;
-
   return (
-    <View style={styles.globe} {...pan.panHandlers}>
-      <Animated.Image
+    <View style={styles.globe}>
+      <Image
         source={require('../../assets/earth-night.jpg')}
-        style={[
-          styles.globeImage,
-          // Negative degrees = westward spin (left-to-right across the map),
-          // like travelling around the world eastward.
-          { transform: [{ rotate: rotation.interpolate({ inputRange: [-3600, 3600], outputRange: ['3600deg', '-3600deg'] }) }] },
-        ]}
+        style={styles.globeImage}
         resizeMode="cover"
       />
-      <View style={{ position: 'absolute', bottom: 8, right: 8 }}>
-        <Ionicons name="sync-outline" size={16} color="rgba(255,255,255,0.45)" />
-      </View>
     </View>
   );
 }

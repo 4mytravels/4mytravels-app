@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -109,6 +109,18 @@ export default function ExpensesScreen() {
 
   // Auto-scroll to Today when the screen opens/focuses. Waits one frame so the
   // SectionList has measured its sections before jumping.
+  const onScrollToIndexFailed = useCallback(
+    (info: { index: number; highestMeasuredFrameIndex: number }) => {
+      // Fallback: scroll to the highest measured frame if target is offscreen
+      listRef.current?.scrollToLocation({
+        sectionIndex: 0,
+        itemIndex: info.highestMeasuredFrameIndex,
+        viewOffset: 0,
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (todayIndex < 0) return;
     const raf = requestAnimationFrame(() => {
@@ -180,6 +192,7 @@ export default function ExpensesScreen() {
         ref={listRef}
         sections={sections}
         keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
+        onScrollToIndexFailed={onScrollToIndexFailed}
         renderSectionHeader={({ section }) => (
           <View style={styles.dayHeader}>
             <Text style={styles.dayLabel}>{section.label}</Text>

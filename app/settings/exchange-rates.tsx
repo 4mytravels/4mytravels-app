@@ -20,15 +20,15 @@ import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/t
 import { Card, SectionTitle } from '../../src/components/ui';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache, type RateCache } from '../../src/services/rateCache';
-
-const RATE_CURRENCIES = ['USD', 'GBP', 'JPY', 'CHF', 'THB', 'TRY', 'IDR'];
+import { CURRENCIES } from '../../src/data/currencies';
 
 export default function CustomRatesScreen() {
   const { homeCurrency: hcParam } = useLocalSearchParams<{ homeCurrency?: string }>();
+  const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
   const manualRates = useSettingsStore((s) => s.manualRates);
   const setManualRate = useSettingsStore((s) => s.setManualRate);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
-  const homeCurrency = hcParam ?? 'EUR';
+  const homeCurrency = hcParam ?? defaultHomeCurrency ?? 'EUR';
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [cache, setCache] = useState<RateCache | null>(null);
@@ -91,19 +91,19 @@ export default function CustomRatesScreen() {
                 ECB rates fetched automatically when the app opens ({cache.date}). Every expense
                 uses this rate unless you set a custom one below.
               </Text>
-              {RATE_CURRENCIES.filter((c) => c !== homeCurrency).map((c) => {
-                const r = cache.rates[c];
+              {CURRENCIES.filter((c) => c.code !== homeCurrency).map((c) => {
+                const r = cache.rates[c.code];
                 const cachedDisplay = r ? (1 / r).toPrecision(6) : null;
-                const currentOverride = manualRates[`${c}_${homeCurrency}`];
-                const isEditing = editing === c;
+                const currentOverride = manualRates[`${c.code}_${homeCurrency}`];
+                const isEditing = editing === c.code;
                 return (
                   <View
-                    key={c}
+                    key={c.code}
                     style={styles.rateRow}
-                    onLayout={(e) => { rowY.current[c] = e.nativeEvent.layout.y; }}
+                    onLayout={(e) => { rowY.current[c.code] = e.nativeEvent.layout.y; }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.rateLabel}>{c} → {homeCurrency}</Text>
+                      <Text style={styles.rateLabel}>{c.flag} {c.code} → {homeCurrency}</Text>
                       <Text style={styles.rateSub}>
                         {currentOverride != null ? (
                           <>
@@ -125,14 +125,14 @@ export default function CustomRatesScreen() {
                         placeholderTextColor={colors.mutedForeground}
                         value={draft}
                         onChangeText={setDraft}
-                        onSubmitEditing={() => void save(c)}
-                        onBlur={() => void save(c)}
+                        onSubmitEditing={() => void save(c.code)}
+                        onBlur={() => void save(c.code)}
                       />
                     ) : (
                       <View style={styles.btnRow}>
                         <Pressable
                           style={[styles.rateBtn, currentOverride == null && styles.rateBtnGhost]}
-                          onPress={() => startEdit(c)}
+                          onPress={() => startEdit(c.code)}
                         >
                           <Text style={[styles.rateBtnText, currentOverride == null && styles.rateBtnTextGhost]}>
                             {currentOverride != null ? 'Edit' : 'Custom'}
@@ -142,7 +142,7 @@ export default function CustomRatesScreen() {
                           <Pressable
                             style={styles.clearBtn}
                             hitSlop={8}
-                            onPress={() => void setManualRate(c, homeCurrency, null)}
+                            onPress={() => void setManualRate(c.code, homeCurrency, null)}
                           >
                             <Ionicons name="close-circle" size={22} color={colors.destructive} />
                           </Pressable>

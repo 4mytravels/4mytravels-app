@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
@@ -40,26 +42,31 @@ function Bar({ label, value, max, displayCurrency, color = colors.primary }: { l
   );
 }
 
-// Pure-View pie (RN Android has no conic-gradient). Algorithm:
-// base circle = last slice's color; then for each slice (ascending) draw
-// its wedge as rotated half/full discs, followed by a "cover" wedge in the
-// NEXT slice's color starting at this slice's end. Later children render on
-// top and repaint their own wedge, so overshoots are corrected layer by
-// layer. Angles measured clockwise from 12 o'clock.
+import Svg, { Path, Circle, G } from 'react-native-svg';
+
+// Pie chart slice path: SVG arc from start to end angle (degrees, clockwise from 12 o'clock).
+function slicePath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
+  const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180; // -90 so 0° = 12 o'clock
+  const s = toRad(startDeg);
+  const e = toRad(endDeg);
+  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
+  const x1 = cx + r * Math.cos(s);
+  const y1 = cy + r * Math.sin(s);
+  const x2 = cx + r * Math.cos(e);
+  const y2 = cy + r * Math.sin(e);
+  // Move to center, line to start, arc to end, close
+  return `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z`;
+}
+
+// Pure-SVG pie chart (react-native-svg handles arcs correctly — no half-circle hacks).
 function Pie({ entries }: { entries: [string, number][] }) {
   const total = entries.reduce((s, [, v]) => s + v, 0);
   if (total <= 0 || entries.length === 0) return null;
 
   const size = 150;
-  const r = size / 2;
-  const rightHalf = {
-    position: 'absolute' as const,
-    left: r,
-    width: r,
-    height: size,
-    borderTopRightRadius: r,
-    borderBottomRightRadius: r,
-  };
+  const r = size / 2 - 2;
+  const cx = size / 2;
+  const cy = size / 2;
 
   const slices = entries.map(([k, v], i) => ({
     key: k,
@@ -67,50 +74,26 @@ function Pie({ entries }: { entries: [string, number][] }) {
     frac: v / total,
   }));
 
-  // Wedge starting at `fromDeg` (clockwise from 12 o'clock). A frame rotated
-  // by R covers arc [R, R+180]; a second frame at R+180 extends to R+360.
-  const wedge = (color: string, spanDeg: number) => (
-    <>
-      <View style={[rightHalf, { backgroundColor: color }]} />
-      {spanDeg > 180 && (
-        <View
-          style={{
-            position: 'absolute',
-            width: size,
-            height: size,
-            transform: [{ rotate: '180deg' }],
-          }}
-        >
-          {/* this frame's rotation adds 180deg: its right half covers
-              [R+180, R+360); overshoot is repainted by later layers */}
-          <View style={[rightHalf, { backgroundColor: color }]} />
-        </View>
-      )}
-    </>
-  );
-
   let acc = 0;
-  const layers: React.ReactNode[] = [];
-  slices.slice(0, -1).forEach((s, i) => {
-    const startDeg = acc * 360;
+  const paths = slices.map((s) => {
+    const start = acc * 360;
     acc += s.frac;
-    const endDeg = acc * 360;
-    const nextColor = slices[i + 1].color;
-    layers.push(
-      <View key={`own-${s.key}`} style={{ position: 'absolute', width: size, height: size, transform: [{ rotate: `${startDeg}deg` }] }}>
-        {wedge(s.color, endDeg - startDeg)}
-      </View>,
-      <View key={`cov-${s.key}`} style={{ position: 'absolute', width: size, height: size, transform: [{ rotate: `${endDeg}deg` }] }}>
-        {wedge(nextColor, 360 - endDeg)}
-      </View>,
+    const end = acc * 360;
+    return (
+      <Path
+        key={s.key}
+        d={slicePath(cx, cy, r, start, end)}
+        fill={s.color}
+      />
     );
   });
 
   return (
     <View style={styles.pieWrap}>
       <View style={[styles.pie, { width: size, height: size }]}>
-        <View style={{ position: 'absolute', width: size, height: size, borderRadius: r, backgroundColor: slices[slices.length - 1].color }} />
-        {layers}
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          {paths}
+        </Svg>
       </View>
       <Legend entries={entries} />
     </View>
@@ -145,6 +128,8 @@ export default function StatisticsScreen() {
   const tripId = typeof params.tripId === 'string' ? params.tripId : undefined;
   const trips = useTripStore((s) => s.trips);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
   // Use the most-used trip home currency for display (global view). Falls back to EUR.
   const homeCurrencyCounts: Record<string, number> = {};
   for (const t of trips) {
@@ -154,12 +139,24 @@ export default function StatisticsScreen() {
     Object.entries(homeCurrencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
   const homeCurrency = displayCurrency;
 
-  useEffect(() => {
-    (async () => {
-      const list = await loadExpenses(tripId);
-      setExpenses(list);
-    })();
+  const loadData = useCallback(async (signal?: { aborted: boolean }) => {
+    const list = await loadExpenses(tripId);
+    if (!signal?.aborted) setExpenses(list);
   }, [tripId]);
+
+  // Reload on focus so data stays fresh after changes in other tabs.
+  useFocusEffect(() => {
+    let alive = true;
+    loadData({ aborted: false });
+    return () => { alive = false; };
+  });
+
+  // Pull-to-refresh.
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
 
   const byCategory: Record<string, number> = {};
   const byCountry: Record<string, number> = {};
@@ -220,7 +217,12 @@ export default function StatisticsScreen() {
       <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xs }}>
         <Text style={styles.screenTitle}>Statistics</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <Card>
           <Text style={styles.totalLabel}>Total spend</Text>
           <Text style={styles.totalValue}>{formatMoney(total, homeCurrency)}</Text>

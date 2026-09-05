@@ -67,7 +67,20 @@ export function groupByDay<T extends { createdAt?: string; rateDate: string }>(
   }
   return [...byDay.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // newest day first
-    .map(([day, data]) => ({ day, label: friendlyDayLabel(day), data }));
+    .map(([day, data]) => ({
+      day,
+      label: friendlyDayLabel(day),
+      data: data
+        .slice()
+        .sort((x, y) => {
+          const xc = x.createdAt || x.rateDate;
+          const yc = y.createdAt || y.rateDate;
+          if (xc !== yc) return xc < yc ? 1 : -1;
+          const xi = (x as Record<string, string | undefined>).id;
+          const yi = (y as Record<string, string | undefined>).id;
+          return (xi || '').localeCompare(yi || '');
+        }),
+    }));
 }
 
 export interface SplitAwareEntry<T> {
@@ -96,7 +109,7 @@ function addDays(ymd: string, n: number): string {
  * with splitShare === null. Sections sorted newest-first.
  */
 export function groupByDaySplitAware<
-  T extends { createdAt?: string; rateDate: string; amount: number; currency: string; rateToHome: number },
+  T extends { id: string; createdAt?: string; rateDate: string; amount: number; currency: string; rateToHome: number },
 >(
   items: T[],
 ): Array<{ day: string; label: string; data: Array<SplitAwareEntry<T>> }> {
@@ -148,5 +161,16 @@ export function groupByDaySplitAware<
   }
   return [...byDay.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .map(([day, data]) => ({ day, label: friendlyDayLabel(day), data }));
+    .map(([day, data]) => ({
+      day,
+      label: friendlyDayLabel(day),
+      data: data
+        .slice()
+        .sort((x, y) => {
+          const xc = x.expense.createdAt || x.expense.rateDate;
+          const yc = y.expense.createdAt || y.expense.rateDate;
+          if (xc !== yc) return xc < yc ? 1 : -1;
+          return x.expense.id.localeCompare(y.expense.id);
+        }),
+    }));
 }

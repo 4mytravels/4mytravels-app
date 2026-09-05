@@ -7,6 +7,7 @@ import {
   SectionList,
   Modal,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -235,10 +236,15 @@ export default function TripDetailScreen() {
           onClose={() => { setExpenseOpen(false); setEditingExpense(null); }}
           onSave={handleSave}
           onDelete={async (expense) => {
-            await deleteExpense(expense.id);
-            setExpenseOpen(false);
-            setEditingExpense(null);
-            await load();
+            try {
+              await deleteExpense(expense.id);
+              setExpenseOpen(false);
+              setEditingExpense(null);
+              await load();
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              Alert.alert('Delete failed', msg);
+            }
           }}
         />
       </Modal>

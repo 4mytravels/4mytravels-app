@@ -8,6 +8,7 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
@@ -105,11 +106,11 @@ export default function ExpensesScreen() {
   const todayIndex = sections.findIndex((s) => s.day === todayStr);
 
   // Jump-to-Today: always visible when there is a Today section and the user
-  // is not currently looking at it. Tapping it snaps the list back to Today.
+  // might need to scroll to it (visible on past days, today, and future days).
   const listRef = useRef<SectionList<any, any>>(null);
   const jumpToToday = () => {
-    if (todayIndex >= 0)
-      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
+    const targetIndex = todayIndex >= 0 ? todayIndex : 0;
+    listRef.current?.scrollToLocation({ sectionIndex: targetIndex, itemIndex: 0, viewOffset: 0 });
   };
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).
@@ -118,6 +119,12 @@ export default function ExpensesScreen() {
     ? 1
     : Math.max(1, Math.round((Date.now() - startMs) / 86_400_000));
   const dailyAverage = totalHome / daysElapsed;
+
+  // Show the "Today" jump button whenever a Today section exists and the user
+  // might need to scroll to it (visible on past days, today, and future days).
+  const hasOlderSection = sections.some((s) => s.day < todayStr);
+  const hasTodaySection = todayIndex >= 0;
+  const showTodayJump = hasTodaySection || hasOlderSection;
 
   const handleSave = async (expense: Expense) => {
     const { saveExpense } = await import('../../src/db/expenseRepo');
@@ -143,7 +150,7 @@ export default function ExpensesScreen() {
       <View style={styles.titleRow}>
         <Text style={styles.screenTitle}>Expenses</Text>
       </View>
-      <Pressable style={[styles.tripSelector, { marginBottom: spacing.md }]} onPress={() => setPickerOpen(true)}>
+      <Pressable style={[styles.tripSelector, { marginBottom: spacing.sm }]} onPress={() => setPickerOpen(true)}>
         <Ionicons name="airplane" size={16} color={colors.primary} />
         <Text style={styles.tripSelectorText} numberOfLines={1}>
           {selectedTrip ? selectedTrip.name : trips.length === 0 ? 'No trips yet' : 'Select a trip'}
@@ -274,17 +281,22 @@ export default function ExpensesScreen() {
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={handleSave}
             onDelete={async (expense) => {
-              const { deleteExpense } = await import('../../src/db/expenseRepo');
-              await deleteExpense(expense.id);
-              setFormOpen(false);
-              setEditingExpense(null);
-              await load();
+              try {
+                const { deleteExpense } = await import('../../src/db/expenseRepo');
+                await deleteExpense(expense.id);
+                setFormOpen(false);
+                setEditingExpense(null);
+                await load();
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                Alert.alert('Delete failed', msg);
+              }
             }}
           />
         )}
       </Modal>
 
-      {todayIndex >= 0 && (
+      {showTodayJump && (
         <View style={styles.todayWrap}>
           <Pressable style={styles.todayPill} onPress={jumpToToday}>
             <Ionicons name="arrow-up" size={16} color={colors.primaryForeground} />
@@ -439,7 +451,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginHorizontal: spacing.xl,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     marginBottom: spacing.sm,
   },
   list: { paddingHorizontal: spacing.xl },

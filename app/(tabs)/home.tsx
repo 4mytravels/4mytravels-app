@@ -11,6 +11,7 @@ import {
   Animated,
   PanResponder,
   Easing,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
@@ -226,7 +227,9 @@ export default function HomeScreen() {
       {/* Stats */}
       <View style={styles.statsRow}>
         <Pill icon="location-outline" text={`${countries} countries`} />
-        <Pill icon="wallet-outline" text={`${formatMoney(totalSpent, displayCurrency)} spent`} />
+        <Pressable onPress={() => router.push('/statistics')} style={styles.totalSpentPill}>
+          <Pill icon="wallet-outline" text={`${formatMoney(totalSpent, displayCurrency)} spent`} />
+        </Pressable>
       </View>
 
       {/* Expenses today */}
@@ -318,11 +321,16 @@ export default function HomeScreen() {
             setExpenses(await loadExpenses());
           }}
           onDelete={async (expense) => {
-            const { deleteExpense } = await import('../../src/db/expenseRepo');
-            await deleteExpense(expense.id);
-            setFormOpen(false);
-            setEditingExpense(null);
-            setExpenses(await loadExpenses());
+            try {
+              const { deleteExpense } = await import('../../src/db/expenseRepo');
+              await deleteExpense(expense.id);
+              setFormOpen(false);
+              setEditingExpense(null);
+              setExpenses(await loadExpenses());
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              Alert.alert('Delete failed', msg);
+            }
           }}
         />
       )}
@@ -355,6 +363,7 @@ const styles = StyleSheet.create({
     borderRadius: 120,
   },
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
+  totalSpentPill: { flex: 1 },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   sectionTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   sectionTotal: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },

@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
     borderRadius: 120,
   },
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
-  totalSpentPill: { flex: 1 },
+  totalSpentPill: {},
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   sectionTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   sectionTotal: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },

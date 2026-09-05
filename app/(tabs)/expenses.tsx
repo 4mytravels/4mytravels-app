@@ -107,6 +107,16 @@ export default function ExpensesScreen() {
     listRef.current?.scrollToLocation({ sectionIndex: targetIndex, itemIndex: 0, viewOffset: 0 });
   };
 
+  // Auto-scroll to Today when the screen opens/focuses. Waits one frame so the
+  // SectionList has measured its sections before jumping.
+  useEffect(() => {
+    if (todayIndex < 0) return;
+    const raf = requestAnimationFrame(() => {
+      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [todayIndex]);
+
   // Daily average: total spend divided by days elapsed since trip start (min 1).
   const dailyAverage = useMemo(() => {
     const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
@@ -295,7 +305,7 @@ export default function ExpensesScreen() {
       </Modal>
 
       {showTodayJump && (
-        <View style={styles.todayWrap}>
+        <View style={[styles.todayWrap, { bottom: insets.bottom + 24 }]}>
           <Pressable style={styles.todayPill} onPress={jumpToToday}>
             <Ionicons name="arrow-up" size={16} color={colors.primaryForeground} />
             <Text style={styles.todayPillText}>Today</Text>
@@ -425,7 +435,7 @@ const styles = StyleSheet.create({
   },
   todayWrap: {
     position: 'absolute',
-    bottom: 110,
+    bottom: 24, // sits just above the bottom tab bar, inline style adds insets.bottom
     left: 0,
     right: 0,
     alignItems: 'center',

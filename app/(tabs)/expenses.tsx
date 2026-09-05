@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -52,11 +52,6 @@ export default function ExpensesScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, trips.length]);
 
-  const load = async () => {
-    if (!selectedId) return;
-    setExpenses(await loadExpenses(selectedId));
-  };
-
   // Reload on focus AND when the selected trip changes.
   useFocusEffect(() => {
     let alive = true;
@@ -70,22 +65,19 @@ export default function ExpensesScreen() {
     };
   });
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  // Filter by category + search
+  const list = useMemo(() => {
+    return expenses.filter(
+      (e) =>
+        (catFilter === 'All' || e.category === catFilter) &&
+        (query.trim() === '' ||
+          [e.notes, e.category, e.country, e.location]
+            .filter(Boolean)
+            .some((v) => String(v).toLowerCase().includes(query.trim().toLowerCase()))),
+    );
+  }, [expenses, catFilter, query]);
 
-  const list = expenses.filter(
-    (e) =>
-      (catFilter === 'All' || e.category === catFilter) &&
-      // Search across notes, category, country and location.
-      (query.trim() === '' ||
-        [e.notes, e.category, e.country, e.location]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(query.trim().toLowerCase()))),
-  );
-
-  const totalHome = list.reduce((sum, e) => sum + toHomeCurrency(e), 0);
+  const totalHome = useMemo(() => list.reduce((sum, e) => sum + toHomeCurrency(e), 0), [list]);
 
   // Local "today" key (YYYY-MM-DD) for the jump-to-Today affordance.
   const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
@@ -94,16 +86,18 @@ export default function ExpensesScreen() {
   // (Today / Yesterday / 28 Aug 2026) plus the day's total in home currency.
   // Multi-day-split expenses are expanded: each covered day shows its share
   // and contributes that share to the day total.
-  const sections = groupByDaySplitAware(list).map((s) => ({
-    ...s,
-    dayTotal: s.data.reduce(
-      (sum, entry) => sum + (entry.splitShare ?? toHomeCurrency(entry.expense)),
-      0,
-    ),
-  }));
+  const sections = useMemo(() => {
+    return groupByDaySplitAware(list).map((s) => ({
+      ...s,
+      dayTotal: s.data.reduce(
+        (sum, entry) => sum + (entry.splitShare ?? toHomeCurrency(entry.expense)),
+        0,
+      ),
+    }));
+  }, [list]);
 
   // Index of the Today section (sections are newest-first, so Today is usually 0).
-  const todayIndex = sections.findIndex((s) => s.day === todayStr);
+  const todayIndex = useMemo(() => sections.findIndex((s) => s.day === todayStr), [sections, todayStr]);
 
   // Jump-to-Today: always visible when there is a Today section and the user
   // might need to scroll to it (visible on past days, today, and future days).
@@ -114,11 +108,13 @@ export default function ExpensesScreen() {
   };
 
   // Daily average: total spend divided by days elapsed since trip start (min 1).
-  const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
-  const daysElapsed = Number.isNaN(startMs)
-    ? 1
-    : Math.max(1, Math.round((Date.now() - startMs) / 86_400_000));
-  const dailyAverage = totalHome / daysElapsed;
+  const dailyAverage = useMemo(() => {
+    const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
+    const daysElapsed = Number.isNaN(startMs)
+      ? 1
+      : Math.max(1, Math.round((Date.now() - startMs) / 86_400_000));
+    return totalHome / daysElapsed;
+  }, [selectedTrip, totalHome]);
 
   // Show the "Today" jump button whenever a Today section exists and the user
   // might need to scroll to it (visible on past days, today, and future days).

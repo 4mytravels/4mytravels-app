@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -139,9 +139,18 @@ export default function StatisticsScreen() {
     Object.entries(homeCurrencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
   const homeCurrency = displayCurrency;
 
-  const loadData = useCallback(async (signal?: { aborted: boolean }) => {
-    const list = await loadExpenses(tripId);
-    if (!signal?.aborted) setExpenses(list);
+  const tripNameByIdRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    for (const t of trips) map[t.id] = t.name;
+    tripNameByIdRef.current = map;
+  }, [trips]);
+
+  const loadData = useMemo(() => {
+    return async (signal?: { aborted: boolean }) => {
+      const list = await loadExpenses(tripId);
+      if (!signal?.aborted) setExpenses(list);
+    };
   }, [tripId]);
 
   // Reload on focus so data stays fresh after changes in other tabs.
@@ -189,9 +198,7 @@ export default function StatisticsScreen() {
   // plain text blob with no file extension).
   const exportCsv = async () => {
     if (expenses.length === 0) return;
-    const tripNameById: Record<string, string> = {};
-    for (const t of trips) tripNameById[t.id] = t.name;
-    const csv = expensesToCsv(expenses, tripNameById);
+    const csv = expensesToCsv(expenses, tripNameByIdRef.current);
     try {
       const safe = (tripId && trips.find((t) => t.id === tripId)?.name || 'all-trips')
         .replace(/[^a-z0-9]+/gi, '-').toLowerCase();

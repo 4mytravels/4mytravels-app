@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -132,10 +132,14 @@ export default function HomeScreen() {
   useFocusEffect(() => {
     let alive = true;
     (async () => {
-      const list = await loadExpenses();
-      if (alive) {
-        setExpenses(list);
-        setLoading(false);
+      try {
+        const list = await loadExpenses();
+        if (alive) {
+          setExpenses(list);
+          setLoading(false);
+        }
+      } catch {
+        if (alive) setLoading(false);
       }
     })();
     return () => {
@@ -176,25 +180,32 @@ export default function HomeScreen() {
   // Local "today" key (YYYY-MM-DD).
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  // Memoize the expensive groupByDaySplitAware computation on expenses.
+  const groupedToday = useMemo(() => groupByDaySplitAware(expenses), [expenses]);
   // Split-aware "today": expand multi-day expenses so each covered day shows its
   // per-day share (mirrors the Expenses tab's Today section). The single Today
   // section gives both the cards (with shares) and the running today total.
-  const todaySection = groupByDaySplitAware(expenses).find((s) => s.day === todayStr);
+  const todaySection = useMemo(
+    () => groupedToday.find((s) => s.day === todayStr),
+    [groupedToday, todayStr],
+  );
   const todayEntries = todaySection?.data ?? [];
   const todaysExpenses = todayEntries.map((entry) => entry.expense);
-  const todayTotal = todayEntries.reduce((sum, entry) => {
-    const e = entry.expense;
-    // Day-part in the EXPENSE currency: for splits it's the per-day share
-    // (splitShare is in trip-home currency, so divide back by rateToHome),
-    // otherwise the full amount. Convert to the display (default home) currency.
-    const dayPartExpense =
-      entry.splitShare != null
-        ? (e.rateToHome > 0 ? entry.splitShare / e.rateToHome : e.amount)
-        : e.amount;
-    const converted = toDisplay(dayPartExpense, e.currency);
-    const dayPartHome = entry.splitShare ?? toHomeCurrency(e);
-    return sum + (converted != null ? converted : dayPartHome);
-  }, 0);
+  const todayTotal = useMemo(() => {
+    return todayEntries.reduce((sum, entry) => {
+      const e = entry.expense;
+      // Day-part in the EXPENSE currency: for splits it's the per-day share
+      // (splitShare is in trip-home currency, so divide back by rateToHome),
+      // otherwise the full amount. Convert to the display (default home) currency.
+      const dayPartExpense =
+        entry.splitShare != null
+          ? (e.rateToHome > 0 ? entry.splitShare / e.rateToHome : e.amount)
+          : e.amount;
+      const converted = toDisplay(dayPartExpense, e.currency);
+      const dayPartHome = entry.splitShare ?? toHomeCurrency(e);
+      return sum + (converted != null ? converted : dayPartHome);
+    }, 0);
+  }, [todayEntries]);
 
   // Unique countries: from trip country tags first, falling back to per-expense country.
   const countrySet = new Set<string>();

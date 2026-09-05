@@ -151,9 +151,13 @@ function Header() {
 }
 
 // BLOB → data-URI for <Image source> (cover photos live encrypted in the DB).
+// O(n) base64: Uint8Array → binary string in 64KB chunks (avoids O(n²) string concat)
 function bytesToDataUri(bytes: Uint8Array): string {
+  const CHUNK = 64 * 1024;
   let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
   return 'data:image/jpeg;base64,' + btoa(bin);
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -53,42 +53,48 @@ export default function TripDetailScreen() {
     );
   }
 
-  const cumulativeSpend = expenses.reduce((sum, e) => sum + toHomeCurrency(e), 0);
+  const cumulativeSpend = useMemo(() => expenses.reduce((sum, e) => sum + toHomeCurrency(e), 0), [expenses]);
 
   // Daily average = spent / elapsed days. Reference day: today, unless a later
   // expense exists — then the latest expense day counts (so pre-logged future
   // expenses don't inflate the average).
-  const lastExpenseDay = expenses.reduce((max, e) => {
-    const t = Date.parse(e.createdAt || e.rateDate);
-    return Number.isNaN(t) ? max : Math.max(max, t);
-  }, 0);
-  const todayStart = new Date(); todayStart.setHours(12, 0, 0, 0);
-  const referenceMs = Math.max(todayStart.getTime(), lastExpenseDay || 0);
-  const tripStart = new Date(`${trip.startDate}T12:00:00`);
-  const daysActive = Math.max(
-    1,
-    Math.round((referenceMs - (isNaN(tripStart.getTime()) ? referenceMs : tripStart.getTime())) / 86_400_000) + 1,
-  );
-  const dailyAverage = cumulativeSpend / daysActive;
+  const { dailyAverage, daysActive } = useMemo(() => {
+    const lastExpenseDay = expenses.reduce((max, e) => {
+      const t = Date.parse(e.createdAt || e.rateDate);
+      return Number.isNaN(t) ? max : Math.max(max, t);
+    }, 0);
+    const todayStart = new Date(); todayStart.setHours(12, 0, 0, 0);
+    const referenceMs = Math.max(todayStart.getTime(), lastExpenseDay || 0);
+    const tripStart = new Date(`${trip.startDate}T12:00:00`);
+    const days = Math.max(
+      1,
+      Math.round((referenceMs - (isNaN(tripStart.getTime()) ? referenceMs : tripStart.getTime())) / 86_400_000) + 1,
+    );
+    return { dailyAverage: cumulativeSpend / days, daysActive: days };
+  }, [expenses, trip.startDate, cumulativeSpend]);
 
   const coverBytes = (trip as typeof trip & { coverBytes?: Uint8Array | null }).coverBytes;
   const dayHeaderPad = { paddingHorizontal: spacing.xl };
-  const coverUri = coverBytes
-    ? 'data:image/jpeg;base64,' +
-      (() => {
-        let bin = '';
-        for (let i = 0; i < coverBytes.length; i++) bin += String.fromCharCode(coverBytes[i]);
-        return btoa(bin);
-      })()
-    : null;
+  // O(n) base64: Uint8Array → binary string in 64KB chunks (avoids O(n²) string concat)
+  const coverUri = useMemo(() => {
+    if (!coverBytes) return null;
+    const CHUNK = 64 * 1024;
+    let bin = '';
+    for (let i = 0; i < coverBytes.length; i += CHUNK) {
+      bin += String.fromCharCode(...coverBytes.subarray(i, i + CHUNK));
+    }
+    return 'data:image/jpeg;base64,' + btoa(bin);
+  }, [coverBytes]);
 
-  const pace = computePace({
+  const sections = useMemo(() => groupByDaySplitAware(expenses), [expenses]);
+
+  const pace = useMemo(() => computePace({
     dailyBudget: trip.dailyBudget,
     tripStartDate: trip.startDate,
     tripEndDate: trip.endDate,
     today: new Date(),
     cumulativeActualSpend: cumulativeSpend,
-  });
+  }), [trip.dailyBudget, trip.startDate, trip.endDate, cumulativeSpend]);
 
   const handleSave = async (expense: Expense) => {
     await saveExpense(expense);
@@ -112,7 +118,7 @@ export default function TripDetailScreen() {
         style={styles.body}
         contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
         showsVerticalScrollIndicator={false}
-        sections={groupByDaySplitAware(expenses)}
+        sections={sections}
         keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
         ListHeaderComponent={
           <>
@@ -320,7 +326,7 @@ const styles = StyleSheet.create({
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   fab: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 88, // fallback; inline style overrides with insets.bottom + 24
     right: spacing.xl,
     width: 64,
     height: 64,

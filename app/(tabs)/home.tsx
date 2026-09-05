@@ -318,7 +318,8 @@ export default function HomeScreen() {
             await saveExpense(expense);
             setFormOpen(false);
             setEditingExpense(null);
-            setExpenses(await loadExpenses());
+            // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
+            setExpenses((prev) => [expense, ...prev]);
           }}
           onDelete={async (expense) => {
             try {
@@ -326,7 +327,8 @@ export default function HomeScreen() {
               await deleteExpense(expense.id);
               setFormOpen(false);
               setEditingExpense(null);
-              setExpenses(await loadExpenses());
+              // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
+              setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
               Alert.alert('Delete failed', msg);

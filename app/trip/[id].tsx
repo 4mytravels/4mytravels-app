@@ -94,7 +94,8 @@ export default function TripDetailScreen() {
     await saveExpense(expense);
     setExpenseOpen(false);
     setEditingExpense(null);
-    await load();
+    // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
+    setExpenses((prev) => [expense, ...prev]);
   };
 
   return (
@@ -240,7 +241,8 @@ export default function TripDetailScreen() {
               await deleteExpense(expense.id);
               setExpenseOpen(false);
               setEditingExpense(null);
-              await load();
+              // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
+              setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
               Alert.alert('Delete failed', msg);

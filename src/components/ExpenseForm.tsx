@@ -202,13 +202,15 @@ export function ExpenseForm({
   // Track the on-screen keyboard height so the Save footer can sit ABOVE the
   // keyboard (instead of behind it) without shifting the whole sheet — this
   // avoids the KeyboardAvoidingView lag while keeping Save always tappable.
+  // Use keyboardWillShow (not DidShow) so the footer is already in place
+  // BEFORE the keyboard animation starts — otherwise the button appears ~300ms late.
   const [kbHeight, setKbHeight] = useState(0);
   useEffect(() => {
     const show = (e: { endCoordinates?: { height?: number } }) =>
       setKbHeight(e.endCoordinates?.height ?? 0);
     const hide = () => setKbHeight(0);
-    const subShow = Keyboard.addListener('keyboardDidShow', show as never);
-    const subHide = Keyboard.addListener('keyboardDidHide', hide as never);
+    const subShow = Keyboard.addListener('keyboardWillShow', show as never);
+    const subHide = Keyboard.addListener('keyboardWillHide', hide as never);
     return () => {
       subShow.remove();
       subHide.remove();

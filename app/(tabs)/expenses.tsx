@@ -130,7 +130,8 @@ export default function ExpensesScreen() {
     const { saveExpense } = await import('../../src/db/expenseRepo');
     await saveExpense(expense);
     setFormOpen(false);
-    await load();
+    // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
+    setExpenses((prev) => [expense, ...prev]);
   };
 
   return (
@@ -286,7 +287,8 @@ export default function ExpensesScreen() {
                 await deleteExpense(expense.id);
                 setFormOpen(false);
                 setEditingExpense(null);
-                await load();
+                // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
+                setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
                 Alert.alert('Delete failed', msg);

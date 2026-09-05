@@ -277,7 +277,8 @@ export function ExpenseForm({
   const homeAmount = rate != null ? amountNum * rate : null;
 
   const save = () => {
-    if (amountNum <= 0) return; // require a valid amount; rate can be absent
+    // Guard: reject Infinity, NaN, negative, and zero amounts
+    if (!Number.isFinite(amountNum) || amountNum <= 0) return;
     // Multi-day split only when the end date is a real later date.
     const split =
       endDate && endDate > date
@@ -331,7 +332,7 @@ export function ExpenseForm({
     onSave(expense);
   };
 
-  const canSave = amountNum > 0;
+  const canSave = Number.isFinite(amountNum) && amountNum > 0;
 
   return (
     <View style={styles.container}>

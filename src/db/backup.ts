@@ -75,7 +75,13 @@ export interface RestoreResult {
 }
 
 export async function restoreBackup(envelopeJson: string, passphrase: string): Promise<RestoreResult> {
-  const env = JSON.parse(envelopeJson) as BackupEnvelope;
+  if (!passphrase || passphrase.length < 8) throw new Error('Passphrase too short (min 8 chars)');
+  let env: BackupEnvelope;
+  try {
+    env = JSON.parse(envelopeJson) as BackupEnvelope;
+  } catch {
+    throw new Error('Invalid backup file: not valid JSON');
+  }
   if (env.kdf !== 'argon2id') throw new Error('Unsupported backup format');
   const salt = hexToBytes(env.salt);
   const nonce = hexToBytes(env.nonce);
@@ -87,9 +93,17 @@ export async function restoreBackup(envelopeJson: string, passphrase: string): P
   } catch {
     throw new Error('Decryption failed — wrong passphrase or corrupted backup');
   }
-  const manifest = JSON.parse(new TextDecoder().decode(plaintext));
+  let manifest: { schemaVersion?: number; trips?: Trip[]; expenses?: Expense[] };
+  try {
+    manifest = JSON.parse(new TextDecoder().decode(plaintext));
+  } catch {
+    throw new Error('Decryption failed — wrong passphrase or corrupted backup');
+  }
   if (manifest.schemaVersion !== BACKUP_FORMAT_VERSION) {
     throw new Error(`Unsupported backup schema v${manifest.schemaVersion}`);
   }
-  return { trips: manifest.trips ?? [], expenses: manifest.expenses ?? [] };
+  // Validate shape before returning
+  const trips = Array.isArray(manifest.trips) ? manifest.trips : [];
+  const expenses = Array.isArray(manifest.expenses) ? manifest.expenses : [];
+  return { trips, expenses };
 }

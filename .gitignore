@@ -103,3 +103,4 @@ coverage/
 .temp/
 .tmp/
 *.swp
+AGENTS.md

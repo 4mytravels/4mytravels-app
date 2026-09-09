@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,14 @@ export default function TripDetailScreen() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const insets = useSafeAreaInsets();
 
+  // Skip one focus event after an incremental delete/save to avoid a full
+  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
+  const skipNextFocusRef = useRef(false);
   const load = async () => {
+    if (skipNextFocusRef.current) {
+      skipNextFocusRef.current = false;
+      return;
+    }
     if (!id) return;
     setExpenses(await loadExpenses(id));
   };
@@ -100,6 +107,7 @@ export default function TripDetailScreen() {
     await saveExpense(expense);
     setExpenseOpen(false);
     setEditingExpense(null);
+    skipNextFocusRef.current = true;
     // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
     setExpenses((prev) => [expense, ...prev]);
   };
@@ -247,6 +255,7 @@ export default function TripDetailScreen() {
               await deleteExpense(expense.id);
               setExpenseOpen(false);
               setEditingExpense(null);
+              skipNextFocusRef.current = true;
               // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
               setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {

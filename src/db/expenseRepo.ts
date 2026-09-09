@@ -72,5 +72,12 @@ export async function deleteExpense(
   id: string,
   db: StorageAdapter = getStorageAdapter(),
 ): Promise<void> {
-  await db.exec('DELETE FROM expenses WHERE id = ?', [id]);
+  const t0 = Date.now();
+  try {
+    await db.exec('DELETE FROM expenses WHERE id = ?', [id]);
+    console.log(`[deleteExpense] SQL DELETE took ${Date.now() - t0}ms for id=${id}`);
+  } catch (e) {
+    console.error(`[deleteExpense] FAILED after ${Date.now() - t0}ms:`, e);
+    throw e;
+  }
 }

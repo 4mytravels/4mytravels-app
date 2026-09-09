@@ -51,8 +51,16 @@ export default function HomeScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
+  // Skip one focus event after an incremental delete/save to avoid a full
+  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
+  const skipNextFocusRef = useRef(false);
+
   // Reload on every focus so new expenses appear without an app restart.
   useFocusEffect(() => {
+    if (skipNextFocusRef.current) {
+      skipNextFocusRef.current = false;
+      return;
+    }
     let alive = true;
     (async () => {
       try {
@@ -252,6 +260,7 @@ export default function HomeScreen() {
             await saveExpense(expense);
             setFormOpen(false);
             setEditingExpense(null);
+            skipNextFocusRef.current = true;
             // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
             setExpenses((prev) => [expense, ...prev]);
           }}
@@ -261,6 +270,7 @@ export default function HomeScreen() {
               await deleteExpense(expense.id);
               setFormOpen(false);
               setEditingExpense(null);
+              skipNextFocusRef.current = true;
               // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
               setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {

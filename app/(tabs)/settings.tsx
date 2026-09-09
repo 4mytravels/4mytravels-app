@@ -131,12 +131,13 @@ export default function SettingsScreen() {
       // top-level `uri` no longer exists, which silently aborted imports.
       const doc = await DocumentPicker.getDocumentAsync({
         type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel', 'text/plain', '*/*'],
-        copyToCacheDirectory: true,
+        copyToCacheDirectory: false,
       });
       const picked = doc.canceled ? null : doc.assets?.[0];
       if (!picked || typeof picked.uri !== 'string') { setBusy(false); return; }
-      const file = new File(picked.uri);
-      const text = await file.text();
+      // Read via fetch to handle content:// URIs from cloud providers (Proton Drive).
+      // expo-file-system's File class doesn't work with all content:// URIs.
+      const text = await fetch(picked.uri).then(r => r.text());
       const rows = parseCsv(text);
       if (rows.length < 2) throw new Error('File appears to be empty.');
       const header = rows[0];
@@ -201,14 +202,13 @@ export default function SettingsScreen() {
     }
     setBusy(true);
     try {
-      const doc = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
+      const doc = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: false });
       const picked = doc.canceled ? null : doc.assets?.[0];
       if (!picked || typeof picked.uri !== 'string') {
         setBusy(false);
         return;
       }
-      const file = new File(picked.uri);
-      const envelope = await file.text();
+      const envelope = await fetch(picked.uri).then(r => r.text());
       const { trips, expenses } = await restoreBackup(envelope, passphrase);
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);
@@ -231,87 +231,97 @@ export default function SettingsScreen() {
         </View>
       </View>
       <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
-        <SectionTitle title="Data" />
-        <Card>
-          <Text style={styles.note}>
-            Local encrypted backup. The passphrase is the only key — if you lose it, the backup is unrecoverable.
-          </Text>
-          {nudge && (
-            <Text style={[styles.note, { color: colors.accent, marginBottom: spacing.md }]}>
-              It's been a while since your last backup — your trips exist only on this device.
+        <View style={styles.section}>
+          <SectionTitle title="Data" />
+          <Card>
+            <Text style={styles.note}>
+              Local encrypted backup. The passphrase is the only key — if you lose it, the backup is unrecoverable.
             </Text>
-          )}
-          <View style={styles.actions}>
-            <Button label="Create backup" icon="cloud-upload-outline" onPress={() => setMode('backup')} />
-            <View style={{ height: spacing.md }} />
-            <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={() => setMode('restore')} />
-          </View>
-        </Card>
-
-        <SectionTitle title="CSV export & import" />
-        <Card>
-          <View style={styles.actions}>
-            <Button label="Export expenses" icon="download-outline" onPress={() => setExportOpen(true)} />
-            <View style={{ height: spacing.md }} />
-            <Button label="Import from CSV" icon="cloud-download-outline" variant="ghost" onPress={() => setImportOpen(true)} />
-          </View>
-          <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
-            Export one trip as a single CSV, or every trip as separate files. Import supports
-            4MyTravels and TravelSpend exports.
-          </Text>
-        </Card>
-
-        <SectionTitle title="Preferences" />
-        <Card>
-          <View style={styles.rateRow}>
-            <Text style={styles.rateLabel}>Default home currency</Text>
-            <Pressable
-              style={styles.currencyPill}
-              onPress={() => setCurrencyPickerOpen(true)}
-            >
-              <Text style={styles.currencyPillText}>{defaultHomeCurrency}</Text>
-              <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
-            </Pressable>
-          </View>
-          <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
-            Used as the home currency for new trips. You can still change it per trip in the trip editor.
-          </Text>
-        </Card>
-
-        <SectionTitle title="Exchange rates" />
-        <Card>
-          <Pressable style={styles.linkRow} onPress={() => router.push({ pathname: '/settings/exchange-rates', params: { homeCurrency: defaultHomeCurrency } })}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.linkRowTitle}>Exchange rates</Text>
-              <Text style={styles.linkRowSub}>
-                {Object.keys(manualRates).length > 0
-                  ? `Latest ECB rates cached at startup · ${Object.keys(manualRates).length} custom rate(s) active`
-                  : 'Latest ECB rates, fetched when the app opens'}
+            {nudge && (
+              <Text style={[styles.note, { color: colors.accent, marginBottom: spacing.md }]}>
+                It's been a while since your last backup — your trips exist only on this device.
               </Text>
+            )}
+            <View style={styles.actions}>
+              <Button label="Create backup" icon="cloud-upload-outline" onPress={() => setMode('backup')} />
+              <View style={{ height: spacing.md }} />
+              <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={() => setMode('restore')} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
-          </Pressable>
-        </Card>
+          </Card>
+        </View>
 
-        <SectionTitle title="About" />
-        <Card>
-          <Text style={styles.note}>
-            4 My Travels — privacy-first travel spend tracker. Local-first, no account required. Client is open
-            source (GPL-3.0). © 2026.
-          </Text>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Version</Text>
-            <Text style={styles.aboutValue}>{Constants.expoConfig?.version ?? '1.0.0'}</Text>
-          </View>
-          <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(SOURCE_CODE_URL))}>
-            <Text style={styles.aboutLink}>Source code (GitHub)</Text>
-            <Ionicons name="open-outline" size={16} color={colors.primary} />
-          </Pressable>
-          <Pressable style={[styles.aboutRow, { marginBottom: 0 }]} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(ISSUES_URL))}>
-            <Text style={styles.aboutLink}>Report an issue</Text>
-            <Ionicons name="bug-outline" size={16} color={colors.primary} />
-          </Pressable>
-        </Card>
+        <View style={styles.section}>
+          <SectionTitle title="CSV export & import" />
+          <Card>
+            <View style={styles.actions}>
+              <Button label="Export expenses" icon="download-outline" onPress={() => setExportOpen(true)} />
+              <View style={{ height: spacing.md }} />
+              <Button label="Import from CSV" icon="cloud-download-outline" variant="ghost" onPress={() => setImportOpen(true)} />
+            </View>
+            <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
+              Export one trip as a single CSV, or every trip as separate files. Import supports
+              4MyTravels and TravelSpend exports.
+            </Text>
+          </Card>
+        </View>
+
+        <View style={styles.section}>
+          <SectionTitle title="Preferences" />
+          <Card>
+            <View style={styles.rateRow}>
+              <Text style={styles.rateLabel}>Default home currency</Text>
+              <Pressable
+                style={styles.currencyPill}
+                onPress={() => setCurrencyPickerOpen(true)}
+              >
+                <Text style={styles.currencyPillText}>{defaultHomeCurrency}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
+              </Pressable>
+            </View>
+            <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
+              Used as the home currency for new trips. You can still change it per trip in the trip editor.
+            </Text>
+          </Card>
+        </View>
+
+        <View style={styles.section}>
+          <SectionTitle title="Exchange rates" />
+          <Card>
+            <Pressable style={styles.linkRow} onPress={() => router.push({ pathname: '/settings/exchange-rates', params: { homeCurrency: defaultHomeCurrency } })}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.linkRowTitle}>Exchange rates</Text>
+                <Text style={styles.linkRowSub}>
+                  {Object.keys(manualRates).length > 0
+                    ? `Latest ECB rates cached at startup · ${Object.keys(manualRates).length} custom rate(s) active`
+                    : 'Latest ECB rates, fetched when the app opens'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+            </Pressable>
+          </Card>
+        </View>
+
+        <View style={styles.section}>
+          <SectionTitle title="About" />
+          <Card>
+            <Text style={styles.note}>
+              4 My Travels — privacy-first travel spend tracker. Local-first, no account required. Client is open
+              source (GPL-3.0). © 2026.
+            </Text>
+            <View style={styles.aboutRow}>
+              <Text style={styles.aboutLabel}>Version</Text>
+              <Text style={styles.aboutValue}>{Constants.expoConfig?.version ?? '1.0.0'}</Text>
+            </View>
+            <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(SOURCE_CODE_URL))}>
+              <Text style={styles.aboutLink}>Source code (GitHub)</Text>
+              <Ionicons name="open-outline" size={16} color={colors.primary} />
+            </Pressable>
+            <Pressable style={[styles.aboutRow, { marginBottom: 0 }]} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(ISSUES_URL))}>
+              <Text style={styles.aboutLink}>Report an issue</Text>
+              <Ionicons name="bug-outline" size={16} color={colors.primary} />
+            </Pressable>
+          </Card>
+        </View>
       </ScrollView>
 
       {/* Default home currency picker */}
@@ -468,8 +478,10 @@ const styles = StyleSheet.create({
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   body: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: 0 },
+  section: { marginBottom: spacing.lg },
   note: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, lineHeight: 22, marginBottom: spacing.lg },
   actions: { marginTop: spacing.sm },
+
   sheet: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing['2xl'], paddingTop: spacing.xl },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   sheetTitle: { color: colors.foreground, fontSize: fontSize['2xl'], fontWeight: '700', fontFamily: fontFamily.heading, flex: 1 },

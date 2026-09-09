@@ -53,7 +53,14 @@ export default function ExpensesScreen() {
   }, [selectedId, trips.length]);
 
   // Reload on focus AND when the selected trip changes.
+  // Skip one focus event after an incremental delete/save to avoid a full
+  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
+  const skipNextFocusRef = useRef(false);
   useFocusEffect(() => {
+    if (skipNextFocusRef.current) {
+      skipNextFocusRef.current = false;
+      return;
+    }
     let alive = true;
     (async () => {
       if (!selectedId) return;
@@ -142,6 +149,7 @@ export default function ExpensesScreen() {
     const { saveExpense } = await import('../../src/db/expenseRepo');
     await saveExpense(expense);
     setFormOpen(false);
+    skipNextFocusRef.current = true;
     // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
     setExpenses((prev) => [expense, ...prev]);
   };
@@ -184,6 +192,7 @@ export default function ExpensesScreen() {
 
       <SectionList
         ref={listRef}
+        style={{ flex: 1 }}
         sections={sections}
         keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
         onScrollToIndexFailed={onScrollToIndexFailed}
@@ -254,7 +263,7 @@ export default function ExpensesScreen() {
       {/* Trip picker modal */}
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
-          <View style={[styles.pickerSheet, { marginBottom: insets.bottom + 80 }]}>
+          <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
             <Text style={styles.pickerTitle}>Select trip</Text>
             <ScrollView style={{ maxHeight: 400 }}>
               {trips.map((t) => (
@@ -295,13 +304,18 @@ export default function ExpensesScreen() {
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={handleSave}
             onDelete={async (expense) => {
+              const t0 = Date.now();
               try {
+                console.log(`[delete] START id=${expense.id}`);
                 const { deleteExpense } = await import('../../src/db/expenseRepo');
+                console.log(`[delete] import took ${Date.now() - t0}ms`);
                 await deleteExpense(expense.id);
+                console.log(`[delete] DB delete took ${Date.now() - t0}ms`);
                 setFormOpen(false);
                 setEditingExpense(null);
-                // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
+                skipNextFocusRef.current = true;
                 setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
+                console.log(`[delete] UI update took ${Date.now() - t0}ms`);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
                 Alert.alert('Delete failed', msg);

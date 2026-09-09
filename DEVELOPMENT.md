@@ -1,34 +1,37 @@
-# 4MyTravels
+# 4MyTravels — Development Setup
 
-Privacy-first travel expense tracker. Open source (React Native + Expo, GPL-3.0).
-
-**Download:** get the APK from the [Releases](https://github.com/4mytravels/4mytravels/releases) section.
-
-## What it does
-
-Track spending on trips with automatic currency conversion. Everything stays on your device — encrypted local database, no account, no tracking, no ads.
-
-- Log expenses with amount, category, country, payment method, notes, receipt photos
-- Automatic FX conversion via Frankfurter (ECB rates), cached for offline use
-- Multi-day split for hotel bookings and other multi-night expenses
-- Trip budgets with daily pace tracking
-- Statistics: spend by category, country, and over time
-- Encrypted CSV export/import
-- Encrypted local backup/restore (Argon2 + XChaCha20-Poly1305)
-
-## Stack
-
-- React Native (Expo SDK 57) + TypeScript
-- Local encrypted database: `op-sqlite` + SQLCipher (Android)
-- State management: Zustand
-- Currency rates: Frankfurter API (keyless, ECB-sourced)
-- Package ID: `app.fourmytravels`
+This document is for developers who want to build and run the app locally.
 
 ## Requirements
 
 - Node.js 22.x
 - npm 10.x
-- A physical Android device or emulator with a custom dev client (op-sqlite is a native module — plain Expo Go won't work)
+- Expo CLI (`npx expo`)
+- EAS CLI (`npm install -g eas-cli`)
+- An Android device or emulator (op-sqlite is a native module — plain Expo Go won't work)
+
+## Getting started
+
+```bash
+npm install
+npx expo start
+```
+
+## Building for Android
+
+The app uses `op-sqlite` (SQLCipher) as a native module, so you need a custom dev client:
+
+```bash
+eas build --profile development --platform android
+```
+
+Install the resulting APK on your device, then:
+
+```bash
+npx expo start --tunnel
+```
+
+Scan the QR code with the dev client app (not Expo Go).
 
 ## Project structure
 
@@ -59,13 +62,3 @@ Track spending on trips with automatic currency conversion. Everything stays on 
 - **State:** Zustand holds UI state only; SQLite is the source of truth.
 - **Currency:** Every expense stores a rate snapshot at entry time. Later rate refreshes never change recorded amounts. Manual override available in Settings.
 - **Privacy:** No analytics SDKs. No Google Play Services. EXIF/GPS stripped from photos. Backup key is passphrase-based (Argon2) and portable across devices.
-
-## Contributing
-
-This is a solo-authored project. I'm not accepting external code pull requests at this time, but bug reports, feature requests, and issues are genuinely welcome — they help make the app better for everyone.
-
-## License
-
-Licensed under the [GNU General Public License v3.0](./LICENSE).
-
-Copyright (C) 2026 4MyTravels

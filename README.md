@@ -2,7 +2,7 @@
 
 Privacy-first travel expense tracker. Open source (React Native + Expo, GPL-3.0).
 
-**Download:** get the APK from the [Releases](https://github.com/4mytravels/4mytravels/releases) section.
+**Download:** get the APK from the [Releases](https://github.com/4mytravels/4mytravels-app/releases) section.
 
 ## What it does
 

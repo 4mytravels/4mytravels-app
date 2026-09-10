@@ -130,14 +130,20 @@ export default function ExpensesScreen() {
     return () => clearTimeout(timer);
   }, [todayIndex]);
 
-  // Daily average: total spend divided by days elapsed since trip start (min 1).
+  // Daily average: split-aware total for elapsed days / days elapsed (min 1).
+  // Multi-day split expenses only count their per-day share for elapsed days,
+  // not the full amount.
   const dailyAverage = useMemo(() => {
     const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
     const daysElapsed = Number.isNaN(startMs)
       ? 1
       : Math.max(1, Math.round((Date.now() - startMs) / 86_400_000));
-    return totalHome / daysElapsed;
-  }, [selectedTrip, totalHome]);
+    // Sum per-day shares for elapsed days only
+    const splitAwareTotal = sections
+      .filter((s) => s.day <= todayStr)
+      .reduce((sum, s) => sum + s.data.reduce((sSum, entry) => sSum + (entry.splitShare ?? toHomeCurrency(entry.expense)), 0), 0);
+    return splitAwareTotal / daysElapsed;
+  }, [selectedTrip, sections, todayStr]);
 
   // Show the "Today" jump button whenever a Today section exists and the user
   // might need to scroll to it (visible on past days, today, and future days).

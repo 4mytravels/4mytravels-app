@@ -31,14 +31,14 @@ export async function processPhoto(base64: string): Promise<Uint8Array> {
     let result = await ImageManipulator.manipulateAsync(
       `data:image/jpeg;base64,${base64}`,
       actions,
-      { compress: quality, format: ImageManipulator.SaveFormat.JPEG },
+      { compress: quality, format: ImageManipulator.SaveFormat.JPEG, base64: true },
     );
     while (approxBytes(result.base64 ?? '') > TARGET_BYTES && quality > 0.4) {
       quality -= 0.15;
       result = await ImageManipulator.manipulateAsync(
         `data:image/jpeg;base64,${base64}`,
         actions,
-        { compress: quality, format: ImageManipulator.SaveFormat.JPEG },
+        { compress: quality, format: ImageManipulator.SaveFormat.JPEG, base64: true },
       );
     }
     return base64ToBytes(result.base64 ?? '');

@@ -36,9 +36,9 @@ import {
   parseTravelSpendCsv,
 } from '../../src/services/csv';
 
-// Update these when the repo goes live.
-const SOURCE_CODE_URL = 'https://github.com/4mytravels/4mytravels';
-const ISSUES_URL = 'https://github.com/4mytravels/4mytravels/issues';
+// Repository links for Source code and Report an issue in Settings → About.
+const SOURCE_CODE_URL = 'https://github.com/4mytravels/4mytravels-app';
+const ISSUES_URL = 'https://github.com/4mytravels/4mytravels-app/issues';
 
 const CURRENCIES = SHARED_CURRENCIES;
 
@@ -150,7 +150,7 @@ export default function SettingsScreen() {
         items = res.items;
         skippedNote = res.skipped > 0 ? ` (${res.skipped} rows skipped)` : '';
       } else {
-        throw new Error('Unrecognized CSV format — expected a 4MyTravels or TravelSpend export.');
+        throw new Error('Unrecognized CSV format — expected a 4MyTravels or compatible travel expense export.');
       }
       let count = 0;
       for (const item of items) {
@@ -260,7 +260,7 @@ export default function SettingsScreen() {
             </View>
             <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
               Export one trip as a single CSV, or every trip as separate files. Import supports
-              4MyTravels and TravelSpend exports.
+              4MyTravels and other travel expense apps.
             </Text>
           </Card>
         </View>

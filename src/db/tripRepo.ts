@@ -33,7 +33,7 @@ function rowToTrip(r: Record<string, unknown>): Trip & { coverBytes?: Uint8Array
 
 export async function loadTrips(db: StorageAdapter = getStorageAdapter()): Promise<Trip[]> {
   const rows = await db.query<Record<string, unknown>>(
-    'SELECT * FROM trips ORDER BY start_date DESC',
+    'SELECT * FROM trips ORDER BY start_date ASC',
   );
   return rows.map(rowToTrip);
 }

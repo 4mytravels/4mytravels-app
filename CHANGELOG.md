@@ -32,6 +32,7 @@ Privacy-first travel expense tracker. Everything stays on your device — encryp
 
 ### Fixed
 - Corrected releases URL in README (was pointing to wrong repo)
+- Removed TravelSpend trademark references from UI (replaced with generic "other travel expense apps")
 - Trip selector position — no longer floats above the bottom of the screen
 - Adaptive icon — clean white logo with transparent background (Android 13+)
 - App icon — fixed corrupted icon file that caused build failures

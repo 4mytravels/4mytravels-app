@@ -244,7 +244,7 @@ export function parseTravelSpendCsv(rows: string[][], tripIdFallback: string): {
       currency,
       // Prefer the export's own conversionRate; fall back to amount/homeAmount.
       rateToHome: !Number.isNaN(rate) && rate > 0
-        ? rate
+        ? 1 / rate
         : !Number.isNaN(homeAmount) && amount > 0
           ? homeAmount / Math.abs(amount)
           : 1,

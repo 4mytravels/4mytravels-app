@@ -20,7 +20,12 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "splash": {
+        "backgroundColor": "#0A0A1A",
+        "image": "./assets/splash.png",
+        "resizeMode": "contain"
+      }
     },
     "web": {
       "bundler": "metro",

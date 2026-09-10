@@ -60,6 +60,8 @@ export default function TripDetailScreen() {
     );
   }
 
+  const sections = useMemo(() => groupByDaySplitAware(expenses), [expenses]);
+
   const cumulativeSpend = useMemo(() => expenses.reduce((sum, e) => sum + toHomeCurrency(e), 0), [expenses]);
 
   // Daily average = spent / elapsed days. Reference day: today, unless a later
@@ -77,8 +79,13 @@ export default function TripDetailScreen() {
       1,
       Math.round((referenceMs - (isNaN(tripStart.getTime()) ? referenceMs : tripStart.getTime())) / 86_400_000) + 1,
     );
-    return { dailyAverage: cumulativeSpend / days, daysActive: days };
-  }, [expenses, trip.startDate, cumulativeSpend]);
+    // Split-aware total: only count per-day shares for elapsed days
+    const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+    const splitAwareTotal = sections
+      .filter((s) => s.day <= todayStr)
+      .reduce((sum, s) => sum + s.data.reduce((sSum, entry) => sSum + (entry.splitShare ?? toHomeCurrency(entry.expense)), 0), 0);
+    return { dailyAverage: splitAwareTotal / days, daysActive: days };
+  }, [expenses, trip.startDate, sections]);
 
   const coverBytes = (trip as typeof trip & { coverBytes?: Uint8Array | null }).coverBytes;
   const dayHeaderPad = { paddingHorizontal: spacing.xl };
@@ -92,8 +99,6 @@ export default function TripDetailScreen() {
     }
     return 'data:image/jpeg;base64,' + btoa(bin);
   }, [coverBytes]);
-
-  const sections = useMemo(() => groupByDaySplitAware(expenses), [expenses]);
 
   const pace = useMemo(() => computePace({
     dailyBudget: trip.dailyBudget,

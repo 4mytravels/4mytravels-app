@@ -26,7 +26,10 @@ export interface PaceResult {
 export function computePace(input: PaceInput): PaceResult {
   const start = new Date(input.tripStartDate);
   const startMs = isNaN(start.getTime()) ? input.today.getTime() : start.getTime();
-  const daysElapsed = Math.max(0, Math.round((input.today.getTime() - startMs) / 86_400_000));
+  // Use end date for past trips, today for active trips
+  const endMs = input.tripEndDate ? new Date(input.tripEndDate).getTime() : NaN;
+  const referenceMs = !Number.isNaN(endMs) && endMs < input.today.getTime() ? endMs : input.today.getTime();
+  const daysElapsed = Math.max(0, Math.round((referenceMs - startMs) / 86_400_000));
   const expectedSpend = input.dailyBudget * daysElapsed;
   const status: PaceStatus = input.cumulativeActualSpend > expectedSpend ? 'over_budget' : 'on_track';
 

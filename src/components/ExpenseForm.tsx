@@ -337,7 +337,7 @@ export function ExpenseForm({
   return (
     <View style={styles.container}>
       <View style={styles.backdrop} />
-      <View style={styles.sheet}>
+      <View style={[styles.sheet, { marginBottom: kbHeight }]}>
         <View style={styles.handle} />
         <View style={styles.header}>
           <View style={{ flex: 1 }}>

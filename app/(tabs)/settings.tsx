@@ -135,9 +135,9 @@ export default function SettingsScreen() {
       });
       const picked = doc.canceled ? null : doc.assets?.[0];
       if (!picked || typeof picked.uri !== 'string') { setBusy(false); return; }
-      // Read via fetch to handle content:// URIs from cloud providers (Proton Drive).
-      // expo-file-system's File class doesn't work with all content:// URIs.
-      const text = await fetch(picked.uri).then(r => r.text());
+      // Read via expo-file-system to handle content:// URIs from cloud providers.
+      const file = new File(picked.uri);
+      const text = await file.text();
       const rows = parseCsv(text);
       if (rows.length < 2) throw new Error('File appears to be empty.');
       const header = rows[0];
@@ -208,7 +208,8 @@ export default function SettingsScreen() {
         setBusy(false);
         return;
       }
-      const envelope = await fetch(picked.uri).then(r => r.text());
+      const file = new File(picked.uri);
+      const envelope = await file.text();
       const { trips, expenses } = await restoreBackup(envelope, passphrase);
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);

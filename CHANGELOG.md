@@ -4,14 +4,17 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-- 
-
 ### Fixed
-- 
+- Image loading: processPhoto now correctly returns base64 data (was empty Uint8Array causing black images)
+- CSV import: invert conversionRate (1/rate) for correct EUR conversion from TravelSpend exports
+- Daily average: use split-aware totals (per-day shares) instead of full expense amounts
+- Trip ordering: ORDER BY start_date ASC (was DESC, now chronological)
+- Trip detail daily avg: use split-aware totals from sections
 
 ### Changed
-- 
+- Adaptive icon: white 4MT logo with transparent background
+- App icon: proper PNG format (was JPEG with .png extension)
+- Splash screen: dark background with centered 4MT logo
 
 ---
 

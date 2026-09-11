@@ -131,13 +131,16 @@ export default function ExpensesScreen() {
   }, [todayIndex]);
 
   // Daily average: split-aware total for elapsed days / days elapsed (min 1).
-  // Multi-day split expenses only count their per-day share for elapsed days,
-  // not the full amount.
+  // For past trips, use the trip end date as reference (not today).
   const dailyAverage = useMemo(() => {
     const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
+    const endMs = selectedTrip?.endDate ? new Date(`${selectedTrip.endDate}T12:00:00`).getTime() : NaN;
+    const todayMs = Date.now();
+    // Use end date for past trips, today for active trips
+    const referenceMs = !Number.isNaN(endMs) && endMs < todayMs ? endMs : todayMs;
     const daysElapsed = Number.isNaN(startMs)
       ? 1
-      : Math.max(1, Math.round((Date.now() - startMs) / 86_400_000));
+      : Math.max(1, Math.round((referenceMs - startMs) / 86_400_000));
     // Sum per-day shares for elapsed days only
     const splitAwareTotal = sections
       .filter((s) => s.day <= todayStr)
@@ -200,7 +203,7 @@ export default function ExpensesScreen() {
         ref={listRef}
         style={{ flex: 1 }}
         sections={sections}
-        keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
+        keyExtractor={(entry, index) => `${entry.expense.id}@${entry.day}@${index}`}
         onScrollToIndexFailed={onScrollToIndexFailed}
         renderSectionHeader={({ section }) => (
           <View style={styles.dayHeader}>

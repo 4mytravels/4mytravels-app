@@ -351,7 +351,7 @@ export function ExpenseForm({
           )}
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           {/* Amount + currency */}
           <View style={styles.section}>
             <View style={styles.labelRow}>

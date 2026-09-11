@@ -10,6 +10,8 @@ All notable changes to 4MyTravels will be documented in this file.
 - Daily average: use split-aware totals (per-day shares) instead of full expense amounts
 - Trip ordering: ORDER BY start_date ASC (was DESC, now chronological)
 - Trip detail daily avg: use split-aware totals from sections
+- Import content URI: use expo-file-system File class instead of fetch (fixes "unknown protocol: content" error)
+- Save button: add marginBottom to sheet so it sits above keyboard on Android
 
 ### Changed
 - Adaptive icon: white 4MT logo with transparent background

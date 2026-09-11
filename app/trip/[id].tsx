@@ -73,7 +73,11 @@ export default function TripDetailScreen() {
       return Number.isNaN(t) ? max : Math.max(max, t);
     }, 0);
     const todayStart = new Date(); todayStart.setHours(12, 0, 0, 0);
-    const referenceMs = Math.max(todayStart.getTime(), lastExpenseDay || 0);
+    const endMs = trip.endDate ? new Date(`${trip.endDate}T12:00:00`).getTime() : NaN;
+    // Use end date for past trips, today for active trips
+    const referenceMs = !Number.isNaN(endMs) && endMs < todayStart.getTime()
+      ? endMs
+      : Math.max(todayStart.getTime(), lastExpenseDay || 0);
     const tripStart = new Date(`${trip.startDate}T12:00:00`);
     const days = Math.max(
       1,
@@ -85,7 +89,7 @@ export default function TripDetailScreen() {
       .filter((s) => s.day <= todayStr)
       .reduce((sum, s) => sum + s.data.reduce((sSum, entry) => sSum + (entry.splitShare ?? toHomeCurrency(entry.expense)), 0), 0);
     return { dailyAverage: splitAwareTotal / days, daysActive: days };
-  }, [expenses, trip.startDate, sections]);
+  }, [expenses, trip.startDate, trip.endDate, sections]);
 
   const coverBytes = (trip as typeof trip & { coverBytes?: Uint8Array | null }).coverBytes;
   const dayHeaderPad = { paddingHorizontal: spacing.xl };
@@ -132,7 +136,7 @@ export default function TripDetailScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
         showsVerticalScrollIndicator={false}
         sections={sections}
-        keyExtractor={(entry) => `${entry.expense.id}@${entry.day}`}
+        keyExtractor={(entry, index) => `${entry.expense.id}@${entry.day}@${index}`}
         ListHeaderComponent={
           <>
             {/* Cover photo — full width hero when the trip has one */}

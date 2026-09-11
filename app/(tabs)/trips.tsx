@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -89,6 +90,19 @@ export default function TripsScreen() {
     );
   }
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    const map: Record<string, number> = {};
+    for (const t of trips) {
+      const exps = await loadExpenses(t.id);
+      map[t.id] = exps.reduce((s, e) => s + toHomeCurrency(e), 0);
+    }
+    setSpentByTrip(map);
+    setRefreshing(false);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -96,6 +110,9 @@ export default function TripsScreen() {
         data={visible}
         keyExtractor={(t) => t.id}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         ListHeaderComponent={
           <>
             <View style={styles.titleRow}>

@@ -25,6 +25,7 @@ export const colors = {
   destructiveForeground: '#0A0A1A',
 
   border: 'rgba(255,255,255,0.10)', // oklch(1 0 0 / 10%)
+  borderStrong: 'rgba(255,255,255,0.12)',
   input: 'rgba(255,255,255,0.15)', // oklch(1 0 0 / 15%)
   ring: '#6366F1',
 
@@ -40,6 +41,27 @@ export const colors = {
   chart3: '#FE9A00',
   chart4: '#AD46FF',
   chart5: '#FF2056',
+
+  // surface opacities (refined design — white overlays for depth)
+  surfaceSoft: 'rgba(255,255,255,0.04)',
+  surfaceMedium: 'rgba(255,255,255,0.06)',
+  surfaceStrong: 'rgba(255,255,255,0.08)',
+
+  // primary tints (selected states, not solid)
+  primary12: 'rgba(99,102,241,0.12)',
+  primary20: 'rgba(99,102,241,0.20)',
+  primary28: 'rgba(99,102,241,0.28)',
+  primaryBorder: 'rgba(99,102,241,0.44)',
+
+  // success tint
+  success15: 'rgba(53,211,153,0.15)',
+
+  // nav
+  navSurface: 'rgba(20,20,50,0.85)',
+
+  // blacks
+  black20: 'rgba(0,0,0,0.20)',
+  black48: 'rgba(0,0,0,0.48)',
 } as const;
 
 export const radius = {
@@ -79,5 +101,38 @@ export const fontSize = {
   '4xl': 28,
   '5xl': 32,
 } as const;
+
+// Shadow tokens (refined design)
+export const fabShadow = {
+  shadowColor: '#6366F1',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.40,
+  shadowRadius: 16,
+  elevation: 10,
+};
+
+export const navShadow = {
+  shadowColor: '#000000',
+  shadowOffset: { width: 0, height: 12 },
+  shadowOpacity: 0.48,
+  shadowRadius: 36,
+  elevation: 14,
+};
+
+export const cardShadow = {
+  shadowColor: '#000000',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.18,
+  shadowRadius: 30,
+  elevation: 5,
+};
+
+export const focusShadow = {
+  shadowColor: '#6366F1',
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0.20,
+  shadowRadius: 3,
+  elevation: 0,
+};
 
 export type ThemeColors = typeof colors;

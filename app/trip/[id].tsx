@@ -127,13 +127,44 @@ export default function TripDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.back}>
           <Ionicons name="chevron-back" size={24} color={colors.foreground} />
         </Pressable>
-        <Text style={styles.headerTitle}>{trip.name}</Text>
-        <View style={{ width: 24 }} />
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{trip.name}</Text>
+        </View>
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerAction}
+            onPress={() => router.push({ pathname: '/trips/new', params: { editId: trip.id } })}
+          >
+            <Ionicons name="pencil-outline" size={20} color={colors.mutedForeground} />
+          </Pressable>
+          <Pressable style={styles.headerAction} onPress={() => {
+            Alert.alert('Delete trip', `Delete "${trip.name}" and all its expenses?`, [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                  const { deleteTrip: deleteTripDb } = await import('../../src/db/tripRepo');
+                  const removeTripStore = useTripStore.getState().removeTrip;
+                  removeTripStore(trip.id);
+                  try {
+                    await deleteTripDb(trip.id);
+                    router.back();
+                  } catch (e) {
+                    Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+                  }
+                },
+              },
+            ]);
+          }}>
+            <Ionicons name="trash-outline" size={20} color={colors.destructive} />
+          </Pressable>
+        </View>
       </View>
 
       <SectionList
         style={styles.body}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
         sections={sections}
         keyExtractor={(entry, index) => `${entry.expense.id}@${entry.day}@${index}`}
@@ -143,31 +174,33 @@ export default function TripDetailScreen() {
             {coverUri && (
               <Image source={{ uri: coverUri }} style={styles.coverHero} resizeMode="cover" />
             )}
+            {/* Trip date range */}
+            <View style={styles.dateRangeBar}>
+              <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
+              <Text style={styles.dateRangeText}>
+                {trip.startDate} — {trip.endDate || 'open'}
+              </Text>
+            </View>
+
             <Card>
               <View style={styles.statRow}>
                 <StatBox
                   label="Daily avg / budget"
                   value={`${formatMoney(dailyAverage, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget, trip.homeCurrency)}`}
                 />
-                <StatBox label="Total spend" value={formatMoney(cumulativeSpend, trip.homeCurrency)} />
-              </View>
-              <View style={styles.statRow}>
-                <StatBox label="Days" value={String(daysActive)} />
-                <StatBox
-                  label="Expected total"
-                  value={pace.projectedTotalBudget ? formatMoney(pace.projectedTotalBudget, trip.homeCurrency) : '—'}
-                />
+                <StatBox label="Total spend / budget" value={`${formatMoney(cumulativeSpend, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget * daysActive, trip.homeCurrency)}`} />
               </View>
               <View style={styles.progressTrack}>
                 <View
                   style={[
                     styles.progressFill,
-                    { width: `${Math.min(1, cumulativeSpend / (pace.projectedTotalBudget || 1)) * 100}%` },
+                    { width: `${Math.min(1, cumulativeSpend / Math.max(1, trip.dailyBudget * daysActive)) * 100}%` },
                   ]}
                 />
               </View>
               <Text style={styles.paceText}>
                 {pace.status === 'over_budget' ? 'Over budget' : 'On track'} · Day {pace.daysElapsed}
+                {pace.projectedTotalBudget ? ` of ${Math.round(pace.projectedTotalBudget / trip.dailyBudget)}` : ''}
               </Text>
             </Card>
 
@@ -247,7 +280,7 @@ export default function TripDetailScreen() {
       />
 
       {/* FAB */}
-      <Pressable style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setExpenseOpen(true)}>
+      <Pressable style={[styles.fab, { bottom: insets.bottom + 94 }]} onPress={() => setExpenseOpen(true)}>
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
 
@@ -290,6 +323,11 @@ const styles = StyleSheet.create({
   },
   back: { padding: spacing.xs },
   headerTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, flex: 1, textAlign: 'center' },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+  },
   body: { flex: 1, paddingHorizontal: spacing.xl },
   coverHero: {
     width: '100%',
@@ -301,7 +339,8 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   progressTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
-  paceText: { color: colors.mutedForeground, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans },
+  paceText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  dateRangeBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: spacing.sm, marginBottom: spacing.md },
   sectionHead: { marginTop: spacing.xl },
   placeholder: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.sm },
   dayHeader: {
@@ -344,7 +383,7 @@ const styles = StyleSheet.create({
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   fab: {
     position: 'absolute',
-    bottom: 88, // fallback; inline style overrides with insets.bottom + 24
+    bottom: 118, // fallback; inline style overrides with insets.bottom + 94
     right: spacing.xl,
     width: 64,
     height: 64,
@@ -359,4 +398,19 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing['3xl'] },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerAction: {
+    padding: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMedium,
+  },
+  dateRangeText: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.sans,
+  },
 });

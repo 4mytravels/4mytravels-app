@@ -515,16 +515,18 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  container: { flex: 1, backgroundColor: colors.background },
   sheet: {
     backgroundColor: colors.background,
     borderTopLeftRadius: radius['3xl'],
     borderTopRightRadius: radius['3xl'],
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     flex: 1,
     paddingHorizontal: spacing['2xl'],
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
-    marginTop: 40,
+    marginTop: 0,
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },

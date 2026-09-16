@@ -10,7 +10,7 @@ import {
   Image,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useNavigation, useRouter } from 'expo-router';
@@ -21,6 +21,7 @@ import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/t
 import { Card, Button, StatBox } from '../../src/components/ui';
 import { computePace } from '../../src/utils/pace';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
+import { bytesToDataUri } from '../../src/utils/image';
 import type { Trip, TripStatus } from '../../src/types';
 
 const FILTERS: Array<'All' | TripStatus> = ['All', 'active', 'upcoming', 'past'];
@@ -28,6 +29,7 @@ const FILTERS: Array<'All' | TripStatus> = ['All', 'active', 'upcoming', 'past']
 export default function TripsScreen() {
   const router = useRouter();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
   const updateTripStore = useTripStore((s) => s.updateTrip);
   const removeTripStore = useTripStore((s) => s.removeTrip);
@@ -109,7 +111,7 @@ export default function TripsScreen() {
       <FlatList
         data={visible}
         keyExtractor={(t) => t.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 80 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -131,7 +133,7 @@ export default function TripsScreen() {
               {FILTERS.map((f) => {
                 const active = filter === f;
                 return (
-                  <Pressable key={f} onPress={() => setFilter(f)} style={[styles.tab, active && { backgroundColor: colors.primary }]}>
+                  <Pressable key={f} onPress={() => setFilter(f)} style={[styles.tab, active && styles.tabActive]}>
                     <Text style={[styles.tabText, active && { color: colors.primaryForeground, fontWeight: '600' }]}>
                       {f.charAt(0).toUpperCase() + f.slice(1)}
                     </Text>
@@ -157,25 +159,18 @@ export default function TripsScreen() {
 }
 
 function Header() {
+  const router = useRouter();
   return (
     <View style={styles.header}>
       <View style={[styles.logoRow, { gap: 12 }]}>
         <AppLogo size={36} />
         <Text style={styles.appTitle}>4 My Travels</Text>
       </View>
+      <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
+        <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
+      </Pressable>
     </View>
   );
-}
-
-// BLOB → data-URI for <Image source> (cover photos live encrypted in the DB).
-// O(n) base64: Uint8Array → binary string in 64KB chunks (avoids O(n²) string concat)
-function bytesToDataUri(bytes: Uint8Array): string {
-  const CHUNK = 64 * 1024;
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return 'data:image/jpeg;base64,' + btoa(bin);
 }
 
 function TripCard({
@@ -244,12 +239,9 @@ function TripCard({
             label="Daily avg / budget"
             value={`${formatMoney(trip.dailyBudget > 0 ? spent / Math.max(1, pace.daysElapsed) : 0, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget, trip.homeCurrency)}`}
           />
-          <StatBox label="Total spend" value={formatMoney(spent, trip.homeCurrency)} />
+          <StatBox label="Total spend / budget" value={`${formatMoney(spent, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget * pace.daysElapsed, trip.homeCurrency)}`} />
         </View>
 
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${pct * 100}%` }]} />
-        </View>
         <View style={styles.progressFooter}>
           <View style={styles.trackStatus}>
             <Ionicons
@@ -264,7 +256,6 @@ function TripCard({
           <Text style={styles.progressText}>
             Day {pace.daysElapsed}
             {pace.projectedTotalBudget ? ` of ${Math.round(pace.projectedTotalBudget / trip.dailyBudget)}` : ''}
-            {' · '}expected {formatMoney(pace.expectedSpend, trip.homeCurrency)}
           </Text>
         </View>
       </Card>
@@ -276,16 +267,45 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  settingsIcon: {
+    padding: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMedium,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  list: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
+  list: { paddingHorizontal: spacing.xl, paddingBottom: 106 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },
   newButtonText: { color: colors.primaryForeground, fontWeight: '600', fontFamily: fontFamily.sans },
   tabsScroll: { marginBottom: spacing.lg },
   tabs: { gap: spacing.sm, paddingRight: spacing.lg },
-  tab: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.05)' },
+  tab: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    position: 'relative',
+  },
   tabText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '500', fontFamily: fontFamily.sans },
+  tabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: -2,
+    left: '50%',
+    transform: [{ translateX: -12 }],
+    width: 24,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
   cardWrap: { marginBottom: spacing.lg },
   cardHeader: { marginBottom: spacing.md },
   iconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)', justifyContent: 'center', alignItems: 'center', marginRight: spacing.md },
@@ -298,8 +318,6 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   metaText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  progressTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
   progressFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm },
   trackStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   trackText: { fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans },

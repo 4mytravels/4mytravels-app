@@ -21,17 +21,17 @@ export type ExpenseCategory =
 export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   'Food',
   'Transport',
-  'Accommodation',
   'Groceries',
-  'Shopping',
   'Activities',
-  'Drinks',
   'Coffee',
+  'Drinks',
+  'Shopping',
   'Flights',
   'General',
   'Laundry',
   'Gym',
   'Work',
+  'Accommodation',
 ];
 
 // Either ISO date (YYYY-MM-DD), or ISO datetime with offset. Timezone-aware.

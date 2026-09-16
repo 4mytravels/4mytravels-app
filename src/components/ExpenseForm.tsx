@@ -11,13 +11,14 @@ import {
   ScrollView,
   StyleSheet,
   Platform,
-  Keyboard,
   Image,
   Modal,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { processPhoto } from '../utils/image';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../data/countries';
 import { CURRENCIES as SHARED_CURRENCIES, currencyInfo } from '../data/currencies';
@@ -199,24 +200,6 @@ export function ExpenseForm({
   const [rate, setRate] = useState<number | null>(initialExpense ? initialExpense.rateToHome : null);
   const [rateError, setRateError] = useState<string | null>(null);
 
-  // Track the on-screen keyboard height so the Save footer can sit ABOVE the
-  // keyboard (instead of behind it) without shifting the whole sheet — this
-  // avoids the KeyboardAvoidingView lag while keeping Save always tappable.
-  // Use keyboardWillShow (not DidShow) so the footer is already in place
-  // BEFORE the keyboard animation starts — otherwise the button appears ~300ms late.
-  const [kbHeight, setKbHeight] = useState(0);
-  useEffect(() => {
-    const show = (e: { endCoordinates?: { height?: number } }) =>
-      setKbHeight(e.endCoordinates?.height ?? 0);
-    const hide = () => setKbHeight(0);
-    const subShow = Keyboard.addListener('keyboardWillShow', show as never);
-    const subHide = Keyboard.addListener('keyboardWillHide', hide as never);
-    return () => {
-      subShow.remove();
-      subHide.remove();
-    };
-  }, []);
-
   // Rate resolution order (instant-only at open, per user request):
   //   1. Manual override (Settings) — exact, no waiting.
   //   2. Cached ECB rates (app_settings) — instant local read, source of truth.
@@ -335,9 +318,9 @@ export function ExpenseForm({
   const canSave = Number.isFinite(amountNum) && amountNum > 0;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.backdrop} />
-      <View style={[styles.sheet, { marginBottom: kbHeight }]}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <View style={styles.sheet}>
         <View style={styles.handle} />
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
@@ -378,47 +361,52 @@ export function ExpenseForm({
             {/* Currency selection modal — same shared list as New Trip */}
             <Modal visible={showCurrencies} transparent animationType="fade" onRequestClose={() => setShowCurrencies(false)}>
               <Pressable style={styles.pickerBackdrop} onPress={() => setShowCurrencies(false)}>
-                <Pressable style={styles.pickerSheet} onPress={() => {}}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-                    <Text style={styles.pickerTitle}>Select currency</Text>
-                    <Pressable onPress={() => setShowCurrencies(false)}>
-                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
-                    </Pressable>
-                  </View>
-                  <TextInput
-                    style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
-                    value={currencyQuery}
-                    onChangeText={setCurrencyQuery}
-                    placeholder="Search currency"
-                    placeholderTextColor={colors.mutedForeground}
-                    autoCapitalize="none"
-                  />
-                  <ScrollView style={{ maxHeight: 380 }}>
-                    {SHARED_CURRENCIES.filter(
-                      (c) =>
-                        c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
-                        c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
-                    ).map((c) => {
-                      const active = currency === c.code;
-                      return (
-                        <Pressable
-                          key={c.code}
-                          style={[styles.pickerRow, active && styles.pickerRowActive]}
-                          onPress={() => {
-                            setCurrency(c.code);
-                            setShowCurrencies(false);
-                            setCurrencyQuery('');
-                          }}
-                        >
-                          <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
-                            {c.flag} {c.code} — {c.name}
-                          </Text>
-                          {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </Pressable>
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                  style={styles.pickerKeyboardWrap}
+                >
+                  <Pressable style={styles.pickerSheet} onPress={() => {}}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+                      <Text style={styles.pickerTitle}>Select currency</Text>
+                      <Pressable onPress={() => setShowCurrencies(false)}>
+                        <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
+                      </Pressable>
+                    </View>
+                    <TextInput
+                      style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
+                      value={currencyQuery}
+                      onChangeText={setCurrencyQuery}
+                      placeholder="Search currency"
+                      placeholderTextColor={colors.mutedForeground}
+                      autoCapitalize="none"
+                    />
+                    <ScrollView style={{ maxHeight: 380 }}>
+                      {SHARED_CURRENCIES.filter(
+                        (c) =>
+                          c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
+                          c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
+                      ).map((c) => {
+                        const active = currency === c.code;
+                        return (
+                          <Pressable
+                            key={c.code}
+                            style={[styles.pickerRow, active && styles.pickerRowActive]}
+                            onPress={() => {
+                              setCurrency(c.code);
+                              setShowCurrencies(false);
+                              setCurrencyQuery('');
+                            }}
+                          >
+                            <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
+                              {c.flag} {c.code} — {c.name}
+                            </Text>
+                            {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </Pressable>
+                </KeyboardAvoidingView>
               </Pressable>
             </Modal>
             {/* rate line */}
@@ -632,7 +620,7 @@ export function ExpenseForm({
           </View>
         </ScrollView>
 
-        <View style={[styles.footer, kbHeight > 0 && { paddingBottom: kbHeight + spacing.lg }]}>
+        <View style={styles.footer}>
           <Button label={isEdit ? 'Save changes' : 'Save expense'} disabled={!canSave} onPress={save} />
           {isEdit && onDelete && initialExpense && !showCurrencies && !countryOpen && (
             <View style={{ marginTop: spacing.md }}>
@@ -690,50 +678,56 @@ export function ExpenseForm({
       {/* Country picker modal — same offline UN list as trip creation */}
       <Modal visible={countryOpen} transparent animationType="fade" onRequestClose={() => setCountryOpen(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setCountryOpen(false)}>
-          <Pressable style={styles.pickerSheet} onPress={() => {}}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-              <Text style={styles.pickerTitle}>Select a country</Text>
-              <Pressable onPress={() => setCountryOpen(false)}>
-                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
-              </Pressable>
-            </View>
-            <TextInput
-              style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
-              value={countryQuery}
-              onChangeText={setCountryQuery}
-              placeholder="Search country"
-              placeholderTextColor={colors.mutedForeground}
-              autoCapitalize="none"
-            />
-            <ScrollView style={{ maxHeight: 380 }}>
-              {UN_COUNTRIES.filter(
-                (c) =>
-                  c.name.toLowerCase().includes(countryQuery.toLowerCase()) ||
-                  c.code.toLowerCase().includes(countryQuery.toLowerCase()),
-              ).map((c) => {
-                const active = country.toUpperCase() === c.code;
-                return (
-                  <Pressable
-                    key={c.code}
-                    style={[styles.pickerRow, active && styles.pickerRowActive]}
-                    onPress={() => {
-                      setCountry(c.code);
-                      setCountryOpen(false);
-                      setCountryQuery('');
-                    }}
-                  >
-                    <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
-                      {flagEmoji(c.code)} {c.name}
-                    </Text>
-                    {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Pressable>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.pickerKeyboardWrap}
+          >
+            <Pressable style={styles.pickerSheet} onPress={() => {}}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+                <Text style={styles.pickerTitle}>Select a country</Text>
+                <Pressable onPress={() => setCountryOpen(false)}>
+                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
+                value={countryQuery}
+                onChangeText={setCountryQuery}
+                placeholder="Search country"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+              />
+              <ScrollView style={{ maxHeight: 380 }}>
+                {UN_COUNTRIES.filter(
+                  (c) =>
+                    c.name.toLowerCase().includes(countryQuery.toLowerCase()) ||
+                    c.code.toLowerCase().includes(countryQuery.toLowerCase()),
+                ).map((c) => {
+                  const active = country.toUpperCase() === c.code;
+                  return (
+                    <Pressable
+                      key={c.code}
+                      style={[styles.pickerRow, active && styles.pickerRowActive]}
+                      onPress={() => {
+                        setCountry(c.code);
+                        setCountryOpen(false);
+                        setCountryQuery('');
+                      }}
+                    >
+                      <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
+                        {flagEmoji(c.code)} {c.name}
+                      </Text>
+                      {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -744,11 +738,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: radius['3xl'],
     borderTopRightRadius: radius['3xl'],
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     flex: 1,
     paddingHorizontal: spacing['2xl'],
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
-    marginTop: 40,
+    marginTop: 0,
   },
   handle: {
     width: 40,
@@ -900,6 +896,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius['3xl'],
     borderTopRightRadius: radius['3xl'],
     padding: spacing.xl,
+  },
+  pickerKeyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   pickerTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, marginBottom: spacing.md },
   pickerRow: {

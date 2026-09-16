@@ -5,6 +5,10 @@ module.exports = ({ config }) => {
   
   return {
     ...config,
+    plugins: [
+      ...(config.plugins || []),
+      "expo-build-properties",
+    ],
     android: {
       ...config.android,
       package: isDev ? 'app.fourmytravels.dev' : 'app.fourmytravels',

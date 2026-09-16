@@ -12,31 +12,62 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { loadExpenses } from '../../src/db/expenseRepo';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
 import { IconCircle, categoryIcons, Button, StatBox } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { EXPENSE_CATEGORIES } from '../../src/types';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
 
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function shortDateRange(start: string, end: string): string {
+  const s = start.slice(0, 10);
+  const e = end.slice(0, 10);
+  const startDate = new Date(`${s}T12:00:00Z`);
+  const endDate = new Date(`${e}T12:00:00Z`);
+  const sDay = startDate.getUTCDate();
+  const eDay = endDate.getUTCDate();
+  if (startDate.getUTCMonth() === endDate.getUTCMonth()) {
+    return `${sDay}–${eDay} ${MONTHS_SHORT[startDate.getUTCMonth()]}`;
+  }
+  return `${sDay} ${MONTHS_SHORT[startDate.getUTCMonth()]}–${eDay} ${MONTHS_SHORT[endDate.getUTCMonth()]}`;
+}
+
 export default function ExpensesScreen() {
   const params = useLocalSearchParams<{ tripId?: string; add?: string }>();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const trips = useTripStore((s) => s.trips);
+  // Default to the active trip (started, not ended) — most recent first.
+  // Falls back to the most recent trip by startDate.
+  const defaultTrip = useMemo(() => {
+    const now = new Date();
+    const active = trips
+      .filter((t) => {
+        const start = new Date(`${t.startDate}T12:00:00`);
+        const ended = t.endDate ? new Date(`${t.endDate}T12:00:00`) < now : false;
+        return !isNaN(start.getTime()) && start <= now && !ended;
+      })
+      .sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
+    return active ?? [...trips].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
+  }, [trips]);
+
   // Exactly one trip is always selected; default to the param (deep link / FAB)
-  // or the most recent trip.
+  // or the active/most recent trip.
   const [selectedId, setSelectedId] = useState<string | null>(
-    params.tripId ?? trips[0]?.id ?? null,
+    params.tripId ?? defaultTrip?.id ?? null,
   );
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [homeCurrency, setHomeCurrency] = useState('EUR');
   const [catFilter, setCatFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(params.add === '1');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -44,8 +75,8 @@ export default function ExpensesScreen() {
   const selectedTrip = trips.find((t) => t.id === selectedId);
 
   useEffect(() => {
-    if (!selectedId && trips.length > 0) setSelectedId(trips[0].id);
-  }, [trips, selectedId]);
+    if (!selectedId && defaultTrip) setSelectedId(defaultTrip.id);
+  }, [trips, selectedId, defaultTrip]);
 
   useEffect(() => {
     setHomeCurrency(selectedTrip?.homeCurrency ?? 'EUR');
@@ -148,11 +179,9 @@ export default function ExpensesScreen() {
     return splitAwareTotal / daysElapsed;
   }, [selectedTrip, sections, todayStr]);
 
-  // Show the "Today" jump button whenever a Today section exists and the user
-  // might need to scroll to it (visible on past days, today, and future days).
-  const hasOlderSection = sections.some((s) => s.day < todayStr);
   const hasTodaySection = todayIndex >= 0;
-  const showTodayJump = hasTodaySection || hasOlderSection;
+  const isAtToday = todayIndex === 0 && sections.length > 0 && sections[0].day === todayStr;
+  const showTodayJump = hasTodaySection && !isAtToday;
 
   const handleSave = async (expense: Expense) => {
     const { saveExpense } = await import('../../src/db/expenseRepo');
@@ -163,32 +192,36 @@ export default function ExpensesScreen() {
     setExpenses((prev) => [expense, ...prev]);
   };
 
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
-        <Pressable style={styles.addButton} onPress={() => setFormOpen(true)}>
-          <Ionicons name="add" size={22} color={colors.primaryForeground} />
-          <Text style={styles.addButtonText}>Add</Text>
+        <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
+          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
         </Pressable>
       </View>
 
-      {/* Trip selector — always exactly one trip selected */}
+      {/* Title row with add + search actions */}
       <View style={styles.titleRow}>
         <Text style={styles.screenTitle}>Expenses</Text>
+        <View style={styles.titleActions}>
+          {!searchOpen && (
+            <Pressable onPress={() => setSearchOpen(true)} style={styles.iconButtonLarge}>
+              <Ionicons name="search-outline" size={28} color={colors.mutedForeground} />
+            </Pressable>
+          )}
+          <Pressable style={styles.iconButtonLarge} onPress={() => setPickerOpen(true)}>
+            <Ionicons name="airplane-outline" size={26} color={colors.primary} />
+          </Pressable>
+        </View>
       </View>
-      <Pressable style={[styles.tripSelector, { marginBottom: spacing.sm }]} onPress={() => setPickerOpen(true)}>
-        <Ionicons name="airplane" size={16} color={colors.primary} />
-        <Text style={styles.tripSelectorText} numberOfLines={1}>
-          {selectedTrip ? selectedTrip.name : trips.length === 0 ? 'No trips yet' : 'Select a trip'}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
-      </Pressable>
 
-      {/* Budget stats for the selected trip (mirrors trip-detail numbers) */}
+      {/* Stats: daily avg + total trip */}
       {selectedTrip && (
         <View style={styles.statsRow}>
           <StatBox
@@ -198,6 +231,7 @@ export default function ExpensesScreen() {
           <StatBox label="Total spend" value={formatMoney(totalHome, homeCurrency)} />
         </View>
       )}
+
 
       <SectionList
         ref={listRef}
@@ -213,28 +247,31 @@ export default function ExpensesScreen() {
             </Text>
           </View>
         )}
-      contentContainerStyle={[styles.list, { paddingBottom: 80 + insets.bottom }]}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 80 }]}
         ListHeaderComponent={
           <>
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={20} color={colors.mutedForeground} />
-              <TextInput
-                style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search notes, places, categories"
-                placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="none"
-              />
-              {query !== '' && (
-                <Pressable hitSlop={8} onPress={() => setQuery('')}>
-                  <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
+            {searchOpen && (
+              <View style={styles.searchBar}>
+                <Ionicons name="search" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search notes, places, categories"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoFocus
+                />
+                {query !== '' && (
+                  <Pressable hitSlop={8} onPress={() => setQuery('')}>
+                    <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                )}
+                <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }}>
+                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.sm }}>Cancel</Text>
                 </Pressable>
-              )}
-            </View>
-            <Text style={styles.totalText}>
-              {formatMoney(totalHome, homeCurrency)} total
-            </Text>
+              </View>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chips}>
               {['All', ...EXPENSE_CATEGORIES].map((c) => {
                 const active = catFilter === c;
@@ -335,7 +372,7 @@ export default function ExpensesScreen() {
       </Modal>
 
       {showTodayJump && (
-        <View style={[styles.todayWrap, { bottom: insets.bottom + 24 }]}>
+        <View style={[styles.todayWrap, { bottom: insets.bottom + 88 }]}>
           <Pressable style={styles.todayPill} onPress={jumpToToday}>
             <Ionicons name="arrow-up" size={16} color={colors.primaryForeground} />
             <Text style={styles.todayPillText}>Today</Text>
@@ -343,9 +380,9 @@ export default function ExpensesScreen() {
         </View>
       )}
 
-      {/* FAB — pinned bottom-right */}
+      {/* FAB — pinned above the floating nav */}
       <Pressable
-        style={[styles.fab, { bottom: insets.bottom + 24 }]}
+        style={[styles.fab, { bottom: insets.bottom + 94 }]}
         onPress={() => setFormOpen(true)}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
@@ -367,45 +404,32 @@ function ExpenseRow({
   splitShare?: number | null;
 }) {
   const isSplitDay = splitShare != null;
+  const displayAmount = isSplitDay
+    ? (splitShare as number) / expense.rateToHome
+    : expense.amount;
+  const displayCurrency = expense.currency;
+  const homeAmount = isSplitDay
+    ? (splitShare as number)
+    : toHomeCurrency(expense);
+
+  const detail = isSplitDay
+    ? `Shared · ${shortDateRange(expense.multiDaySplit!.splitStart, expense.multiDaySplit!.splitEnd)}`
+    : expense.location || expense.category;
+
   return (
     <Pressable style={styles.row} onPress={onPress}>
-      <IconCircle icon={categoryIcons[expense.category]} size={50} />
+      <IconCircle icon={categoryIcons[expense.category]} size={40} color="#FFFFFF" />
       <View style={styles.details}>
         <Text style={styles.rowTitle}>{expense.notes || expense.category}</Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{expense.category}</Text>
-          {isSplitDay ? (
-            <>
-              <Ionicons name="layers-outline" size={14} color={colors.mutedForeground} />
-              <Text style={styles.metaText}>
-                day share · split {expense.multiDaySplit?.splitStart} → {expense.multiDaySplit?.splitEnd}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.metaText}>{expense.rateDate}</Text>
-              {expense.location ? <Text style={styles.metaText}>· {expense.location}</Text> : null}
-            </>
-          )}
-        </View>
+        <Text style={styles.metaText}>{detail}</Text>
       </View>
       <View style={styles.priceCol}>
         <Text style={styles.priceMain}>
-          {isSplitDay
-            ? formatMoney(splitShare as number, homeCurrency)
-            : formatMoney(expense.amount, expense.currency)}
+          {formatMoney(displayAmount, displayCurrency)}
         </Text>
-        {isSplitDay ? (
-          <Text style={styles.priceSub}>
-            {expense.rateToHome > 0
-              ? `${formatMoney((splitShare as number) / expense.rateToHome, expense.currency)} ${expense.currency}`
-              : expense.currency}
-          </Text>
-        ) : (
-          <Text style={styles.priceSub}>
-            ≈ {formatMoney(toHomeCurrency(expense), homeCurrency)}
-          </Text>
-        )}
+        <Text style={styles.priceSub}>
+          ≈ {formatMoney(homeAmount, homeCurrency)}
+        </Text>
       </View>
     </Pressable>
   );
@@ -433,6 +457,40 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   addButtonText: { color: colors.primaryForeground, fontWeight: '700', fontSize: fontSize.md },
+  settingsIcon: {
+    padding: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMedium,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tripSelectorText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
+  titleActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  iconButton: {
+    padding: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMedium,
+  },
+  iconButtonLarge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceMedium,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   tripSelector: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -444,10 +502,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.sm,
   },
-  tripSelectorText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
-  titleRow: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xs },
-  screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
+  summaryRow: {
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+  },
+  summaryText: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.sans,
+  },
   fab: {
     position: 'absolute',
     right: spacing.xl,
@@ -457,11 +522,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    ...fabShadow,
   },
   todayWrap: {
     position: 'absolute',
@@ -501,22 +562,26 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
+    marginHorizontal: -spacing.xl,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   dayLabel: {
+    flex: 1,
     color: colors.mutedForeground,
     fontSize: fontSize.md,
     fontWeight: '700',
     fontFamily: fontFamily.heading,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    paddingLeft: spacing.xl,
   },
   dayTotal: {
     color: colors.foreground,
     fontSize: fontSize.md,
     fontWeight: '700',
     fontFamily: fontFamily.sans,
+    paddingRight: spacing.xl,
   },
   totalText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.md },
   searchBar: {
@@ -540,25 +605,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipActive: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   chipText: { color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans },
-  chipTextActive: { color: colors.primaryForeground, fontWeight: '700' },
+  chipTextActive: { color: colors.foreground, fontWeight: '600' },
   row: {
     flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    marginHorizontal: -spacing.xl,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.primary12,
   },
   details: { flex: 1, marginLeft: spacing.md },
-  rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans, marginBottom: spacing.xs },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  metaText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans, marginBottom: 2 },
+  metaText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   priceCol: { alignItems: 'flex-end' },
-  priceMain: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },
+  priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   empty: { color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.xl, fontFamily: fontFamily.sans },
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

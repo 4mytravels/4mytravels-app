@@ -29,7 +29,7 @@ export function Card({
           borderRadius: radius['2xl'],
           padding: spacing.lg,
           borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.12)',
+          borderColor: colors.borderStrong,
         },
         style,
       ]}
@@ -55,7 +55,7 @@ export function Pill({
         {
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: 'rgba(255,255,255,0.08)',
+          backgroundColor: colors.surfaceStrong,
           paddingVertical: spacing.sm,
           paddingHorizontal: spacing.lg,
           borderRadius: radius.full,
@@ -99,15 +99,15 @@ export function Button({
           alignItems: 'center',
           justifyContent: 'center',
           gap: spacing.sm,
-          borderRadius: radius.xl,
+          borderRadius: radius.full,
           paddingVertical: spacing.lg,
           backgroundColor: disabled
-            ? 'rgba(255,255,255,0.08)'
+            ? colors.surfaceStrong
             : isPrimary
               ? colors.primary
               : 'transparent',
           borderWidth: isPrimary ? 0 : 1,
-          borderColor: disabled ? 'rgba(255,255,255,0.12)' : colors.border,
+          borderColor: disabled ? colors.border : colors.border,
           opacity: disabled ? 0.6 : pressed ? 0.85 : 1,
         },
         style,
@@ -149,12 +149,12 @@ export function StatBox({
       style={[
         {
           flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.20)',
+          backgroundColor: colors.black20,
           borderRadius: radius.lg,
           padding: spacing.lg,
           alignItems: 'center',
           borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.12)',
+          borderColor: colors.border,
         },
         style,
       ]}
@@ -203,7 +203,7 @@ export function IconCircle({
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: backgroundColor ?? colors.secondary,
+        backgroundColor: backgroundColor ?? colors.surfaceMedium,
         justifyContent: 'center',
         alignItems: 'center',
       }}
@@ -230,18 +230,16 @@ export function CategoryChip({
       onPress={() => onSelect?.(category)}
       style={({ pressed }) => [
         {
-          // Stretched grid chips (expense form) stack icon above label; the
-          // inline variant keeps the horizontal chip look.
           flexDirection: stretch ? 'column' : 'row',
           alignItems: 'center',
           justifyContent: 'center',
           gap: spacing.xs,
-          backgroundColor: selected ? colors.primary : colors.secondary,
+          backgroundColor: selected ? colors.primary12 : 'transparent',
           paddingHorizontal: spacing.lg,
           paddingVertical: spacing.md,
           borderRadius: radius.full,
           borderWidth: 1,
-          borderColor: selected ? colors.primary : 'transparent',
+          borderColor: selected ? colors.primaryBorder : colors.border,
           opacity: pressed ? 0.85 : 1,
         },
         stretch && { flex: 1 },
@@ -254,7 +252,7 @@ export function CategoryChip({
       />
       <Text
         style={{
-          color: colors.foreground,
+          color: selected ? colors.foreground : colors.mutedForeground,
           fontSize: stretch ? fontSize.sm : fontSize.md,
           fontWeight: selected ? '600' : '500',
           fontFamily: fontFamily.sans,

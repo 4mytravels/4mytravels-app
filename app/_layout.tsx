@@ -6,9 +6,10 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { colors } from '../src/theme/theme';
+import { FloatingNav } from '../src/components/FloatingNav';
 
 // Root navigator. The (tabs) group is the bottom-tab shell; trip detail and
-// new-trip are pushed modally / onto the stack.
+// new-trip are pushed modals / onto the stack.
 export default function RootLayout() {
   const fontsLoaded = useAppFonts();
   const { ready, error } = useStorageInit();
@@ -37,18 +38,21 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      {/* Trip detail renders its own dark header — hide the native (white) one. */}
-      <Stack.Screen name="trip/[id]" options={{ title: 'Trip', headerShown: false }} />
-      <Stack.Screen
-        name="trips/new"
-        options={{ presentation: 'modal', title: 'New trip', headerShown: false }}
-      />
-      <Stack.Screen
-        name="settings/exchange-rates"
-        options={{ title: 'Exchange rates', headerShown: false }}
-      />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {/* Trip detail renders its own dark header — hide the native (white) one. */}
+        <Stack.Screen name="trip/[id]" options={{ title: 'Trip', headerShown: false }} />
+        <Stack.Screen
+          name="trips/new"
+          options={{ presentation: 'modal', title: 'New trip', headerShown: false }}
+        />
+        <Stack.Screen
+          name="settings/exchange-rates"
+          options={{ title: 'Exchange rates', headerShown: false }}
+        />
+      </Stack>
+      <FloatingNav />
+    </View>
   );
 }

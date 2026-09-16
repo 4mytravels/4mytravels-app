@@ -60,7 +60,17 @@ export function base64ToBytes(b64: string): Uint8Array {
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
+  // O(n) base64: Uint8Array → binary string in 64KB chunks (avoids O(n²) string concat)
+  const CHUNK = 64 * 1024;
   let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
   return btoa(bin);
+}
+
+// BLOB bytes → data-URI string for <Image source={{ uri }}> (cover photos,
+// receipt photos — live encrypted in the DB, decrypted on read).
+export function bytesToDataUri(bytes: Uint8Array): string {
+  return 'data:image/jpeg;base64,' + bytesToBase64(bytes);
 }

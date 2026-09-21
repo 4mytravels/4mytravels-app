@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>4MyTravels PWA engine smoke test</title>
+  <style>
+    body { font-family: monospace; white-space: pre-wrap; padding: 16px; background: #0A0A1A; color: #d4d4d8; }
+    .ok { color: #34d399; }
+    .err { color: #f87171; }
+    .warn { color: #fbbf24; }
+    button { font: inherit; padding: 8px 16px; margin: 8px 0; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h3>sqlite3mc WASM smoke test (Taak 0)</h3>
+  <div>
+    <button id="run">Run engine test</button>
+    <button id="reload" onclick="location.reload()">Reload (persistence check)</button>
+  </div>
+  <div id="out"></div>
+  <script>
+    // Worker-based smoke test for the vendored sqlite3mc WASM build.
+    // Verifies: module load, sahpool VFS, PRAGMA cipher + key (SQLCipher scheme),
+    // blob round-trip, persistence across reload, wrong-key rejection.
+    const out = document.getElementById('out');
+    const log = (cls, ...a) => {
+      const d = document.createElement('div');
+      if (cls) d.className = cls;
+      d.textContent = a.join(' ');
+      out.appendChild(d);
+    };
+    const results = [];
+    const check = (name, ok) => {
+      results.push({ name, ok });
+      log(ok ? 'ok' : 'err', (ok ? 'PASS ' : 'FAIL ') + name);
+    };
+
+    document.getElementById('run').addEventListener('click', async () => {
+      out.innerHTML = '';
+      results.length = 0;
+      log('', 'User agent: ' + navigator.userAgent);
+      try {
+        // OPFS availability (informational on main thread — createSyncAccessHandle
+        // is only exposed in Workers; the worker's sahpool init is authoritative)
+        const opfsAvailable = !!(globalThis.FileSystemHandle &&
+          globalThis.FileSystemDirectoryHandle &&
+          globalThis.FileSystemFileHandle &&
+          navigator?.storage?.getDirectory);
+        log(opfsAvailable ? '' : 'warn', 'OPFS base APIs on main thread: ' + (opfsAvailable ? 'present' : 'MISSING'));
+
+        const workerSrc = `
+          'use strict';
+          importScripts('${location.origin}/jswasm/sqlite3.js');
+          let sqlite3Api = null;
+          let poolUtil = null;
+          let vfsMode = 'memory';
+          let db = null;
+          const reply = (id, payload) => postMessage(Object.assign({ id }, payload));
+          self.onmessage = async (ev) => {
+            const { id, op, sql, params, keyHex } = ev.data;
+            try {
+              if (op === 'init') {
+                if (!sqlite3Api) {
+                  sqlite3Api = await sqlite3InitModule({
+                    locateFile: (file) => '${location.origin}/jswasm/' + file,
+                  });
+                }
+                if (!poolUtil) {
+                  try {
+                    poolUtil = await sqlite3Api.installOpfsSAHPoolVfs();
+                    vfsMode = 'sahpool';
+                  } catch (e) {
+                    vfsMode = 'memory';
+                    postMessage({ id, log: 'sahpool failed: ' + e.message });
+                  }
+                }
+                reply(id, { ok: true, vfs: vfsMode });
+              } else if (op === 'open') {
+                const filename = poolUtil ? '/4mt-smoke.sqlite3' : ':memory:';
+                if (poolUtil) {
+                  // Encryption requires the multipleciphers- VFS prefix (SQLite3MC FAQ).
+                  // OpfsSAHPoolDb would force vfs=opfs-sahpool (no codec), so use the
+                  // plain oo1.DB — the sahpool VFS is already registered by the pool.
+                  db = new sqlite3Api.oo1.DB({ filename, flags: 'ct', vfs: 'multipleciphers-opfs-sahpool' });
+                } else {
+                  db = new sqlite3Api.oo1.DB(filename, 'ct');
+                }
+                // SQLCipher-compatible scheme, then key. Order matters:
+                // cipher must be set BEFORE the key is applied.
+                db.exec("PRAGMA cipher = 'sqlcipher';");
+                db.exec('PRAGMA hexkey = ' + JSON.stringify(keyHex) + ';');
+                // Probe: wrong key would fail here (SQLITE_NOTADB)
+                db.exec('SELECT count(*) FROM sqlite_schema;');
+                reply(id, { ok: true, vfs: vfsMode, filename });
+              } else if (op === 'exec') {
+                if (params && params.length) {
+                  db.exec({ sql, bind: params });
+                } else {
+                  db.exec(sql);
+                }
+                reply(id, { ok: true });
+              } else if (op === 'query') {
+                const rows = db.selectObjects(sql, params);
+                reply(id, { ok: true, rows });
+              } else if (op === 'close') {
+                if (db) { db.close(); db = null; }
+                reply(id, { ok: true });
+              }
+            } catch (e) {
+              reply(id, { ok: false, error: String(e && e.message || e), code: e && e.resultCode ? String(e.resultCode) : undefined });
+            }
+          };
+        `;
+        const blob = new Blob([workerSrc], { type: 'text/javascript' });
+        const worker = new Worker(URL.createObjectURL(blob));
+
+        const pending = new Map();
+        let nextId = 1;
+        const call = (op, extra = {}) => new Promise((resolve, reject) => {
+          const id = nextId++;
+          pending.set(id, { resolve, reject });
+          worker.postMessage({ id, op, ...extra });
+        });
+        worker.onmessage = (ev) => {
+          const { id, ...rest } = ev.data;
+          if (ev.data.log) { log('warn', ev.data.log); return; }
+          const p = pending.get(id);
+          if (p) { pending.delete(id); rest.ok ? p.resolve(rest) : p.reject(Object.assign(new Error(rest.error), { code: rest.code })); }
+        };
+
+        // 1. init (VFS detection)
+        const initRes = await call('init');
+        log('', 'VFS mode: ' + initRes.vfs);
+        check('VFS: sahpool active', initRes.vfs === 'sahpool');
+
+        // 2. open encrypted + schema
+        const KEY_HEX = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+        const openRes = await call('open', { keyHex: KEY_HEX });
+        check('Encrypted open (sqlcipher scheme + hexkey)', true);
+
+        await call('exec', { sql: 'CREATE TABLE IF NOT EXISTS smoke (k TEXT PRIMARY KEY, v BLOB);' });
+        await call('exec', { sql: 'INSERT OR REPLACE INTO smoke (k, v) VALUES (?, ?);', params: ['blob-test', new Uint8Array([1,2,3,4,5,250,251,252,253,254]).buffer] });
+        const q = await call('query', { sql: 'SELECT k, v FROM smoke WHERE k = ?;', params: ['blob-test'] });
+        const row = q.rows[0];
+        const bytes = new Uint8Array(row.v);
+        const blobOk = bytes.length === 10 && bytes[0] === 1 && bytes[9] === 254;
+        check('Blob round-trip (10 bytes, high bytes intact)', blobOk);
+
+        // 3. Wrong-key rejection: open a SECOND db handle with a wrong key
+        try {
+          const KEY2 = 'ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100';
+          await call('exec', { sql: 'CREATE TABLE IF NOT EXISTS marker (x);' });
+          // Close current, reopen with wrong key — must fail
+          await call('close');
+          const openWrong = await call('open', { keyHex: KEY2 });
+          // If we get here without exception, the probe SELECT inside open should have thrown
+          check('Wrong key rejected', false);
+        } catch (e) {
+          check('Wrong key rejected', /NOTADB|file is not a database|decrypt/i.test(String(e.message)) || e.code !== undefined);
+          log('', 'wrong-key error: ' + e.message + (e.code ? ' (code ' + e.code + ')' : ''));
+        } finally {
+          await call('close').catch(() => {});
+        }
+
+        // 4. Reopen with the CORRECT key — persistence check
+        const reopen = await call('open', { keyHex: KEY_HEX });
+        const q2 = await call('query', { sql: 'SELECT count(*) AS n FROM smoke;' });
+        check('Reopen with correct key, data persisted', q2.rows[0].n >= 1);
+        await call('close');
+
+        worker.terminate();
+
+        const failed = results.filter(r => !r.ok);
+        log(failed.length === 0 ? 'ok' : 'err',
+          `RESULT: ${results.length - failed.length}/${results.length} passed` +
+          (failed.length ? ' — FAILED: ' + failed.map(f => f.name).join(', ') : ''));
+      } catch (e) {
+        check('Unexpected error: ' + e.message, false);
+      }
+    });
+    const params = new URLSearchParams(location.search);
+    const run = () => document.getElementById('run').click();
+    if (params.has('autorun')) setTimeout(run, 100);
+  </script>
+</body>
+</html>

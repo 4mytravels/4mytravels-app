@@ -15,6 +15,24 @@ import {
 import { StorageHealthBanner } from '../src/components/StorageHealthBanner';
 import { getStorageAdapter } from '../src/db';
 
+// PWA service worker registration (web only, static builds only). Deferred
+// past first paint; skipped on localhost (Metro dev server serves different
+// assets than the static export the SW precaches).
+function usePwaBootstrap(ready: boolean): void {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !ready) return;
+    if (window.location.hostname === 'localhost') return;
+    const w = globalThis as unknown as {
+      navigator?: { serviceWorker?: { register(u: string): Promise<unknown> } };
+    };
+    try {
+      void w.navigator?.serviceWorker?.register('/sw.js').catch(() => undefined);
+    } catch {
+      /* SW unsupported — app still works, just not offline-installable */
+    }
+  }, [ready]);
+}
+
 // Root navigator. The (tabs) group is the bottom-tab shell; trip detail and
 // new-trip are pushed modals / onto the stack.
 //
@@ -52,6 +70,20 @@ export default function RootLayout() {
   // fresh without ever blocking the UI (user request). Pass the single `ready`
   // flag so we never re-init the native adapter (would crash → reload loop).
   useBackgroundRateRefresh(ready, 10000);
+
+  // Web: request persistent storage once unlocked (scope §2.2 durability —
+  // reduces eviction risk) + register the service worker on the static build.
+  useEffect(() => {
+    if (!isWeb || !ready) return;
+    try {
+      void (globalThis as unknown as {
+        navigator?: { storage?: { persist?: () => Promise<boolean> } };
+      }).navigator?.storage?.persist?.();
+    } catch {
+      /* not available */
+    }
+  }, [isWeb, ready]);
+  usePwaBootstrap(ready);
 
   // Web unlock gate: until a passphrase is supplied, storage cannot init.
   if (isWeb && passphrase === null) {

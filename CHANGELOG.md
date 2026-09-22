@@ -2,6 +2,34 @@
 
 All notable changes to 4MyTravels will be documented in this file.
 
+## [Unreleased]
+
+### PWA — encrypted web app (MVP scope §2.2, plan Tasks 0–9)
+
+- **Encrypted web storage engine**: sqlite3mc 2.5.1 WASM (SQLCipher-compatible
+  AES-256+HMAC) in a dedicated Web Worker, persisted via OPFS-sahpool
+  (`multipleciphers-opfs-sahpool` VFS). Automatic fallback to an AES-GCM
+  encrypted IndexedDB snapshot when OPFS is unavailable (Safari private
+  browsing, old browsers) — at rest only ciphertext is ever stored.
+- **Passphrase unlock** (web only): first use creates a passphrase
+  (Argon2id-derived key, 64 MiB/t=3/p=1, per-db random salt); later visits
+  unlock. Wrong passphrase returns the gate without data loss. Native keeps
+  the Keystore device key — no gate on Android.
+- **PWA shell**: manifest (any + maskable icons), hand-rolled service worker
+  (zero deps, no Workbox) with app-shell precache incl. the WASM engine,
+  offline reload, SPA fallback; strict CSP with a sha256 hash for Expo
+  Router's hydration bootstrap (no unsafe-inline); `navigator.storage.persist()`
+  requested after unlock.
+- **Storage health UI**: banner surfaces the active mode (OPFS / IndexedDB
+  fallback / volatile) with a dismiss action.
+- **Deploy**: `scripts/deploy-web.sh` + nginx config (COOP/COEP headers —
+  required for OPFS) + Caddy block prepared in `/opt/sites/4mytravels-pwa/`.
+- **Tests**: engine smoke (`public/smoke.html`) + acceptance matrix
+  (`PWA-TESTS.md`). Verified headless Chromium 145/153 + Firefox 155:
+  encryption, wrong-key rejection, blob round-trip, persistence across
+  reload+unlock in both storage modes, SW offline reload, zero CSP violations.
+  Safari/iOS pending the hosted app (real-device test).
+
 ## [v1.0.0] - 2026-09-14
 
 ### First stable release

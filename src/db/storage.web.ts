@@ -1,164 +1,136 @@
-// Web/PWA storage adapter — in-memory fallback used until the real PWA engine
-// (sqlite.org WASM + SQLite3MC, OPFS-sahpool + IndexedDB fallback) is wired in a
-// later step (MVP scope §2.2). This keeps `npx expo start --web` runnable today
-// and exercises the exact same StorageAdapter interface the native build uses.
+// Web/PWA storage adapter — sqlite3mc WASM engine (MVP scope §2.2, plan Task 4).
+//
+// Replaces the old in-memory WebStorageAdapter. Real encrypted persistence:
+//   - OPFS-sahpool VFS (primary, fast, ACID) via public/sqlite-worker.js
+//   - IndexedDB snapshot fallback (Safari private browsing, old browsers)
+//   - The worker holds the sqlite3mc instance; this adapter is a thin
+//     StorageAdapter facade over the worker RPC.
+//
+// Key model (scope §2.2 "PWA key management"): the live PWA database uses the
+// same Argon2id passphrase-derived key as the local backup file. The raw key
+// is held only for the session (worker memory); the per-db salt is public and
+// stored in localStorage. A wrong passphrase makes the worker's probe SELECT
+// fail with SQLITE_NOTADB, which surfaces here as a WrongKeyError.
 //
 // NOTE: this file is only bundled on web (Metro .web resolution).
 
 import type { StorageAdapter, DatabaseConfig } from './types';
 import { runMigrations } from './migrations';
+import { SqliteWorkerClient } from './web/sqliteWorkerClient';
+import { WorkerDbError } from './web/protocol';
+import { deriveKeyHex } from './web/keyDerive';
 
-// Minimal in-memory SQL-ish store. It implements just enough of the interface
-// (CREATE TABLE IF NOT EXISTS, INSERT, SELECT *) to back the app on web during
-// development. It is NOT encrypted — that is the PWA-wasm engine's job.
-type Row = Record<string, unknown>;
-interface Table {
-  columns: string[];
-  rows: Row[];
-  indexes: Set<string>;
+/** Thrown by init() when the supplied passphrase does not unlock the db. */
+export class WrongKeyError extends Error {
+  constructor() {
+    super('Wrong passphrase — the database could not be unlocked.');
+    this.name = 'WrongKeyError';
+  }
 }
 
-export class WebStorageAdapter implements StorageAdapter {
-  private tables = new Map<string, Table>();
-  private schemaVersion = 0;
+/** VFS mode reported by the worker after open. */
+export type WebVfsMode = 'sahpool' | 'idb' | 'memory' | 'unknown';
 
-  async init(_config: DatabaseConfig): Promise<void> {
-    const exec = async (sql: string) => this.exec(sql);
-    await runMigrations(
-      exec,
-      async () => this.schemaVersion,
-      async (v) => {
-        this.schemaVersion = v;
-      },
-    );
+export class WasmStorageAdapter implements StorageAdapter {
+  private client: SqliteWorkerClient | null = null;
+  private opened = false;
+  private encrypted = false;
+  vfs: WebVfsMode = 'unknown';
+  /** Set when the worker reported a fallback (for the storage-health banner). */
+  lastWorkerLog: string | null = null;
+
+  async init(config: DatabaseConfig): Promise<void> {
+    if (this.opened) return;
+    if (!config.passphrase) {
+      // No passphrase supplied: the app should have shown the unlock gate
+      // first (app/_layout.tsx web branch). Fail loudly rather than silently
+      // falling back to plaintext memory storage.
+      throw new Error('PWA storage requires a passphrase (unlock gate missing?)');
+    }
+
+    const client = new SqliteWorkerClient();
+    client.onLog((line) => { this.lastWorkerLog = line; });
+
+    // Per-db salt: public, random on first creation, stored in IndexedDB by
+    // the worker (robust where localStorage is blocked, e.g. private mode).
+    let salt: string;
+    try {
+      const saltRes = await client.call('getSalt');
+      salt = saltRes.salt as string;
+    } catch (e) {
+      client.terminate();
+      throw e;
+    }
+
+    const keyHex = await deriveKeyHex(config.passphrase, salt);
+
+    try {
+      const res = await client.call('open', { keyHex });
+      this.vfs = res.vfs ?? 'unknown';
+      this.client = client;
+    } catch (e) {
+      client.terminate();
+      if (e instanceof WorkerDbError && /NOTADB|not a database|decrypt/i.test(e.message)) {
+        throw new WrongKeyError();
+      }
+      throw e;
+    }
+
+    // Migrations run against the real engine now — the generic runner works
+    // unchanged because exec/query semantics match the native adapter.
+    const exec = async (sql: string, params?: unknown[]) => {
+      await client.call('exec', { sql, params });
+    };
+    const getVersion = async (): Promise<number> => {
+      const res = await client.call('query', {
+        sql: 'SELECT value FROM _schema WHERE key = ?', params: ['schema_version'],
+      });
+      const row = res.rows?.[0] as { value?: string } | undefined;
+      return row?.value ? parseInt(row.value, 10) : 0;
+    };
+    const setVersion = async (v: number) => {
+      await client.call('exec', {
+        sql: 'INSERT INTO _schema (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?',
+        params: ['schema_version', String(v), String(v)],
+      });
+    };
+    await runMigrations(exec, getVersion, setVersion);
+
+    this.opened = true;
+    this.encrypted = true;
   }
 
-  async exec(sql: string, _params?: unknown[]): Promise<void> {
-    const stmt = sql.trim();
-    if (/^CREATE TABLE IF NOT EXISTS (\w+)/i.test(stmt)) {
-      const name = stmt.match(/^CREATE TABLE IF NOT EXISTS (\w+)/i)![1];
-      if (!this.tables.has(name)) this.tables.set(name, { columns: [], rows: [], indexes: new Set() });
-      const colDefs = stmt.match(/\(([\s\S]*)\)/)?.[1] ?? '';
-      const cols = colDefs
-        .split(',')
-        .map((c) => c.trim().split(/\s+/)[0])
-        .filter((c) => c && !c.toUpperCase().startsWith('FOREIGN') && !c.toUpperCase().startsWith('PRIMARY'));
-      this.tables.get(name)!.columns = cols;
-      return;
+  private requireClient(): SqliteWorkerClient {
+    if (!this.client || !this.opened) {
+      throw new Error('Storage not initialized — call init() first');
     }
-    if (/^CREATE INDEX IF NOT EXISTS (\w+)/i.test(stmt)) {
-      const name = stmt.match(/^CREATE INDEX IF NOT EXISTS (\w+)/i)![1];
-      // no-op for memory store; index names tracked loosely
-      void name;
-      return;
-    }
-    if (/^INSERT OR REPLACE INTO (\w+)/i.test(stmt) || /^INSERT INTO (\w+)/i.test(stmt)) {
-      const name = (stmt.match(/^INSERT(?: OR REPLACE)? INTO (\w+)/i) || [])[1];
-      const t = this.tables.get(name);
-      if (t) {
-        // Naive column extraction from the INSERT column list + bound params.
-        const colsMatch = stmt.match(/\(([^)]*)\)\s*VALUES/i)?.[1] ?? '';
-        const cols = colsMatch.split(',').map((c) => c.trim());
-        const params = (_params as unknown[]) ?? [];
-        const row: Row = {};
-        cols.forEach((c, i) => {
-          row[c] = params[i];
-        });
-        // INSERT OR REPLACE: replace an existing row with the same primary key
-        // (first column, conventionally `id`) instead of appending a duplicate.
-        const pkCol = cols[0];
-        const pkVal = params[0];
-        const existingIdx = t.rows.findIndex((r) => r[pkCol] === pkVal);
-        if (existingIdx >= 0) {
-          t.rows[existingIdx] = row;
-        } else {
-          t.rows.push(row);
-        }
-      }
-      return;
-    }
-    if (/^VACUUM/i.test(stmt)) return;
-    if (/^SELECT .+ FROM (\w+)/i.test(stmt)) {
-      // Emulate SQL strictly enough for migration probes: throw on unknown
-      // table/column so guarded migrations (e.g. ADD COLUMN checks) behave
-      // like the native adapter.
-      const name = stmt.match(/^SELECT .+ FROM (\w+)/i)![1];
-      const t = this.tables.get(name);
-      if (!t) throw new Error(`no such table: ${name}`);
-      const colMatch = stmt.match(/^SELECT (.+?) FROM/i)![1].trim();
-      if (colMatch !== '*' && !colMatch.includes(',')) {
-        const col = colMatch.replace(/^LIMIT.*$/i, '').trim();
-        if (!t.columns.includes(col)) throw new Error(`no such column: ${col}`);
-      }
-      return;
-    }
-    if (/^ALTER TABLE (\w+) ADD COLUMN (\w+)/i.test(stmt)) {
-      const m = stmt.match(/^ALTER TABLE (\w+) ADD COLUMN (\w+)/i)!;
-      const t = this.tables.get(m[1]);
-      if (t && !t.columns.includes(m[2])) t.columns.push(m[2]);
-      return;
-    }
-    if (/^UPDATE (\w+)/i.test(stmt)) {
-      const name = stmt.match(/^UPDATE (\w+)/i)![1];
-      const t = this.tables.get(name);
-      if (t) {
-        const setCols = stmt.match(/SET\s+([\s\S]*?)\s+WHERE/i)?.[1] ?? '';
-        const setNames = setCols.split(',').map((c) => c.trim().split(/\s+/)[0]);
-        const params = (_params as unknown[]) ?? [];
-        const idVal = params[params.length - 1];
-        const row = t.rows.find((r) => r.id === idVal);
-        if (row) {
-          setNames.forEach((col, i) => {
-            row[col] = params[i];
-          });
-        }
-      }
-      return;
-    }
-    if (/^DELETE FROM (\w+)/i.test(stmt)) {
-      const name = stmt.match(/^DELETE FROM (\w+)/i)![1];
-      const t = this.tables.get(name);
-      if (t) {
-        const wm = stmt.match(/WHERE\s+(\w+)\s*=\s*\?/i);
-        const params = (_params as unknown[]) ?? [];
-        if (wm && params.length > 0) {
-          const col = wm[1];
-          const val = params[0];
-          t.rows = t.rows.filter((r) => r[col] !== val);
-        } else {
-          t.rows = [];
-        }
-      }
-      return;
-    }
-    // ignore other statements (CREATE TABLE without IF NOT EXISTS, etc.)
+    return this.client;
+  }
+
+  async exec(sql: string, params?: unknown[]): Promise<void> {
+    await this.requireClient().call('exec', { sql, params });
   }
 
   async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
-    const m = sql.match(/FROM (\w+)/i);
-    if (m && this.tables.has(m[1])) {
-      let rows = this.tables.get(m[1])!.rows as T[];
-      // Minimal WHERE col = ? support so loadExpenses(tripId) filters correctly.
-      const wm = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
-      if (wm && params && params.length > 0) {
-        const col = wm[1];
-        const val = params[0];
-        rows = rows.filter((r) => (r as Record<string, unknown>)[col] === val) as T[];
-      }
-      return rows;
-    }
-    return [] as T[];
+    const res = await this.requireClient().call('query', { sql, params });
+    return (res.rows ?? []) as T[];
   }
 
   async compact(): Promise<void> {
-    // no-op in memory
+    await this.requireClient().call('compact');
   }
 
   async close(): Promise<void> {
-    // keep data in memory for dev reloads; real impl would zero the key
+    if (this.client) {
+      try { await this.client.call('close'); } catch { /* best effort */ }
+      this.client.terminate();
+      this.client = null;
+    }
+    this.opened = false;
+    this.encrypted = false;
   }
 
   isEncrypted(): boolean {
-    return false; // PWA-wasm engine will return true
+    return this.encrypted;
   }
 }

@@ -1,18 +1,43 @@
 import { Stack } from 'expo-router';
 import '../src/polyfills';
 import { useAppFonts } from '../src/theme/fonts';
-import { useStorageInit, refreshRateCache, useBackgroundRateRefresh } from '../src/db/useStorage';
+import { useStorageInit, refreshRateCache, useBackgroundRateRefresh, resetWebStorage } from '../src/db/useStorage';
 import { useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { colors } from '../src/theme/theme';
 import { FloatingNav } from '../src/components/FloatingNav';
+import {
+  WebUnlockGate,
+  hasStoredPassphraseFlag,
+  markPassphraseCreated,
+} from '../src/components/WebUnlockGate';
+import { StorageHealthBanner } from '../src/components/StorageHealthBanner';
+import { getStorageAdapter } from '../src/db';
 
 // Root navigator. The (tabs) group is the bottom-tab shell; trip detail and
 // new-trip are pushed modals / onto the stack.
+//
+// Web (PWA): storage is passphrase-encrypted (scope §2.2), so the unlock gate
+// must run BEFORE useStorageInit() — the adapter derives its key from the
+// passphrase. Native keeps the Keystore device key and skips the gate.
 export default function RootLayout() {
   const fontsLoaded = useAppFonts();
-  const { ready, error } = useStorageInit();
+  const isWeb = Platform.OS === 'web';
+  const [passphrase, setPassphrase] = useState<string | null>(
+    isWeb ? null : '', // native: no passphrase needed — '' means "proceed"
+  );
+
+  const { ready, error } = useStorageInit(passphrase);
+  const wrongKey = isWeb && error === 'wrong-key';
+
+  // A rejected passphrase resets the gate for a retry.
+  useEffect(() => {
+    if (wrongKey) {
+      resetWebStorage();
+      setPassphrase(null);
+    }
+  }, [wrongKey]);
 
   // Keep the rate cache fresh whenever the app comes to the foreground, so the
   // expense form almost always has a cached rate and never blocks on the live
@@ -27,6 +52,18 @@ export default function RootLayout() {
   // fresh without ever blocking the UI (user request). Pass the single `ready`
   // flag so we never re-init the native adapter (would crash → reload loop).
   useBackgroundRateRefresh(ready, 10000);
+
+  // Web unlock gate: until a passphrase is supplied, storage cannot init.
+  if (isWeb && passphrase === null) {
+    return (
+      <WebUnlockGate
+        onUnlock={(pw) => {
+          if (!hasStoredPassphraseFlag()) markPassphraseCreated();
+          setPassphrase(pw);
+        }}
+      />
+    );
+  }
 
   if (!fontsLoaded || !ready) {
     return (
@@ -52,7 +89,23 @@ export default function RootLayout() {
           options={{ title: 'Exchange rates', headerShown: false }}
         />
       </Stack>
+      {isWeb && <StorageHealthBanner />}
       <FloatingNav />
     </View>
   );
+}
+
+// Expose the web storage health (vfs mode) for the StorageHealthBanner without
+// an import cycle. No-op on native (adapter has no `vfs` property).
+if (Platform.OS === 'web') {
+  (globalThis as unknown as {
+    __fourmytravels_storage_health?: () => { vfs: string } | null;
+  }).__fourmytravels_storage_health = () => {
+    try {
+      const a = getStorageAdapter() as unknown as { vfs?: string };
+      return a && typeof a.vfs === 'string' ? { vfs: a.vfs } : null;
+    } catch {
+      return null;
+    }
+  };
 }

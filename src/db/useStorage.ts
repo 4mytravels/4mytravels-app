@@ -1,12 +1,13 @@
 // App-level storage bootstrap. Initializes the active StorageAdapter once and
 // keeps the Zustand stores in sync with the encrypted DB (MVP scope §2, §3).
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { getStorageAdapter } from './index';
 import { loadTrips, saveTrip, deleteTrip } from './tripRepo';
 import { useTripStore } from '../store/tripStore';
 import { getRates } from '../services/frankfurter';
 import { saveRateCache } from '../services/rateCache';
+import { WrongKeyError } from './storage.web';
 
 // Refresh the ECB rate cache at app open (best-effort; silent on failure —
 // the expense form falls back to the previously cached rates, or lets the user
@@ -78,17 +79,32 @@ export function useBackgroundRateRefresh(ready: boolean, delayMs = 10000) {
   }, [ready, delayMs]);
 }
 
-export function useStorageInit() {
+// Web unlock state: the gate calls resetWebStorage() when a passphrase is
+// rejected so the user can retry with a different one.
+export function resetWebStorage(): void {
+  if (Platform.OS !== 'web') return;
+  // The adapter is a singleton in index.web.ts; closing it makes the next
+  // init() run again with the new passphrase.
+  const a = getStorageAdapter() as { close?: () => Promise<void> };
+  void a.close?.();
+}
+
+export function useStorageInit(passphrase: string | null = null) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTrips = useTripStore((s) => s.setTrips);
 
   useEffect(() => {
     let mounted = true;
+    // Web: wait for the unlock gate to supply a passphrase. Native passes ''
+    // (no passphrase needed — Keystore device key).
+    if (Platform.OS === 'web' && (passphrase === null || passphrase === '')) return;
     (async () => {
       try {
         const db = getStorageAdapter();
-        await db.init({});
+        await db.init(
+          Platform.OS === 'web' ? { passphrase: passphrase ?? undefined } : {},
+        );
         const trips = await loadTrips(db);
         if (mounted) {
           setTrips(trips);
@@ -97,6 +113,14 @@ export function useStorageInit() {
         // Best-effort rate refresh after the app is usable (not blocking boot).
         void refreshRateCache(trips[0]?.homeCurrency ?? 'EUR');
       } catch (e) {
+        if (e instanceof WrongKeyError) {
+          // Web unlock: wrong passphrase — let the gate show again.
+          if (mounted) {
+            setReady(false);
+            setError('wrong-key');
+          }
+          return;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         if (mounted) {
           setError(msg);
@@ -109,7 +133,7 @@ export function useStorageInit() {
     return () => {
       mounted = false;
     };
-  }, [setTrips]);
+  }, [setTrips, passphrase]);
 
   return { ready, error };
 }

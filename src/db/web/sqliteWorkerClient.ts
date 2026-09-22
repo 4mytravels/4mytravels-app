@@ -20,7 +20,21 @@ export class SqliteWorkerClient {
   private logSink: ((line: string) => void) | null = null;
 
   constructor(workerUrl = '/sqlite-worker.js') {
-    this.worker = new Worker(workerUrl);
+    // Propagate the ?forceFallback=1 test hook from the page URL to the
+    // worker URL so the IDB snapshot path can be acceptance-tested on any
+    // browser (simulates Safari private browsing).
+    let url = workerUrl;
+    try {
+      if (typeof globalThis.location !== 'undefined') {
+        const pageParams = new URLSearchParams(globalThis.location.search);
+        if (pageParams.get('forceFallback') === '1') {
+          url = workerUrl + (workerUrl.includes('?') ? '&' : '?') + 'forceFallback=1';
+        }
+      }
+    } catch {
+      /* non-browser context */
+    }
+    this.worker = new Worker(url);
     this.worker.onmessage = (ev: MessageEvent<WorkerResponse>) => this.handleMessage(ev.data);
     this.worker.onerror = (ev) => {
       // Worker crashed (script load failure etc.) — fail all pending calls.

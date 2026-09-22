@@ -13,7 +13,9 @@ export const unstable_settings = {
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval' blob:",
+  // sha256 hash covers Expo Router's single inline hydration bootstrap
+  // (globalThis.__EXPO_ROUTER_HYDRATE__=true); everything else is same-origin.
+  "script-src 'self' 'wasm-unsafe-eval' blob: 'sha256-67fhrP0+BkBqmgGGXTtgiVO/9EQs3QruYNU/7fnRkI8='",
   "worker-src 'self' blob:",
   "connect-src 'self' https://api.frankfurter.dev",
   "img-src 'self' data: blob:",

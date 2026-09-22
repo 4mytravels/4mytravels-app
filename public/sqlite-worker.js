@@ -94,6 +94,20 @@ async function bootEngine() {
 
 async function initVfs() {
   if (vfsMode !== 'unknown') return;
+  // Dev/test hook: ?forceFallback=1 on the PAGE url makes the worker use the
+  // IDB snapshot path even when OPFS is available (acceptance test for the
+  // Safari-private-browsing scenario).
+  let forceFallback = false;
+  try {
+    const params = new URLSearchParams(self.location.search);
+    forceFallback = params.get('forceFallback') === '1';
+  } catch (_) { /* no search params on blob workers */ }
+  if (forceFallback) {
+    poolUtil = null;
+    vfsMode = 'idb';
+    postMessage({ log: 'forced IDB fallback (test mode)' });
+    return;
+  }
   try {
     poolUtil = await sqlite3Api.installOpfsSAHPoolVfs();
     vfsMode = 'sahpool';
@@ -121,14 +135,47 @@ function exportDbBytes() {
   return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
 }
 
+/* ---------- IDB snapshot envelope (AES-GCM) ----------
+ * SQLite3MC cannot key an in-memory database, so the idb-fallback keeps the
+ * live db plaintext in RAM (session-only — same exposure model as an unlocked
+ * SQLCipher db) and encrypts the PERSISTED snapshot with WebCrypto AES-GCM
+ * using the same Argon2id-derived key. At rest, IndexedDB therefore only
+ * ever holds ciphertext. */
+
+let aesKey = null; // CryptoKey for the snapshot envelope (idb mode)
+
+async function initAesKey(keyHex) {
+  const raw = new Uint8Array(keyHex.match(/.{2}/g).map((h) => parseInt(h, 16)));
+  aesKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+async function encryptForIdb(plain) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, plain));
+  // [12-byte iv][ciphertext] — tag is appended by WebCrypto.
+  const out = new Uint8Array(iv.length + ct.length);
+  out.set(iv, 0);
+  out.set(ct, iv.length);
+  return out.buffer;
+}
+
+async function decryptFromIdb(envelope) {
+  const u8 = envelope instanceof Uint8Array ? envelope : new Uint8Array(envelope);
+  const iv = u8.slice(0, 12);
+  const ct = u8.slice(12);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+  return new Uint8Array(plain);
+}
+
 async function loadIdbSnapshot() {
   if (vfsMode !== 'idb') return false;
-  const bytes = await idbGet('db');
-  if (!bytes || !bytes.byteLength) return false;
-  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const envelope = await idbGet('db');
+  if (!envelope || !envelope.byteLength) return false;
+  // A wrong passphrase fails HERE (AES-GCM auth) — surfaced as a decrypt
+  // error, which the adapter maps to WrongKeyError.
+  const u8 = await decryptFromIdb(envelope);
   const capi = sqlite3Api.capi;
   const wasm = sqlite3Api.wasm;
-  // Copy into WASM heap memory owned by SQLite (FREEONCLOSE=1 | RESIZEABLE=2).
   const pData = wasm.allocFromTypedArray(u8);
   const rc = capi.sqlite3_deserialize(
     db.pointer, 'main', pData,
@@ -144,7 +191,8 @@ async function loadIdbSnapshot() {
 
 async function flushIdbSnapshot() {
   if (vfsMode !== 'idb' || !db) return;
-  await idbPut('db', exportDbBytes());
+  const cipher = await encryptForIdb(new Uint8Array(exportDbBytes()));
+  await idbPut('db', cipher);
 }
 
 /* ---------- op handlers ---------- */
@@ -161,14 +209,24 @@ async function opOpen(msg) {
     return;
   }
 
-  // idb fallback: in-memory db, seeded from the last snapshot when present.
+  // idb fallback: in-memory db (SQLite3MC cannot key :memory:), seeded from
+  // the last AES-GCM-encrypted snapshot when present. The RAM copy is
+  // plaintext for the session; the persisted snapshot is always ciphertext.
   db = new sqlite3Api.oo1.DB(':memory:', 'ct');
-  applyKeyAndScheme(msg.keyHex);
+  await initAesKey(msg.keyHex);
   let seeded = false;
   try {
     seeded = await loadIdbSnapshot();
-    if (seeded) applyKeyAndScheme(msg.keyHex); // re-key after deserialize
   } catch (e) {
+    if (/decrypt|OperationError/i.test(String(e))) {
+      // Wrong passphrase on the existing snapshot — treat exactly like a
+      // wrong PRAGMA key on sahpool.
+      db.close(); db = null;
+      throw Object.assign(
+        new Error('SQLITE_NOTADB: file is not a database (wrong key)'),
+        { resultCode: 'SQLITE_NOTADB' },
+      );
+    }
     postMessage({ log: 'snapshot restore failed, starting fresh: ' + e.message });
   }
   reply(msg.id, { ok: true, vfs: vfsMode, isNew: !seeded });
@@ -235,8 +293,11 @@ async function opImportDb(msg) {
     return {};
   }
 
-  // idb mode: import into memory, key-check, then snapshot.
+  // idb mode: import into memory, then persist via the AES-GCM envelope.
+  // (No SQLite3MC key applies here — the imported bytes are an UNENCRYPTED
+  // sqlite image from the backup-restore path; the snapshot encrypts at rest.)
   db = new sqlite3Api.oo1.DB(':memory:', 'ct');
+  await initAesKey(msg.keyHex);
   const capi = sqlite3Api.capi;
   const wasm = sqlite3Api.wasm;
   const pData = wasm.allocFromTypedArray(u8);
@@ -245,7 +306,6 @@ async function opImportDb(msg) {
     BigInt(u8.byteLength), BigInt(u8.byteLength), 1 | 2,
   );
   if (rc !== 0) { wasm.dealloc(pData); throw new Error('import failed, rc=' + rc); }
-  applyKeyAndScheme(msg.keyHex);
   await flushIdbSnapshot();
   return {};
 }

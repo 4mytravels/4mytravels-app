@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Image,
   ActivityIndicator,
   Modal,
   Alert,
@@ -15,16 +14,20 @@ import { AppLogo } from '../../src/components/AppLogo';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
-import { Pill, IconCircle, categoryIcons } from '../../src/components/ui';
+import { Pill } from '../../src/components/ui';
+import { TripCard } from '../../src/components/TripCard';
+import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
+import { WebNotices } from '../../src/components/WebNotices';
+import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { loadExpenses } from '../../src/db/expenseRepo';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache } from '../../src/services/rateCache';
-import type { Expense, Trip } from '../../src/types';
-import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
+import type { Expense } from '../../src/types';
+import { formatMoney, formatMoneyWhole, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
-import { bytesToDataUri } from '../../src/utils/image';
+import { inclusiveDays } from '../../src/utils/pace';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -147,24 +150,37 @@ export default function HomeScreen() {
         }, 0)
     : 0;
 
-  // Total spent across all trips (for the quick-fact pill).
+  // Total spent across all trips (for the quick-fact pill). Whole currency
+  // units (no cents) — the user asked to drop the decimals on the home stats.
   const totalSpent = expenses.reduce((sum, e) => {
     const converted = toDisplay(e.amount, e.currency);
     return sum + (converted != null ? converted : toHomeCurrency(e));
   }, 0);
 
-  // Most recent trip = the add-expense target for the FAB.
-  const latestTripId = expenses[0]?.tripId;
-  const latestTrip = trips.find((t) => t.id === latestTripId);
+  // Total travel days: every PAST trip counts its full length, every ACTIVE
+  // trip counts from its start date up to AND INCLUDING today (never its future
+  // end date). UPCOMING trips are excluded entirely — days you have not travelled
+  // yet must not be counted. All day counting is inclusive (start day = day 1).
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const totalDays = trips.reduce((sum, t) => {
+    const status = deriveTripStatus(t);
+    if (status === 'upcoming') return sum;
+    // Past → the end date; active/open-ended → today. Both inclusive.
+    const endKey = status === 'past' && t.endDate ? t.endDate : todayKey;
+    return sum + inclusiveDays(t.startDate, endKey);
+  }, 0);
 
-  const activeCoverBytes = (activeTrip as (Trip & { coverBytes?: Uint8Array | null }) | undefined)?.coverBytes;
-  const activeCoverUri = activeCoverBytes ? bytesToDataUri(activeCoverBytes) : null;
+  // Quick-add target trip: the ACTIVE trip (started, not ended) — the same
+  // selection rule as the Expenses tab. It used to be the trip of the most
+  // recent expense, which handed the form a FUTURE trip when the last entry
+  // was pre-logged. Falls back to the most recently started trip.
+  const targetTrip = activeTrip ?? [...trips].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 80 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 106 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -178,33 +194,28 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Journey Card — active trip hero */}
+        {/* Web/PWA notices (storage health + install nudge) under the app title. */}
+        <WebNotices />
+
+        {/* Active trip — the SAME card as the Trips tab
+            (src/components/TripCard.tsx): photo stage with badge/name/dates/day
+            bar/verdict, flat footer with Daily avg + Total. Tapping opens the
+            trip detail screen, exactly like the Trips tab does. */}
         {activeTrip && (
-          <View style={styles.journeyCard}>
-            {activeCoverUri && (
-              <View style={styles.journeyCoverWrap}>
-                <Image source={{ uri: activeCoverUri }} style={styles.journeyCover} />
-                <View style={styles.journeyCoverOverlay} />
-              </View>
-            )}
-            <View style={[styles.journeyKicker, { zIndex: 1 }]}>
-              <Text style={styles.journeyKickerText}>Active trip</Text>
-            </View>
-            <Text style={[styles.journeyTitle, { zIndex: 1 }]}>{activeTrip.name}</Text>
-            <View style={[styles.journeyMeta, { zIndex: 1 }]}>
-              <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
-              <Text style={styles.journeyMetaText}>
-                {activeTrip.startDate} — {activeTrip.endDate || 'open'}
-              </Text>
-            </View>
-          </View>
+          <TripCard
+            style={styles.tripCard}
+            trip={activeTrip}
+            expenses={expenses.filter((e) => e.tripId === activeTrip.id)}
+            onPress={() => router.push(`/trip/${activeTrip.id}`)}
+          />
         )}
 
         {/* Quick facts */}
         <View style={styles.quickFacts}>
           <Pill icon="location-outline" text={`${countries} countries`} />
+          <Pill icon="calendar-outline" text={`${totalDays} ${totalDays === 1 ? 'day' : 'days'}`} />
           <Pressable onPress={() => router.push('/statistics')}>
-            <Pill icon="wallet-outline" text={`${formatMoney(totalSpent, displayCurrency)} spent`} />
+            <Pill icon="wallet-outline" text={`${formatMoneyWhole(totalSpent, displayCurrency)} spent`} />
           </Pressable>
         </View>
 
@@ -216,60 +227,39 @@ export default function HomeScreen() {
 
         {loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
-        ) : todaysExpenses.length === 0 ? (
+        ) : todayEntries.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No expenses logged today.</Text>
           </View>
         ) : (
-          todayEntries.map((entry) => {
-            const e = entry.expense;
-            const isSplitDay = entry.splitShare != null;
-            return (
-              <Pressable
-                key={`${e.id}@${entry.day}`}
-                style={styles.expenseCard}
-                onPress={() => { setEditingExpense(e); setFormOpen(true); }}
-              >
-                <IconCircle icon={categoryIcons[e.category]} size={40} />
-                <View style={styles.expenseDetails}>
-                  <Text style={styles.expenseTitle}>{e.notes || e.category}</Text>
-                  <Text style={styles.expenseSub}>
-                    {e.category} · {isSplitDay ? "today's share" : e.rateDate}
-                  </Text>
-                </View>
-                <View style={styles.expensePriceCol}>
-                  <Text style={styles.expensePrice}>
-                    {isSplitDay
-                      ? formatMoney(
-                          e.rateToHome > 0 ? (entry.splitShare as number) / e.rateToHome : e.amount,
-                          e.currency,
-                        )
-                      : formatMoney(e.amount, e.currency)}
-                  </Text>
-                  <Text style={styles.expensePriceSub}>
-                    {(() => {
-                      const dayPartExpense =
-                        entry.splitShare != null
-                          ? (e.rateToHome > 0 ? (entry.splitShare as number) / e.rateToHome : e.amount)
-                          : e.amount;
-                      const converted = toDisplay(dayPartExpense, e.currency);
-                      return converted != null
-                        ? `≈ ${formatMoney(converted, displayCurrency)}`
-                        : `≈ ${formatMoney(toHomeCurrency(e), displayCurrency)}`;
-                    })()}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })
+          /* The SAME row as the Expenses tab (src/components/ExpenseRow.tsx):
+             expense currency on top, home below, hairline separators, split
+             shares handled inside the row. */
+          todayEntries.map((entry) => (
+            <ExpenseRow
+              key={`${entry.expense.id}@${entry.day}`}
+              expense={entry.expense}
+              homeCurrency={displayCurrency}
+              splitShare={entry.splitShare}
+              background={colors.primary12}
+              onPress={() => {
+                setEditingExpense(entry.expense);
+                setFormOpen(true);
+              }}
+            />
+          ))
         )}
       </ScrollView>
+
+      {/* Rows fade out under the floating nav (rendered before the FAB so the
+          button itself stays crisp). */}
+      <NavFadeScrim />
 
       {/* FAB — pinned above the floating nav */}
       <Pressable
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
         onPress={() => {
-          if (latestTrip) {
+          if (targetTrip) {
             setFormOpen(true);
           } else {
             router.push('/trips/new');
@@ -280,12 +270,12 @@ export default function HomeScreen() {
       </Pressable>
 
       {/* Add/edit-expense sheet (one tap from Home; rows open in edit mode) */}
-      <Modal visible={formOpen && (!!latestTrip || !!editingExpense)} animationType="slide" onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
-        {latestTrip && (
+      <Modal visible={formOpen && (!!targetTrip || !!editingExpense)} animationType="slide" onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
+        {targetTrip && (
           <ExpenseForm
-            tripId={editingExpense?.tripId ?? latestTrip.id}
-            defaultCurrency={latestTrip.defaultCurrency}
-            homeCurrency={latestTrip.homeCurrency}
+            tripId={editingExpense?.tripId ?? targetTrip.id}
+            defaultCurrency={targetTrip.defaultCurrency}
+            homeCurrency={targetTrip.homeCurrency}
             initialExpense={editingExpense ?? undefined}
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={async (expense) => {
@@ -320,7 +310,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingHorizontal: spacing.xl, paddingBottom: 80 },
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: 106 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -337,103 +327,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  journeyCard: {
-    position: 'relative',
-    overflow: 'hidden',
-    height: 224,
+  // Spacing wrapper for the shared TripCard (the card owns its own layout).
+  tripCard: {
     marginTop: spacing.sm,
-    padding: spacing.xl,
-    borderRadius: radius['3xl'],
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-  },
-  journeyCoverWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 0,
-  },
-  journeyCover: {
-    width: '100%',
-    height: '100%',
-  },
-  journeyCoverOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  journeyKicker: {
-    marginBottom: spacing.sm,
-  },
-  journeyKickerText: {
-    color: colors.accent,
-    fontSize: fontSize.xs,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    fontFamily: fontFamily.sans,
-  },
-  journeyTitle: {
-    fontFamily: fontFamily.heading,
-    fontSize: fontSize.xl,
-    fontWeight: '700',
-    color: colors.foreground,
-    marginBottom: spacing.sm,
-  },
-  journeyMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  journeyMetaText: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.sans,
-  },
-  journeyProgress: {
-    position: 'absolute',
-    left: spacing.xl,
-    right: spacing.xl,
-    bottom: spacing.xl,
-  },
-  journeyProgressHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  journeyProgressLabel: {
-    color: colors.success,
-    fontSize: fontSize.xs,
-    fontWeight: '700',
-    fontFamily: fontFamily.sans,
-  },
-  journeyProgressValue: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.sans,
-  },
-  progressTrack: {
-    height: 5,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceStrong,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    marginBottom: spacing.xl,
   },
   quickFacts: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.lg,
     marginBottom: spacing.xl,
   },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
@@ -447,22 +348,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   emptyText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, textAlign: 'center' },
-  expenseCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
-  },
-  expensePrice: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
-  expenseDetails: { flex: 1, marginLeft: spacing.md },
-  expenseTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
-  expenseSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
-  expensePriceCol: { alignItems: 'flex-end' },
-  expensePriceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   fab: {
     position: 'absolute',
     right: spacing.xl,

@@ -1,28 +1,19 @@
-import { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Image,
-  RefreshControl,
-} from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, Modal, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
-import { useNavigation, useRouter } from 'expo-router';
+import { TripCard } from '../../src/components/TripCard';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
 import { loadExpenses } from '../../src/db/expenseRepo';
-import { updateTrip, deleteTrip as deleteTripDb } from '../../src/db/tripRepo';
+import { deleteTrip as deleteTripDb } from '../../src/db/tripRepo';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Card, Button, StatBox } from '../../src/components/ui';
-import { computePace } from '../../src/utils/pace';
-import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { bytesToDataUri } from '../../src/utils/image';
-import type { Trip, TripStatus } from '../../src/types';
+import { Button } from '../../src/components/ui';
+import { NavFadeScrim } from '../../src/components/FadeScrim';
+import { WebNotices } from '../../src/components/WebNotices';
+import { confirmDestructive } from '../../src/utils/confirm';
+import type { Trip, TripStatus, Expense } from '../../src/types';
 
 const FILTERS: Array<'All' | TripStatus> = ['All', 'active', 'upcoming', 'past'];
 
@@ -31,55 +22,68 @@ export default function TripsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
-  const updateTripStore = useTripStore((s) => s.updateTrip);
   const removeTripStore = useTripStore((s) => s.removeTrip);
   const [filter, setFilter] = useState<'All' | TripStatus>('All');
-  const [spentByTrip, setSpentByTrip] = useState<Record<string, number>>({});
+  // Which trip's manage sheet (Edit / Delete) is open.
+  const [managing, setManaging] = useState<Trip | null>(null);
+  // Full expense lists (not just sums) so the card can use the SAME
+  // computeTripStats as the trip detail screen — otherwise daily avg /
+  // over-budget / day counter drift apart between the two screens.
+  const [expensesByTrip, setExpensesByTrip] = useState<Record<string, Expense[]>>({});
+  // MUST be declared before the early return below (rules of hooks): the
+  // empty-trips branch renders fewer hooks, which crashed React ("Rendered
+  // more hooks than during the previous render") the moment the first trip
+  // was saved.
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // Load real spend per trip for the cards' progress/pace.
-  useEffect(() => {
-    let mounted = true;
+  // Load expenses per trip for the cards' stats (shared computeTripStats).
+  //
+  // ON FOCUS, not only when the trip list changes: logging an expense on the
+  // Expenses tab left every card showing the old figures until the app was
+  // restarted. Same pattern as home/expenses/statistics.
+  const loadTripExpenses = useCallback(() => {
+    let alive = true;
     (async () => {
-      const map: Record<string, number> = {};
+      const map: Record<string, Expense[]> = {};
       for (const t of trips) {
-        const exps = await loadExpenses(t.id);
-        map[t.id] = exps.reduce((s, e) => s + toHomeCurrency(e), 0);
+        map[t.id] = await loadExpenses(t.id);
       }
-      if (mounted) setSpentByTrip(map);
+      if (alive) setExpensesByTrip(map);
     })();
     return () => {
-      mounted = false;
+      alive = false;
     };
   }, [trips]);
+
+  useFocusEffect(loadTripExpenses);
 
   const visible = trips.filter((t) => filter === 'All' || deriveTripStatus(t) === filter);
 
   const handleDelete = (trip: Trip) => {
-    Alert.alert('Delete trip', `Delete "${trip.name}" and all its expenses?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          removeTripStore(trip.id);
-          try {
-            await deleteTripDb(trip.id);
-          } catch (e) {
-            Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
-          }
-        },
+    // Alert.alert does nothing on the PWA — see src/utils/confirm.ts.
+    confirmDestructive({
+      title: 'Delete trip',
+      message: `Delete "${trip.name}" and all its expenses?`,
+      onConfirm: async () => {
+        removeTripStore(trip.id);
+        try {
+          await deleteTripDb(trip.id);
+        } catch (e) {
+          Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+        }
       },
-    ]);
+    });
   };
 
   if (trips.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <Header />
+        <WebNotices />
         <View style={styles.empty}>
           <Ionicons name="airplane-outline" size={48} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>No trips yet</Text>
@@ -92,26 +96,24 @@ export default function TripsScreen() {
     );
   }
 
-  const [refreshing, setRefreshing] = useState(false);
-
   const onRefresh = async () => {
     setRefreshing(true);
-    const map: Record<string, number> = {};
+    const map: Record<string, Expense[]> = {};
     for (const t of trips) {
-      const exps = await loadExpenses(t.id);
-      map[t.id] = exps.reduce((s, e) => s + toHomeCurrency(e), 0);
+      map[t.id] = await loadExpenses(t.id);
     }
-    setSpentByTrip(map);
+    setExpensesByTrip(map);
     setRefreshing(false);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <Header />
+      <WebNotices />
       <FlatList
         data={visible}
         keyExtractor={(t) => t.id}
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 80 }]}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 106 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -145,14 +147,30 @@ export default function TripsScreen() {
         }
         renderItem={({ item }) => (
           <TripCard
+            style={styles.cardWrap}
             trip={item}
-            spent={spentByTrip[item.id] ?? 0}
+            expenses={expensesByTrip[item.id] ?? []}
             onPress={() => router.push(`/trip/${item.id}`)}
-            onEdit={() => router.push({ pathname: '/trips/new', params: { editId: item.id } })}
-            onDelete={() => handleDelete(item)}
+            onManage={() => setManaging(item)}
           />
         )}
         ListEmptyComponent={<Text style={styles.emptyFilter}>No trips in this filter.</Text>}
+      />
+
+      {/* Trip cards fade out under the floating nav. */}
+      <NavFadeScrim />
+
+      <ManageSheet
+        trip={managing}
+        onClose={() => setManaging(null)}
+        onEdit={(t) => {
+          setManaging(null);
+          router.push({ pathname: '/trips/new', params: { editId: t.id } });
+        }}
+        onDelete={(t) => {
+          setManaging(null);
+          handleDelete(t);
+        }}
       />
     </SafeAreaView>
   );
@@ -173,93 +191,42 @@ function Header() {
   );
 }
 
-function TripCard({
+/** Bottom sheet with Edit / Delete for one trip. */
+function ManageSheet({
   trip,
-  spent,
-  onPress,
+  onClose,
   onEdit,
   onDelete,
 }: {
-  trip: Trip;
-  spent: number;
-  onPress: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  trip: Trip | null;
+  onClose: () => void;
+  onEdit: (t: Trip) => void;
+  onDelete: (t: Trip) => void;
 }) {
-  const status = deriveTripStatus(trip);
-  const pace = computePace({
-    dailyBudget: trip.dailyBudget,
-    tripStartDate: trip.startDate,
-    tripEndDate: trip.endDate,
-    today: new Date(),
-    cumulativeActualSpend: spent,
-  });
-  const pct = pace.projectedTotalBudget ? Math.min(1, pace.actualSpend / pace.projectedTotalBudget) : 0.3;
-  const coverBytes = (trip as Trip & { coverBytes?: Uint8Array | null }).coverBytes;
-  const tripCoverUri = coverBytes ? bytesToDataUri(coverBytes) : null;
-
+  const insets = useSafeAreaInsets();
   return (
-    <Pressable onPress={onPress} onLongPress={onEdit} style={({ pressed }) => [styles.cardWrap, pressed && { opacity: 0.92 }]}>
-      <Card>
-        <View style={styles.cardHeader}>
-          <View style={styles.titleRow}>
-            {tripCoverUri ? (
-              <Image source={{ uri: tripCoverUri }} style={styles.cardPhoto} />
-            ) : (
-              <View style={styles.iconCircle}>
-                <Ionicons name="airplane-outline" size={20} color={colors.accent} />
-              </View>
-            )}
-            <Text style={styles.cardTitle} numberOfLines={1}>{trip.name}</Text>
-            <View style={[styles.badge, status === 'active' && styles.badgeActive]}>
-              <Text style={[styles.badgeText, status === 'active' && { color: colors.success }]}>
-                {status.toUpperCase()}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Date row with edit/delete actions at its end */}
-        <View style={styles.metaRow}>
-          <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
-          <Text style={[styles.metaText, { flex: 1 }]}>
-            {trip.startDate}
-            {trip.endDate ? ` - ${trip.endDate}` : ' - open'}
-          </Text>
-          <Pressable onPress={onEdit} hitSlop={8}>
-            <Ionicons name="pencil-outline" size={18} color={colors.mutedForeground} />
-          </Pressable>
-          <Pressable onPress={onDelete} hitSlop={8} style={{ marginLeft: spacing.md }}>
-            <Ionicons name="trash-outline" size={18} color={colors.destructive} />
-          </Pressable>
-        </View>
-
-        <View style={styles.statsRow}>
-          <StatBox
-            label="Daily avg / budget"
-            value={`${formatMoney(trip.dailyBudget > 0 ? spent / Math.max(1, pace.daysElapsed) : 0, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget, trip.homeCurrency)}`}
-          />
-          <StatBox label="Total spend / budget" value={`${formatMoney(spent, trip.homeCurrency)} / ${formatMoney(trip.dailyBudget * pace.daysElapsed, trip.homeCurrency)}`} />
-        </View>
-
-        <View style={styles.progressFooter}>
-          <View style={styles.trackStatus}>
-            <Ionicons
-              name={pace.status === 'over_budget' ? 'trending-down' : 'trending-up'}
-              size={14}
-              color={pace.status === 'over_budget' ? colors.destructive : colors.success}
-            />
-            <Text style={[styles.trackText, { color: pace.status === 'over_budget' ? colors.destructive : colors.success }]}>
-              {pace.status === 'over_budget' ? 'Over budget' : 'On track'}
+    <Modal visible={!!trip} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose}>
+        {trip && (
+          <View style={[styles.sheet, { marginBottom: insets.bottom }]}>
+            <Text style={styles.sheetTitle} numberOfLines={1}>
+              {trip.name}
             </Text>
+            <Pressable style={styles.sheetItem} onPress={() => onEdit(trip)}>
+              <Ionicons name="create-outline" size={20} color={colors.foreground} />
+              <Text style={styles.sheetItemText}>Edit trip</Text>
+            </Pressable>
+            <Pressable style={styles.sheetItem} onPress={() => onDelete(trip)}>
+              <Ionicons name="trash-outline" size={20} color={colors.destructive} />
+              <Text style={[styles.sheetItemText, { color: colors.destructive }]}>Delete trip</Text>
+            </Pressable>
+            <Pressable style={[styles.sheetItem, styles.sheetCancel]} onPress={onClose}>
+              <Text style={styles.sheetItemText}>Cancel</Text>
+            </Pressable>
           </View>
-          <Text style={styles.progressText}>
-            Day {pace.daysElapsed}
-            {pace.projectedTotalBudget ? ` of ${Math.round(pace.projectedTotalBudget / trip.dailyBudget)}` : ''}
-          </Text>
-        </View>
-      </Card>
-    </Pressable>
+        )}
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -276,6 +243,9 @@ const styles = StyleSheet.create({
   },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   list: { paddingHorizontal: spacing.xl, paddingBottom: 106 },
+  // Spacing between the shared TripCards in this list (the card itself is
+  // src/components/TripCard.tsx, shared with the trip detail screen).
+  cardWrap: { marginBottom: spacing.xl },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },
@@ -296,32 +266,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  tabIndicator: {
-    position: 'absolute',
-    bottom: -2,
-    left: '50%',
-    transform: [{ translateX: -12 }],
-    width: 24,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.primary,
+    // Manage sheet
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,5,15,0.70)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius['3xl'],
+    borderTopRightRadius: radius['3xl'],
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
   },
-  cardWrap: { marginBottom: spacing.lg },
-  cardHeader: { marginBottom: spacing.md },
-  iconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)', justifyContent: 'center', alignItems: 'center', marginRight: spacing.md },
-  cardPhoto: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.secondary, marginRight: spacing.md },
-  cardTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.heading, flex: 1 },
-  cardActions: { flexDirection: 'row', alignItems: 'center' },
-  badge: { backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 6 },
-  badgeActive: { backgroundColor: 'rgba(53,211,153,0.15)' },
-  badgeText: { color: colors.mutedForeground, fontSize: fontSize.xs, fontWeight: '700', letterSpacing: 0.5 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
-  metaText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  progressFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm },
-  trackStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  trackText: { fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans },
-  progressText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  sheetTitle: {
+    fontFamily: fontFamily.heading,
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.foreground,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', height: 50, paddingHorizontal: spacing.sm, borderRadius: radius.md },
+  sheetItemText: { fontFamily: fontFamily.sans, fontSize: 15, fontWeight: '600', color: colors.foreground, marginLeft: spacing.md },
+  sheetCancel: { marginTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, justifyContent: 'center' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing['3xl'] },
   emptyTitle: { fontSize: fontSize['2xl'], fontWeight: '700', color: colors.foreground, marginTop: spacing.lg, fontFamily: fontFamily.heading },
   emptyBody: { fontSize: fontSize.md, color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.sm },

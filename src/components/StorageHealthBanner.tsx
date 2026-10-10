@@ -3,11 +3,29 @@
 // snapshot fallback gets a gentle notice; a memory mode (no persistence at
 // all — should not normally happen) gets a loud data-loss warning.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, spacing } from '../theme/theme';
 
 type Level = 'ok' | 'fallback' | 'volatile';
+
+// The tab navigator keeps visited screens mounted, so several copies of this
+// banner exist at once. A per-instance `dismissed` flag meant closing the notice
+// on one tab left it on the others; share the state at module scope instead.
+let dismissedState = false;
+const listeners = new Set<() => void>();
+
+function subscribe(cb: () => void) {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function dismiss() {
+  dismissedState = true;
+  for (const cb of listeners) cb();
+}
 
 const COPY: Record<Level, { label: string; detail: string }> = {
   ok: {
@@ -31,7 +49,11 @@ const COPY: Record<Level, { label: string; detail: string }> = {
 
 export function StorageHealthBanner() {
   const [level, setLevel] = useState<Level | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const dismissed = useSyncExternalStore(
+    subscribe,
+    () => dismissedState,
+    () => false,
+  );
 
   useEffect(() => {
     // Poll the adapter's vfs mode once storage is up. Uses the module-scope
@@ -64,7 +86,7 @@ export function StorageHealthBanner() {
         <Text style={styles.label}>{copy.label}</Text>
         <Text style={styles.detail}>{copy.detail}</Text>
       </View>
-      <Pressable onPress={() => setDismissed(true)} hitSlop={8}>
+      <Pressable onPress={dismiss} hitSlop={8}>
         <Text style={styles.close}>✕</Text>
       </Pressable>
     </View>
@@ -72,22 +94,26 @@ export function StorageHealthBanner() {
 }
 
 const styles = StyleSheet.create({
+  // Layout flow inside WebNotices, directly under the screen header — same
+  // placement as the install nudge (user request). OPAQUE surfaces: these are
+  // notices the user has to read, so the old translucent tints are baked over
+  // the #0A0A1A background.
   wrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    marginHorizontal: 16,
-    marginTop: 8,
     borderRadius: 10,
     borderWidth: 1,
     padding: 12,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
   },
   wrapFallback: {
-    backgroundColor: 'rgba(251,191,36,0.10)',
+    backgroundColor: '#2A2214', // amber @16% over the background, as a solid
     borderColor: 'rgba(251,191,36,0.30)',
   },
   wrapVolatile: {
-    backgroundColor: 'rgba(248,113,113,0.12)',
+    backgroundColor: '#2C1A1C', // red @18% over the background, as a solid
     borderColor: 'rgba(248,113,113,0.35)',
   },
   body: { flex: 1, gap: 4 },

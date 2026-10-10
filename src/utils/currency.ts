@@ -14,12 +14,40 @@ export function convert(amount: number, from: string, home: string, rates: Recor
   return amount * (rateHome / rateFrom);
 }
 
+/**
+ * Display locale: en-US.
+ *
+ * The user asked to revert the nl-NL change from 2026-10-03: en-US is the
+ * international default, so amounts read the same regardless of the device
+ * locale ("€1,234.56", "¥35,000"). Formatted via Intl, so the decimal/thousands
+ * symbols are still correct per currency — only the separator positions are
+ * fixed to the US convention.
+ */
+export const DISPLAY_LOCALE = 'en-US';
+
 /** Format a number as currency for display (no symbol assumptions). */
-export function formatMoney(amount: number, currency: string, locale = 'en-US'): string {
+export function formatMoney(amount: number, currency: string, locale = DISPLAY_LOCALE): string {
   try {
     return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount);
   } catch {
     return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
+/**
+ * Format rounded to whole currency units (no cents) — used for the trip
+ * "Total spend" figures where the cents only add noise.
+ */
+export function formatMoneyWhole(amount: number, currency: string, locale = DISPLAY_LOCALE): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${Math.round(amount)} ${currency}`;
   }
 }
 

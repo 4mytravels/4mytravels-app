@@ -58,24 +58,35 @@ export async function saveTrip(trip: Trip, coverPhoto?: Uint8Array | null, db: S
 }
 
 export async function updateTrip(trip: Trip, coverPhoto?: Uint8Array | null, db: StorageAdapter = getStorageAdapter()): Promise<void> {
+  // cover_photo is written verbatim — NO COALESCE. COALESCE(?, cover_photo)
+  // made "Remove photo" a silent no-op: clearing the photo binds NULL, and
+  // SQLite keeps the old blob. So the caller can no longer express "clear" —
+  // and a *changed* photo only worked when the caller had also reset its
+  // `removed` flag, which the edit screen did not, so a changed photo ended up
+  // neither stored nor cleared.
+  //   undefined → keep the existing blob (assign the column to itself)
+  //   null      → explicitly clear it
+  //   bytes     → replace it
+  const coverSql = coverPhoto === undefined ? 'cover_photo = cover_photo' : 'cover_photo = ?';
+  const params: unknown[] = [
+    trip.name,
+    trip.startDate,
+    trip.endDate ?? null,
+    trip.homeCurrency,
+    trip.defaultCurrency,
+    trip.dailyBudget,
+    trip.countries?.length ? JSON.stringify(trip.countries) : null,
+  ];
+  if (coverPhoto !== undefined) params.push(coverPhoto);
+  params.push(trip.id);
+
   await db.exec(
     `UPDATE trips SET
        name = ?, start_date = ?, end_date = ?, home_currency = ?,
        default_currency = ?, daily_budget = ?, countries = ?,
-       cover_photo = COALESCE(?, cover_photo)
+       ${coverSql}
      WHERE id = ?`,
-    [
-      trip.name,
-      trip.startDate,
-      trip.endDate ?? null,
-      trip.homeCurrency,
-      trip.defaultCurrency,
-      trip.dailyBudget,
-      trip.countries?.length ? JSON.stringify(trip.countries) : null,
-      // undefined → keep existing photo; null explicitly clears it
-      coverPhoto === undefined ? null : (coverPhoto ?? null),
-      trip.id,
-    ],
+    params,
   );
 }
 

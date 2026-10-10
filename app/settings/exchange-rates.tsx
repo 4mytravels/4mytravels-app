@@ -13,7 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
@@ -23,6 +23,8 @@ import { loadRateCache, type RateCache } from '../../src/services/rateCache';
 import { CURRENCIES } from '../../src/data/currencies';
 
 export default function CustomRatesScreen() {
+  // Floating nav clearance for the scroll content (nav 60 + gap 18 + room).
+  const insets = useSafeAreaInsets();
   const { homeCurrency: hcParam } = useLocalSearchParams<{ homeCurrency?: string }>();
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
   const manualRates = useSettingsStore((s) => s.manualRates);
@@ -79,7 +81,7 @@ export default function CustomRatesScreen() {
       <ScrollView
         ref={scrollRef}
         style={styles.body}
-        contentContainerStyle={{ paddingBottom: 40 + spacing.xl }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 106 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

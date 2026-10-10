@@ -24,7 +24,7 @@
 // echte device-test blijft nodig voor SQLCipher/Keystore-verificatie.
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -45,6 +45,10 @@ function assert(cond, msg) {
 
 // 1. Compileer web-stack naar tijdelijke cache
 const cache = mkdtempSync(join(tmpdir(), '4mt-test-'));
+// De gecompileerde web-stack vereist @noble/hashes (Argon2 voor de PWA-sleutel).
+// Vanuit een temp-map kan Node dat niet resolveren → symlink de repo's
+// node_modules in de cache, zodat de test weer draait.
+try { symlinkSync(join(root, 'node_modules'), join(cache, 'node_modules'), 'dir'); } catch { /* al aanwezig */ }
 try {
   execFileSync(tsc, [
     '--ignoreConfig',
@@ -120,6 +124,33 @@ const { v4: uuid } = require('uuid');
   assert(trips2.length === 1, 'edit voegt geen duplicate toe (got ' + trips2.length + ')');
   assert(trips2[0].name === 'Japan Autumn Trip', 'edit naam bijgewerkt');
   assert(trips2[0].dailyBudget === 80, 'edit budget bijgewerkt (got ' + trips2[0].dailyBudget + ')');
+
+  // ---- cover_photo round-trip + wijzigen/verwijderen (regressie) ----
+  // De COALESCE-variant liet "verwijderen" stilletjes niets doen, en na Remove
+  // kon een nieuwe foto niet meer gekozen worden zodat hij na een restart weg was.
+  const photoA = new Uint8Array([1, 2, 3, 4, 5]);
+  const photoB = new Uint8Array([9, 8, 7, 6, 5, 4]);
+  await updateTrip(trip, photoA, db);
+  let withCover = (await loadTrips(db))[0];
+  assert(withCover.coverBytes && withCover.coverBytes.length === 5, 'cover_photo wordt opgeslagen (got ' + (withCover.coverBytes?.length ?? 'null') + ')');
+
+  await updateTrip(trip, undefined, db); // undefined = niet wijzigen
+  withCover = (await loadTrips(db))[0];
+  assert(withCover.coverBytes && withCover.coverBytes.length === 5, 'undefined laat bestaande foto intact');
+
+  await updateTrip(trip, photoB, db); // nieuwe foto vervangt
+  withCover = (await loadTrips(db))[0];
+  assert(withCover.coverBytes && withCover.coverBytes.length === 6 && withCover.coverBytes[0] === 9,
+    'nieuwe foto vervangt de oude (got ' + JSON.stringify([...(withCover.coverBytes ?? [])]) + ')');
+
+  await updateTrip(trip, null, db); // null = verwijderen
+  withCover = (await loadTrips(db))[0];
+  assert(withCover.coverBytes == null, 'null verwijdert de foto echt (got ' + (withCover.coverBytes?.length ?? 'null') + ')');
+
+  // terug naar een foto, zodat de expense-flow een trip met cover heeft
+  await updateTrip(trip, photoA, db);
+  withCover = (await loadTrips(db))[0];
+  assert(withCover.coverBytes && withCover.coverBytes.length === 5, 'foto opnieuw op te slaan werkt');
 
   const dbDef = getStorageAdapter();
   await dbDef.init({});

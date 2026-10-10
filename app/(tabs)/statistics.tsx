@@ -6,6 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
+  Modal,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,8 +21,11 @@ import { expensesToCsv } from '../../src/services/csv';
 import type { Expense } from '../../src/types';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
+import { NavFadeScrim } from '../../src/components/FadeScrim';
+import { WebNotices } from '../../src/components/WebNotices';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { countryLabel, flagEmoji } from '../../src/data/countries';
+import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
 
 // Premium dark-mode donut palette.
 const DONUT_COLORS = [
@@ -424,6 +428,10 @@ export default function StatisticsScreen() {
   const trips = useTripStore((s) => s.trips);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // Trip filter: empty = every trip. Otherwise only the selected trips count
+  // towards the charts (1, several, or all — user request).
+  const [tripFilter, setTripFilter] = useState<string[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Most-used trip home currency for display.
   const displayCurrency = useMemo(() => {
@@ -431,6 +439,19 @@ export default function StatisticsScreen() {
     for (const t of trips) counts[t.homeCurrency] = (counts[t.homeCurrency] ?? 0) + 1;
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
   }, [trips]);
+
+  // Drop trips that no longer exist (deleted while a filter was active). The
+  // filtering itself lives in src/utils/tripFilter.ts — unit-tested by
+  // scripts/test-trip-filter.mjs.
+  const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
+  const filteredExpenses = useMemo(
+    () => filterExpensesByTrips(expenses, activeTripIds),
+    [expenses, activeTripIds],
+  );
+  const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
+
+  const toggleTrip = (id: string) =>
+    setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const loadData = useMemo(() => {
     return async () => {
@@ -451,7 +472,7 @@ export default function StatisticsScreen() {
 
   // --- Category breakdown (top 5 + Others) ---
   const byCategory: Record<string, number> = {};
-  for (const e of expenses) {
+  for (const e of filteredExpenses) {
     const h = toHomeCurrency(e);
     byCategory[e.category] = (byCategory[e.category] ?? 0) + h;
   }
@@ -489,7 +510,7 @@ export default function StatisticsScreen() {
 
   // --- Country breakdown ---
   const byCountry: Record<string, number> = {};
-  for (const e of expenses) {
+  for (const e of filteredExpenses) {
     if (e.country) {
       const label = countryLabel(e.country);
       byCountry[label] = (byCountry[label] ?? 0) + toHomeCurrency(e);
@@ -500,7 +521,7 @@ export default function StatisticsScreen() {
 
   // --- Month breakdown ---
   const byMonth: Record<string, number> = {};
-  for (const e of expenses) {
+  for (const e of filteredExpenses) {
     const day = (e.createdAt ?? e.rateDate).slice(0, 10);
     if (day.length >= 7) {
       const month = day.slice(0, 7);
@@ -512,7 +533,7 @@ export default function StatisticsScreen() {
 
   // --- Payment breakdown ---
   const byPayment: Record<string, number> = {};
-  for (const e of expenses) {
+  for (const e of filteredExpenses) {
     const pm = e.paymentMethod === 'card' ? 'Card' : 'Cash';
     byPayment[pm] = (byPayment[pm] ?? 0) + toHomeCurrency(e);
   }
@@ -524,9 +545,10 @@ export default function StatisticsScreen() {
   for (const t of trips) tripNameById[t.id] = t.name;
 
   const exportCsv = async () => {
-    if (expenses.length === 0) return;
+    if (filteredExpenses.length === 0) return;
     try {
-      const csv = expensesToCsv(expenses, tripNameById);
+      // Exports what is on screen: the active trip filter applies here too.
+      const csv = expensesToCsv(filteredExpenses, tripNameById);
       const file = new File(Paths.cache, '4mt-statistics.csv');
       await file.write(csv);
       await Sharing.shareAsync(file.uri, {
@@ -550,10 +572,32 @@ export default function StatisticsScreen() {
         </Pressable>
       </View>
       <View style={styles.titleWrap}>
-        <Text style={styles.screenTitle}>Statistics</Text>
+        <View style={styles.titleTextWrap}>
+          <Text style={styles.screenTitle}>Statistics</Text>
+          <Text style={styles.filterLabel} numberOfLines={1}>
+            {filterLabel}
+          </Text>
+        </View>
+        {/* Same trip selector as the Expenses tab, but multi-select. */}
+        <Pressable
+          style={styles.iconButtonLarge}
+          onPress={() => setPickerOpen(true)}
+          accessibilityLabel="Filter by trip"
+        >
+          <Ionicons name="airplane-outline" size={26} color={colors.primary} />
+          {activeTripIds.length > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
+            </View>
+          )}
+        </Pressable>
       </View>
+
+      {/* Web/PWA notices (storage health + install nudge) under the screen title. */}
+      <WebNotices />
+
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 106 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -655,6 +699,60 @@ export default function StatisticsScreen() {
           <Button label="Export CSV" icon="download-outline" onPress={exportCsv} />
         </View>
       </ScrollView>
+
+      {/* Trip filter sheet — tap to toggle, any number of trips (or none = all). */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
+          <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
+            <Text style={styles.pickerTitle}>Filter by trip</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              <Pressable
+                style={styles.pickerRow}
+                onPress={() => setTripFilter([])}
+              >
+                <Ionicons
+                  name="apps-outline"
+                  size={18}
+                  color={activeTripIds.length === 0 ? colors.primary : colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.pickerRowText,
+                    activeTripIds.length === 0 && { color: colors.primary, fontWeight: '700' },
+                  ]}
+                >
+                  All trips
+                </Text>
+                {activeTripIds.length === 0 && (
+                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                )}
+              </Pressable>
+              {trips.map((t) => {
+                const on = activeTripIds.includes(t.id);
+                return (
+                  <Pressable key={t.id} style={styles.pickerRow} onPress={() => toggleTrip(t.id)}>
+                    <Ionicons
+                      name="airplane-outline"
+                      size={18}
+                      color={on ? colors.primary : colors.mutedForeground}
+                    />
+                    <Text style={[styles.pickerRowText, on && { color: colors.primary, fontWeight: '700' }]}>
+                      {t.name}
+                    </Text>
+                    {on && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.pickerDoneWrap}>
+              <Button label="Done" onPress={() => setPickerOpen(false)} />
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Content fades out under the floating nav. */}
+      <NavFadeScrim />
     </SafeAreaView>
   );
 }
@@ -697,6 +795,66 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontFamily: fontFamily.heading,
   },
+  titleTextWrap: { flex: 1 },
+  // Which trips the charts below are showing ("All trips" / one name / "3 trips").
+  filterLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.sans,
+    marginTop: 2,
+  },
+  // Same 44px round button as the Expenses trip selector.
+  iconButtonLarge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceMedium,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: colors.primaryForeground,
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: fontFamily.sans,
+  },
+  // Trip filter sheet
+  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius['3xl'],
+    borderTopRightRadius: radius['3xl'],
+    padding: spacing.xl,
+  },
+  pickerTitle: {
+    color: colors.foreground,
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+    fontFamily: fontFamily.heading,
+    marginBottom: spacing.lg,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  pickerDoneWrap: { marginTop: spacing.lg },
   titleSettingsIcon: {
     padding: spacing.xs,
     borderRadius: radius.full,

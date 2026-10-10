@@ -52,6 +52,11 @@ export const colors = {
   primary20: 'rgba(99,102,241,0.20)',
   primary28: 'rgba(99,102,241,0.28)',
   primaryBorder: 'rgba(99,102,241,0.44)',
+  // Trip-card day-bar fill. Translucent ON PURPOSE: the bar sits directly on
+  // the cover photo, so a solid fill hid the image underneath it. 55% keeps the
+  // progress readable while the photo stays visible through it.
+  primaryBar: 'rgba(99,102,241,0.55)',
+  mutedBar: 'rgba(144,159,184,0.45)',
 
   // success tint
   success15: 'rgba(53,211,153,0.15)',

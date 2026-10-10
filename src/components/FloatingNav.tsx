@@ -1,4 +1,4 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
@@ -46,7 +46,16 @@ export function FloatingNav() {
           return (
             <Pressable
               key={item.name}
-              onPress={() => router.push(item.name as never)}
+              onPress={() => {
+            // Web: push() stacks screens on every tab switch (the old screen
+            // stays mounted underneath — duplicated content, dead overlays).
+            // replace() swaps the tab route; native keeps push semantics.
+            if (Platform.OS === 'web') {
+              router.replace(item.name as never);
+            } else {
+              router.push(item.name as never);
+            }
+          }}
               style={({ pressed }) => [
                 styles.navItem,
                 active && styles.navItemActive,
@@ -75,16 +84,26 @@ export function FloatingNav() {
 }
 
 const styles = StyleSheet.create({
+  // Full-bleed: the nav must span edge to edge so the items sit in one straight
+  // row from the left edge to the right edge. On web, `left:0/right:0` +
+  // `alignItems:'center'` + a child with `width:'100%'` makes react-native-web
+  // resolve the percentage against a shrink-to-fit parent — the bar came out
+  // as a centred pill instead. `alignSelf: 'stretch'` removes the dependency on
+  // percentage resolution entirely.
   navContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
-    alignItems: 'center',
+    alignSelf: 'stretch',
+    // Small horizontal inset so the rounded pill is not flush against the edges.
+    paddingHorizontal: spacing.sm,
   },
   nav: {
     flexDirection: 'row',
     height: 60,
     padding: 5,
+    gap: 2,
+    alignSelf: 'stretch',
     borderRadius: radius.full,
     backgroundColor: colors.navSurface,
     borderWidth: 1,

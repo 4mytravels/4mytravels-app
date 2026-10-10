@@ -25,13 +25,11 @@ mkdir -p "$TARGET"
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete "$DIST/" "$TARGET/"
 else
-  # rsync not installed: clean copy via a temp dir swap.
-  TMP="${TARGET}.new"
-  rm -rf "$TMP"
-  cp -r "$DIST" "$TMP"
-  rm -rf "$TARGET"
-  mv "$TMP" "$TARGET"
+  # rsync not installed: copy IN PLACE (never rm+mv the html dir — that
+  # replaces the directory inode and breaks the nginx bind-mount, causing
+  # "internal redirection cycle" 500s until the container restarts).
+  rm -rf "${TARGET:?}"/*
+  cp -a "$DIST/." "$TARGET/"
 fi
-
 echo "Deployed to $TARGET"
-echo "If nginx is running: docker restart site-4mytravels-pwa (or it picks up files automatically — html is a live mount)."
+echo "NOTE: files are picked up live (read-only mount); no container restart needed."

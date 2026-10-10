@@ -1,29 +1,46 @@
 // Native storage adapter — @op-engineering/op-sqlite with SQLCipher (Android/iOS).
 //
-// Key management (MVP scope §2.2 / §3):
+// KEY MANAGEMENT (MVP scope §2.2 / §3):
 //   - A random per-device key is generated on first launch and stored in
 //     expo-secure-store, which on Android is backed by the Android Keystore
 //     (not app storage, not a config file).
-//   - The key is passed to op-sqlite as `encryptionKey`, which performs the
-//     SQLCipher PRAGMA key= unlock internally. A wrong/stale key throws.
+//   - The key is passed to op-sqlite as `encryptionKey`, which reaches
+//     `sqlite3_key_v2(db, "main", ...)` in cpp/OPBridge.cpp. A wrong/stale key
+//     throws.
 //   - This device key is intentionally NOT the portable backup key (Argon2
 //     passphrase). The backup key is used for the encrypted *backup file* and
 //     cross-device restore; the device key keeps the live local DB unlocked
 //     without prompting for a passphrase on every launch (cold-start < 2s, §2.4).
 //
+// SQLCIPHER IS A COMPILE-TIME OPT-IN — do not assume it is present.
+//   CMakeLists.txt only compiles cpp/sqlcipher/sqlite3.c and only calls
+//   sqlite3_key_v2() when the build was configured with `sqlcipher: true` in
+//   the "op-sqlite" block of package.json. Without it the build links plain
+//   cpp/sqlite3.c and OPBridge opens the file WITHOUT a key — the
+//   `encryptionKey` option is then silently discarded and the database is
+//   written in the clear. That regression is invisible from JS, so init()
+//   probes the open connection and throws instead of pretending.
+//
 // NOTE: this file is only bundled on native platforms (Metro .native resolution).
 // It cannot run under Node/web, which is expected.
 
 import * as SecureStore from 'expo-secure-store';
-import { open, type DB } from '@op-engineering/op-sqlite';
+import { open, isSQLCipher, type DB } from '@op-engineering/op-sqlite';
 import { Platform } from 'react-native';
 import type { StorageAdapter, DatabaseConfig } from './types';
 import { SCHEMA_VERSION } from './types';
 import { runMigrations } from './migrations';
+import {
+  EncryptionUnavailableError,
+  LegacyPlaintextDatabaseError,
+  isNotADatabaseError,
+} from './errors';
 
 const DB_NAME = '4mytravels.db';
 const KEY_ALIAS = '4mytravels.db.key';
 const SCHEMA_KEY = 'schema_version';
+
+export { EncryptionUnavailableError, LegacyPlaintextDatabaseError };
 
 function generateKey(): string {
   // 32-byte hex key for SQLCipher.
@@ -41,6 +58,7 @@ function generateKey(): string {
 export class NativeStorageAdapter implements StorageAdapter {
   private db: DB | null = null;
   private initializing: Promise<void> | null = null;
+  private encrypted: boolean = false;
 
   async init(_config: DatabaseConfig): Promise<void> {
     // Idempotent + guards against concurrent init() calls (multiple
@@ -64,7 +82,48 @@ export class NativeStorageAdapter implements StorageAdapter {
           // ignore — key stays in memory for this session
         }
       }
-      this.db = open({ name: DB_NAME, encryptionKey: key });
+
+      // Compile-time gate. isSQLCipher() is answered by the native module from
+      // the same #ifdef that decides whether sqlite3_key_v2() is ever called,
+      // so this is a true statement about the running binary — not a guess.
+      if (!isSQLCipher()) {
+        throw new EncryptionUnavailableError(
+          'This build was compiled WITHOUT SQLCipher, so the local database ' +
+            'would be stored in the clear. Rebuild with "op-sqlite": { ' +
+            '"sqlcipher": true } in package.json (a native rebuild is ' +
+            'required — a JS reload is not enough).',
+        );
+      }
+
+      try {
+        this.db = open({ name: DB_NAME, encryptionKey: key });
+      } catch (e) {
+        if (isNotADatabaseError(e)) {
+          throw new LegacyPlaintextDatabaseError(
+            'The existing database on this device was written without ' +
+              'encryption and cannot be opened with a key. Clear the app ' +
+              'storage (or uninstall the app) to start a fresh encrypted ' +
+              'database.',
+          );
+        }
+        throw e;
+      }
+
+      // Runtime confirmation on the live connection: SQLCipher answers
+      // `PRAGMA cipher_version` with its version string; plain SQLite has no
+      // such pragma and returns no rows. A key that failed to apply would
+      // also fail the first statement below, so reaching this point means the
+      // key was accepted.
+      this.encrypted = await this.probeCipher();
+      if (!this.encrypted) {
+        await this.close();
+        throw new EncryptionUnavailableError(
+          'SQLCipher is compiled in, but the open database reports no cipher. ' +
+            'The encryption key was not applied — refusing to continue with an ' +
+            'unencrypted database.',
+        );
+      }
+
       await this.runSchema();
     })();
 
@@ -72,6 +131,21 @@ export class NativeStorageAdapter implements StorageAdapter {
       await this.initializing;
     } finally {
       this.initializing = null;
+    }
+  }
+
+  /** `PRAGMA cipher_version` — non-empty only on a keyed SQLCipher connection. */
+  private async probeCipher(): Promise<boolean> {
+    if (!this.db) return false;
+    try {
+      const res = await this.db.execute('PRAGMA cipher_version');
+      const value = res.rows?.[0] as { cipher_version?: unknown } | undefined;
+      const v = value?.cipher_version;
+      return typeof v === 'string' && v.length > 0;
+    } catch {
+      // Plain SQLite treats an unknown pragma as a no-op returning no rows,
+      // so an empty result (not an exception) is the negative signal.
+      return false;
     }
   }
 
@@ -119,12 +193,13 @@ export class NativeStorageAdapter implements StorageAdapter {
       await this.db.closeAsync();
       this.db = null;
     }
+    this.encrypted = false;
   }
 
   isEncrypted(): boolean {
-    // op-sqlite builds for native include SQLCipher. The acceptance test (§2.5)
-    // asserts this returns true on device.
-    return true;
+    // Reflects the PRAGMA cipher_version probe done in init(), not a constant.
+    // False before init() completes and after close().
+    return this.encrypted;
   }
 }
 

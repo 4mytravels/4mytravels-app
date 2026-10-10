@@ -92,12 +92,13 @@ export function parseOwnCsv(rows: string[][], tripIdFallback: string): ParsedExp
     const c = rows[r];
     const get = (name: string) => c[idx(name)] ?? '';
     const category = get('category') as ExpenseCategory;
+    const cur = (get('currency') || 'EUR').toUpperCase();
     out.push({
       id: get('id') || undefined,
       tripId: get('trip_id') || tripIdFallback,
-      amount: parseFloat(get('amount')) || 0,
-      currency: get('currency') || 'EUR',
-      rateToHome: parseFloat(get('rate_to_home')) || 1,
+      amount: parseCsvNumber(get('amount'), cur) || 0,
+      currency: cur,
+      rateToHome: parseCsvNumber(get('rate_to_home')) || 1,
       rateDate: get('rate_date') || get('date'),
       category: (CATEGORY_VALUES as string[]).includes(category) ? category : 'General',
       createdAt: get('date') ? `${get('date')}T12:00:00Z` : new Date().toISOString(),
@@ -206,21 +207,67 @@ function mapTsPayment(raw: string): PaymentMethod {
   return /credit|card|pin|debit/i.test(raw) ? 'card' : 'cash';
 }
 
-/** Parse a number like "12,10" or "1250.75" → 12.10 / 1250.75. */
-function parseTsNumber(raw: string): number {
-  const s = raw.trim().replace(/^"|"$/g, '');
-  // If both separators exist, the LAST one is the decimal separator.
+/**
+ * Currencies that never have a fractional part. For these, a dot or comma in
+ * the exported number is ALWAYS a thousands separator — which is why
+ * "35.000" VND must import as 35000 and not 35.
+ */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'VND', 'IDR', 'JPY', 'KRW', 'CLP', 'ISK', 'PYG', 'RWF', 'UGX', 'VUV',
+  'XAF', 'XOF', 'XPF', 'KMF', 'DJF', 'GNF', 'BIF', 'LAK', 'MMK', 'KHR',
+]);
+
+/**
+ * Parse a number from a CSV cell.
+ * Handles "12,10" / "1250.75" / "1.234,56" / "1,234.56" / "35.000" (VND).
+ *
+ * History of this function, because both rules here are load-bearing:
+ *  - The original only looked at WHICH separator came last, so "35.000"
+ *    VND/IDR imported as 35 (off by 1000x).
+ *  - A grouping rule was then added for amounts and, wrongly, also applied to
+ *    the CONVERSION RATE column. A rate like "44.444" (THB per EUR) matched the
+ *    grouping pattern and became 44444, so "8.000 THB" showed as 0.18 EUR and
+ *    "18.3 MYR" as 0.00 EUR. Rates are plain decimals — they are never grouped.
+ *
+ * Rules, in order:
+ *   1. both separators present → the RIGHT-MOST one is the decimal separator;
+ *   2. zero-decimal currency → every separator is a thousands separator;
+ *   3. `allowGrouping` (amounts only): 1-3 leading digits then a group of
+ *      exactly 3 digits ("35.000", "1,234") → thousands grouping;
+ *   4. otherwise the single separator is the decimal separator.
+ */
+export function parseCsvNumber(
+  raw: string,
+  currency?: string,
+  /** Amounts may use thousands grouping; rates and other ratios must not. */
+  allowGrouping = true,
+): number {
+  const s = raw.trim().replace(/^"|"$/g, '').replace(/[^\d,.\-]/g, '');
+  if (!s) return NaN;
+  const cur = (currency ?? '').toUpperCase();
   const lastComma = s.lastIndexOf(',');
   const lastDot = s.lastIndexOf('.');
-  let normalized = s;
-  if (lastComma > lastDot) {
-    normalized = s.replace(/\./g, '').replace(',', '.');
-  } else if (lastComma > -1 && (lastDot === -1 || lastComma > lastDot)) {
-    normalized = s.replace(/,/g, '.');
+  let normalized: string;
+
+  if (lastComma > -1 && lastDot > -1) {
+    // Both present: the right-most one is the decimal separator.
+    normalized = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (ZERO_DECIMAL_CURRENCIES.has(cur)) {
+    // No decimals possible → strip every separator.
+    normalized = s.replace(/[.,]/g, '');
+  } else if (allowGrouping && /^\d{1,3}([.,]\d{3})+$/.test(s)) {
+    // Thousands grouping in an amount column ("35.000", "1,234", "1,234,567").
+    normalized = s.replace(/[.,]/g, '');
+  } else if (lastComma > -1) {
+    normalized = s.replace(',', '.');
+  } else {
+    normalized = s;
   }
-  const n = parseFloat(normalized.replace(/[^0-9.-]/g, ''));
+  const n = parseFloat(normalized);
   return Number.isNaN(n) ? NaN : n;
 }
+
+
 
 export function parseTravelSpendCsv(rows: string[][], tripIdFallback: string): { items: ParsedExpense[]; skipped: number } {
   const map = detectHeaderMap(rows[0]);
@@ -238,7 +285,10 @@ export function parseTravelSpendCsv(rows: string[][], tripIdFallback: string): {
     const c = rows[r];
     if (c.length <= 1) continue;
     const rawDate = getCell(c, 'date');           // dd-mm-yyyy in real exports
-    const amount = parseTsNumber(getCell(c, 'amount'));
+    // Read the currency FIRST: for zero-decimal currencies (VND, IDR, JPY…)
+    // the separator is a thousands separator, so the amount parser needs it.
+    const currency = (getCell(c, 'currency') || 'EUR').toUpperCase();
+    const amount = parseCsvNumber(getCell(c, 'amount'), currency);
     if (!rawDate || Number.isNaN(amount)) { skipped++; continue; }
     const type = getCell(c, 'type');
     if (type && type.toLowerCase() !== 'expense') { skipped++; continue; }
@@ -256,10 +306,12 @@ export function parseTravelSpendCsv(rows: string[][], tripIdFallback: string): {
     if (!iso) { skipped++; continue; }
 
     const rateRaw = getCell(c, 'rate');
-    const rate = rateRaw ? parseTsNumber(rateRaw) : NaN;
+    // allowGrouping = false: a conversion rate is never thousands-grouped.
+    // "44.444" must stay 44.444, not become 44444 (which produced 0.18 EUR
+    // instead of 208.78 EUR for a 8,000 THB expense).
+    const rate = rateRaw ? parseCsvNumber(rateRaw, undefined, false) : NaN;
     const homeRaw = getCell(c, 'homeAmount');
-    const homeAmount = homeRaw ? parseTsNumber(homeRaw) : NaN;
-    const currency = (getCell(c, 'currency') || 'EUR').toUpperCase();
+    const homeAmount = homeRaw ? parseCsvNumber(homeRaw) : NaN;
 
     items.push({
       tripId: tripIdFallback,

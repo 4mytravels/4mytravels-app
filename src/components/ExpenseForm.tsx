@@ -20,8 +20,12 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { processPhoto } from '../utils/image';
+import { useKeyboardHeight } from '../utils/useKeyboardHeight';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../data/countries';
 import { CURRENCIES as SHARED_CURRENCIES, currencyInfo } from '../data/currencies';
+import { SheetPortal } from './SheetPortal';
+import { PickerSheet, PickerRow } from './PickerSheet';
+import { WebDateButton } from './WebDateButton';
 import {
   colors,
   fontFamily,
@@ -82,6 +86,12 @@ export function ExpenseForm({
   onClose?: () => void;
 }) {
   const isEdit = !!initialExpense;
+  // Android/OEM keyboards (Samsung) and mobile-web virtual keyboards do not
+  // resize the Modal window reliably, so the currency/country sheets are padded
+  // by the measured keyboard height on both platforms.
+  const keyboardHeight = useKeyboardHeight();
+  const sheetKeyboardPad =
+    Platform.OS !== 'ios' && keyboardHeight > 0 ? { paddingBottom: spacing.xl + keyboardHeight } : null;
   const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : '');
   const [currency, setCurrency] = useState(initialExpense?.currency ?? defaultCurrency);
   const [category, setCategory] = useState<ExpenseCategory>(initialExpense?.category ?? 'Food');
@@ -189,9 +199,14 @@ export function ExpenseForm({
       quality: 0.7,
     });
     if (!res.canceled && res.assets[0]?.base64) {
-      // Resize to ≤2000px / ≤500KB + strip ALL EXIF/GPS bytes via JPEG
-      // re-encode (§2.2 image cap + true EXIF strip, was a follow-up).
-      const bytes = await processPhoto(res.assets[0].base64);
+      // Resize to ≤2000px (aspect preserved) / ≤500KB + strip ALL EXIF/GPS bytes
+      // via JPEG re-encode (§2.2 image cap + true EXIF strip). The picker's own
+      // dimensions are passed so we skip an extra full-image decode pass (which
+      // is what made "add receipt" take seconds before).
+      const bytes = await processPhoto(res.assets[0].base64, {
+        width: res.assets[0].width,
+        height: res.assets[0].height,
+      });
       const b64 = bytesToBase64(bytes);
       setReceiptBytes(bytes);
       setReceiptPreview('data:image/jpeg;base64,' + b64);
@@ -276,9 +291,16 @@ export function ExpenseForm({
       rateToHome: rate ?? 0,
       rateDate: date,
       category,
-      // Timezone-aware: combine the chosen date + local time-of-day on the device,
-      // then normalize to UTC ISO (§2.1).
-      createdAt: initialExpense?.createdAt ?? new Date(`${date}T${time}:00`).toISOString(),
+      // Timezone-aware: combine the chosen date + local time-of-day on the
+      // device, then normalize to UTC ISO (§2.1).
+      //
+      // On EDIT the timestamp must be REBUILT from the chosen date + time.
+      // Keeping `initialExpense.createdAt` pinned the entry to its ORIGINAL day:
+      // moving an expense to another date saved the new rateDate but left
+      // createdAt on the old day, and groupByDay/groupByDaySplitAware bucket by
+      // createdAt — so the Expenses tab still showed it under the old day.
+      // The time-of-day is preserved; only the day is taken from `date`.
+      createdAt: new Date(`${date}T${time}:00`).toISOString(),
       country: country.trim() || undefined,
       paymentMethod,
       notes: note.trim() || undefined,
@@ -358,57 +380,36 @@ export function ExpenseForm({
                 <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
               </Pressable>
             </View>
-            {/* Currency selection modal — same shared list as New Trip */}
-            <Modal visible={showCurrencies} transparent animationType="fade" onRequestClose={() => setShowCurrencies(false)}>
-              <Pressable style={styles.pickerBackdrop} onPress={() => setShowCurrencies(false)}>
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                  style={styles.pickerKeyboardWrap}
-                >
-                  <Pressable style={styles.pickerSheet} onPress={() => {}}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-                      <Text style={styles.pickerTitle}>Select currency</Text>
-                      <Pressable onPress={() => setShowCurrencies(false)}>
-                        <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
-                      </Pressable>
-                    </View>
-                    <TextInput
-                      style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
-                      value={currencyQuery}
-                      onChangeText={setCurrencyQuery}
-                      placeholder="Search currency"
-                      placeholderTextColor={colors.mutedForeground}
-                      autoCapitalize="none"
-                    />
-                    <ScrollView style={{ maxHeight: 380 }}>
-                      {SHARED_CURRENCIES.filter(
-                        (c) =>
-                          c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
-                          c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
-                      ).map((c) => {
-                        const active = currency === c.code;
-                        return (
-                          <Pressable
-                            key={c.code}
-                            style={[styles.pickerRow, active && styles.pickerRowActive]}
-                            onPress={() => {
-                              setCurrency(c.code);
-                              setShowCurrencies(false);
-                              setCurrencyQuery('');
-                            }}
-                          >
-                            <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
-                              {c.flag} {c.code} — {c.name}
-                            </Text>
-                            {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </Pressable>
-                </KeyboardAvoidingView>
-              </Pressable>
-            </Modal>
+            {/* Currency selection. PickerSheet keeps the backdrop and the sheet
+                as SIBLINGS, so a tap on the search field can never bubble into
+                "close" — the old nested-Pressable version made the field
+                unfocusable on the PWA. */}
+            <PickerSheet
+              visible={showCurrencies}
+              onClose={() => setShowCurrencies(false)}
+              title="Select currency"
+              query={currencyQuery}
+              onQueryChange={(v) => { setCurrencyQuery(v); }}
+              queryPlaceholder="Search currency"
+              maxListHeight={380}
+            >
+              {SHARED_CURRENCIES.filter(
+                (c) =>
+                  c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
+                  c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
+              ).map((c) => (
+                <PickerRow
+                  key={c.code}
+                  label={`${c.flag} ${c.code} — ${c.name}`}
+                  active={currency === c.code}
+                  onPress={() => {
+                    setCurrency(c.code);
+                    setShowCurrencies(false);
+                    setCurrencyQuery('');
+                  }}
+                />
+              ))}
+            </PickerSheet>
             {/* rate line */}
             <View style={styles.rateRow}>
               {isEdit ? (
@@ -547,7 +548,10 @@ export function ExpenseForm({
             <Text style={styles.label}>Date & time</Text>
             <View style={styles.dateTimeRow}>
               {/* Date field: type directly, or tap the calendar icon for the picker.
-                  The input is NOT wrapped in the Pressable so typing isn't hijacked. */}
+                  The input is NOT wrapped in the Pressable so typing isn't hijacked.
+                  On web the icon is WebDateButton (browser-native date picker); the
+                  visible text field is rendered on BOTH platforms — web must show it
+                  too, otherwise only a bare calendar icon appears. */}
               <View style={styles.dateContainer}>
                 <TextInput
                   style={styles.dateInput}
@@ -556,14 +560,18 @@ export function ExpenseForm({
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
                 />
-                <Pressable hitSlop={8} onPress={() => openDatePicker('date')}>
-                  <Ionicons
-                    name="calendar-outline"
-                    size={20}
-                    color={colors.mutedForeground}
-                    style={{ paddingHorizontal: spacing.lg }}
-                  />
-                </Pressable>
+                {Platform.OS === 'web' ? (
+                  <WebDateButton value={date} onChange={setDate} />
+                ) : (
+                  <Pressable hitSlop={8} onPress={() => openDatePicker('date')}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={20}
+                      color={colors.mutedForeground}
+                      style={{ paddingHorizontal: spacing.lg }}
+                    />
+                  </Pressable>
+                )}
               </View>
               <TextInput
                 style={styles.timeInput}
@@ -587,14 +595,18 @@ export function ExpenseForm({
                     placeholder="YYYY-MM-DD"
                     placeholderTextColor={colors.mutedForeground}
                   />
-                  <Pressable hitSlop={8} onPress={() => openDatePicker('end')}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={20}
-                      color={colors.mutedForeground}
-                      style={{ paddingHorizontal: spacing.lg }}
-                    />
-                  </Pressable>
+                  {Platform.OS === 'web' ? (
+                    <WebDateButton value={endDate} onChange={setEndDate} />
+                  ) : (
+                    <Pressable hitSlop={8} onPress={() => openDatePicker('end')}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={20}
+                        color={colors.mutedForeground}
+                        style={{ paddingHorizontal: spacing.lg }}
+                      />
+                    </Pressable>
+                  )}
                 </View>
                 {(() => {
                   if (!endDate || endDate <= date) return null;
@@ -666,66 +678,41 @@ export function ExpenseForm({
       )}
 
       {/* Fullscreen receipt viewer */}
-      <Modal visible={receiptViewerOpen} transparent animationType="fade" onRequestClose={() => setReceiptViewerOpen(false)}>
+      <SheetPortal visible={receiptViewerOpen} onRequestClose={() => setReceiptViewerOpen(false)}>
         <Pressable style={styles.viewerBackdrop} onPress={() => setReceiptViewerOpen(false)}>
           <Image source={{ uri: receiptPreview ?? undefined }} style={styles.viewerImage} resizeMode="contain" />
           <View style={styles.viewerClose}>
             <Ionicons name="close" size={24} color="#fff" />
           </View>
         </Pressable>
-      </Modal>
+      </SheetPortal>
 
-      {/* Country picker modal — same offline UN list as trip creation */}
-      <Modal visible={countryOpen} transparent animationType="fade" onRequestClose={() => setCountryOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setCountryOpen(false)}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.pickerKeyboardWrap}
-          >
-            <Pressable style={styles.pickerSheet} onPress={() => {}}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-                <Text style={styles.pickerTitle}>Select a country</Text>
-                <Pressable onPress={() => setCountryOpen(false)}>
-                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
-                </Pressable>
-              </View>
-              <TextInput
-                style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
-                value={countryQuery}
-                onChangeText={setCountryQuery}
-                placeholder="Search country"
-                placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="none"
-              />
-              <ScrollView style={{ maxHeight: 380 }}>
-                {UN_COUNTRIES.filter(
-                  (c) =>
-                    c.name.toLowerCase().includes(countryQuery.toLowerCase()) ||
-                    c.code.toLowerCase().includes(countryQuery.toLowerCase()),
-                ).map((c) => {
-                  const active = country.toUpperCase() === c.code;
-                  return (
-                    <Pressable
-                      key={c.code}
-                      style={[styles.pickerRow, active && styles.pickerRowActive]}
-                      onPress={() => {
-                        setCountry(c.code);
-                        setCountryOpen(false);
-                        setCountryQuery('');
-                      }}
-                    >
-                      <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
-                        {flagEmoji(c.code)} {c.name}
-                      </Text>
-                      {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
+      {/* Country picker — PickerSheet: siblings, so the search field is tappable. */}
+      <PickerSheet
+        visible={countryOpen}
+        onClose={() => setCountryOpen(false)}
+        title="Select a country"
+        query={countryQuery}
+        onQueryChange={setCountryQuery}
+        queryPlaceholder="Search country"
+      >
+        {UN_COUNTRIES.filter(
+          (c) =>
+            c.name.toLowerCase().includes(countryQuery.toLowerCase()) ||
+            c.code.toLowerCase().includes(countryQuery.toLowerCase()),
+        ).map((c) => (
+          <PickerRow
+            key={c.code}
+            label={`${flagEmoji(c.code)} ${c.name}`}
+            active={country.toUpperCase() === c.code}
+            onPress={() => {
+              setCountry(c.code);
+              setCountryOpen(false);
+              setCountryQuery('');
+            }}
+          />
+        ))}
+      </PickerSheet>
     </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -765,6 +752,10 @@ const styles = StyleSheet.create({
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   amountInput: {
     flex: 1,
+    // Web: react-native-web renders this as <input>, a flex item with
+    // min-width:auto, so it refuses to shrink below its intrinsic width and
+    // pushes the currency button off the right edge on narrow viewports.
+    minWidth: 0,
     backgroundColor: colors.secondary,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
@@ -785,6 +776,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     minWidth: 88,
     justifyContent: 'center',
   },
@@ -869,6 +861,7 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     flex: 1,
+    minWidth: 0,
     paddingVertical: spacing.lg,
     fontSize: fontSize.lg,
     color: colors.foreground,
@@ -891,6 +884,16 @@ const styles = StyleSheet.create({
   receiptHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm },
   overrideNote: { color: colors.success, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.md },
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  webPickerOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  webPickerSheet: {
+    width: '100%',
+    maxHeight: '85%',
+  },
   pickerSheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius['3xl'],

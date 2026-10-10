@@ -9,8 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  Modal,
-  FlatList,
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,10 +28,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { v4 as uuid } from 'uuid';
+import { WebDateButton } from '../../src/components/WebDateButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { processPhoto } from '../../src/utils/image';
+import { processPhoto, TRIP_COVER_HEIGHT } from '../../src/utils/image';
+import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
@@ -68,41 +68,31 @@ function CurrencyPicker({
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setOpen(false)}>
-          <View style={styles.pickerSheet}>
-            <Text style={styles.pickerTitle}>Select currency</Text>
-            <TextInput
-              style={[styles.input, { marginBottom: spacing.md }]}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search currency"
-              placeholderTextColor={colors.mutedForeground}
-              autoCapitalize="none"
-            />
-            <FlatList
-              data={filtered}
-              keyExtractor={(c) => c.code}
-              style={{ maxHeight: 420 }}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[styles.pickerRow, item.code === value && styles.pickerRowActive]}
-                  onPress={() => {
-                    onSelect(item.code);
-                    setOpen(false);
-                    setQuery('');
-                  }}
-                >
-                  <Text style={[styles.pickerRowText, item.code === value && { color: colors.primary, fontWeight: '700' }]}>
-                    {item.flag} {item.code} — {item.name}
-                  </Text>
-                  {item.code === value && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                </Pressable>
-              )}
-            />
-          </View>
-        </Pressable>
-      </Modal>
+      {/* Currency picker — PickerSheet: the backdrop and the sheet are siblings, so
+          the search field is tappable. A bare <Modal> here also cannot nest
+          inside the modal route /trips/new on react-native-web. */}
+      <PickerSheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title="Select currency"
+        query={query}
+        onQueryChange={setQuery}
+        queryPlaceholder="Search currency"
+        maxListHeight={420}
+      >
+        {filtered.map((c) => (
+          <PickerRow
+            key={c.code}
+            label={`${c.flag} ${c.code} — ${c.name}`}
+            active={c.code === value}
+            onPress={() => {
+              onSelect(c.code);
+              setOpen(false);
+              setQuery('');
+            }}
+          />
+        ))}
+      </PickerSheet>
     </>
   );
 }
@@ -124,6 +114,13 @@ function DateField({
   const [nativeAvailable, setNativeAvailable] = useState(true);
   const openPicker = () => {
     setDraft(value);
+    // Web: the community DateTimePicker has no web implementation — go
+    // straight to the manual/fallback input (setState during render broke
+    // this path before; openPicker is an event handler, so it is safe).
+    if (Platform.OS === 'web') {
+      setEditing(true);
+      return;
+    }
     setShow(true);
   };
   const onPick = (_: unknown, picked?: Date) => {
@@ -134,12 +131,23 @@ function DateField({
   const initial = value ? new Date(`${value}T12:00:00`) : new Date();
   return (
     <View>
-      <Pressable style={styles.input} onPress={openPicker}>
-        <Text style={[styles.pickerValue, !value && { color: colors.mutedForeground }]}>
-          {value || 'YYYY-MM-DD'}
-        </Text>
-        <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} />
-      </Pressable>
+      {/* Web: the whole field opens the browser's native date picker.
+          Native: the existing Pressable + DateTimePicker flow. */}
+      {Platform.OS === 'web' ? (
+        <View style={styles.input}>
+          <WebDateButton value={value} onChange={onChange} />
+          <Text style={[styles.pickerValue, !value && { color: colors.mutedForeground }]}>
+            {value || 'YYYY-MM-DD'}
+          </Text>
+        </View>
+      ) : (
+        <Pressable style={styles.input} onPress={openPicker}>
+          <Text style={[styles.pickerValue, !value && { color: colors.mutedForeground }]}>
+            {value || 'YYYY-MM-DD'}
+          </Text>
+          <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} />
+        </Pressable>
+      )}
       {/* Fallback text input (also used to correct a failed native picker) */}
       {editing && (
         <TextInput
@@ -162,14 +170,11 @@ function DateField({
         />
       )}
       {show && (
-        <Pressable
-          style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}
-          // no-op guard view
-        >
+        <View style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}>
           {(() => {
             if (!nativeAvailable || !DateTimePicker) {
-              setShow(false);
-              setEditing(true);
+              // Render-time setState is illegal — the fallback input is
+              // already toggled by openPicker/onError; just render nothing.
               return null;
             }
             try {
@@ -190,13 +195,10 @@ function DateField({
                 />
               );
             } catch {
-              setNativeAvailable(false);
-              setShow(false);
-              setEditing(true);
               return null;
             }
           })()}
-        </Pressable>
+        </View>
       )}
     </View>
   );
@@ -237,49 +239,24 @@ function CountryMultiPicker({
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.pickerSheet} onPress={() => {}}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-              <Text style={styles.pickerTitle}>Countries visited</Text>
-              <Pressable onPress={() => setOpen(false)}>
-                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
-              </Pressable>
-            </View>
-            <TextInput
-              style={[styles.input, { marginBottom: spacing.md, paddingVertical: spacing.md }]}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search country"
-              placeholderTextColor={colors.mutedForeground}
-              autoCapitalize="none"
-            />
-            <FlatList
-              data={filtered}
-              keyExtractor={(c) => c.code}
-              style={{ maxHeight: 380 }}
-              renderItem={({ item }) => {
-                const active = selected.includes(item.code);
-                return (
-                  <Pressable
-                    style={[styles.pickerRow, active && styles.pickerRowActive]}
-                    onPress={() => toggle(item.code)}
-                  >
-                    <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
-                      {flagEmoji(item.code)} {item.name}
-                    </Text>
-                    <Ionicons
-                      name={active ? 'checkbox' : 'square-outline'}
-                      size={20}
-                      color={active ? colors.primary : colors.mutedForeground}
-                    />
-                  </Pressable>
-                );
-              }}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Country picker — PickerSheet, for the same two reasons as the currency one. */}
+      <PickerSheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title="Countries visited"
+        query={query}
+        onQueryChange={setQuery}
+        queryPlaceholder="Search country"
+      >
+        {filtered.map((c) => (
+          <PickerRow
+            key={c.code}
+            label={`${flagEmoji(c.code)} ${c.name}`}
+            active={selected.includes(c.code)}
+            onPress={() => toggle(c.code)}
+          />
+        ))}
+      </PickerSheet>
     </>
   );
 }
@@ -330,7 +307,10 @@ export default function NewTripScreen() {
   useEffect(() => {
     if (!isEdit && !homeTouched && defaultHomeCurrency) setHomeCurrency(defaultHomeCurrency);
   }, [defaultHomeCurrency, isEdit, homeTouched]);
-  const canSave = name.trim().length > 0 && dailyBudget.trim().length > 0;
+  // Only the name is required. A daily budget is optional: with none, every
+  // budget figure (daily avg / budget, over-budget, Day X of Y) degrades to a
+  // neutral 0-budget state instead of blocking the save.
+  const canSave = name.trim().length > 0;
 
   const save = async () => {
     if (!canSave || saving) return;
@@ -349,13 +329,14 @@ export default function NewTripScreen() {
     };
     try {
       // Each phase is surfaced in the UI so a hang is visible instead of silent.
+      // NOTE: no artificial timeout here. Writing a trip photo BLOB through the
+      // encrypted SQLCipher layer can legitimately take >4s on a mid-range
+      // phone, and the old 4s race ABORTED the write ("TIMEOUT in saveTrip"),
+      // which is why a photo that previewed fine sometimes wasn't stored. The
+      // phase label is enough to make a real hang visible.
       const step = async (label: string, fn: () => Promise<unknown>) => {
         setPhase(label);
-        const result = await Promise.race([
-          fn(),
-          new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`TIMEOUT in ${label}`)), 4000)),
-        ]);
-        return result;
+        return fn();
       };
 
       if (isEdit) {
@@ -381,7 +362,16 @@ export default function NewTripScreen() {
         await step('saveTrip (DB write)', () => saveTrip(trip, coverBytes));
       }
       setPhase('navigating back');
-      router.back();
+      // Web (static export): back() on a modal route can trigger a remount
+      // cascade (focus effects refire in a loop -> React #310, grey screen).
+      // replace() + dismiss() (in that order, next tick) navigates to the
+      // trips list AND drops the modal presentation layer.
+      if (Platform.OS === 'web') {
+        router.replace('/trips');
+        setTimeout(() => { try { router.dismiss(); } catch { /* flat stack */ } }, 0);
+      } else {
+        router.back();
+      }
     } catch (e) {
       console.error('saveTrip failed', e);
       const msg = (e instanceof Error ? e.message : String(e)) + `\n[phase: ${phase}]`;
@@ -393,6 +383,32 @@ export default function NewTripScreen() {
     }
   };
 
+  const pickCover = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.7,
+      allowsEditing: true,
+      // Wide landscape crop to MATCH the trip card's full-width 224px stage.
+      // The old 4:3 crop framed a different shape than the card renders, so
+      // the in/out-zoom did not match what the user saw on the card.
+      aspect: [16, 9],
+    });
+    if (res.canceled || !res.assets[0]?.base64) return;
+    // Resize ≤2000px (aspect preserved) + ≤500KB + true EXIF/GPS strip (§2.2).
+    // Picker dimensions are passed so no extra decode pass is needed.
+    const bytes = await processPhoto(res.assets[0].base64, {
+      width: res.assets[0].width,
+      height: res.assets[0].height,
+    });
+    setCoverBytes(bytes);
+    setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
+    // Choosing a photo ALWAYS cancels a previous "Remove" click. Without this,
+    // remove-then-pick left coverRemoved=true and save() wrote cover_photo =
+    // NULL — the new photo previewed but was silently dropped on restart.
+    setCoverRemoved(false);
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
@@ -400,7 +416,10 @@ export default function NewTripScreen() {
         <View style={styles.handle} />
         <View style={styles.header}>
           <Text style={styles.title}>{isEdit ? 'Edit trip' : 'New trip'}</Text>
-          <Pressable style={styles.closeButton} onPress={() => router.back()}>
+          <Pressable
+            style={styles.closeButton}
+            onPress={() => (Platform.OS === 'web' ? router.replace('/trips') : router.back())}
+          >
             <Ionicons name="close" size={24} color={colors.mutedForeground} />
           </Pressable>
         </View>
@@ -417,7 +436,7 @@ export default function NewTripScreen() {
                 maximumDate={endDate ? new Date(`${endDate}T12:00:00`) : undefined}
               />
             </Field>
-            <Field label="End date (optional)" style={{ flex: 1 }}>
+            <Field label="End date" style={{ flex: 1 }}>
               <DateField
                 value={endDate}
                 onChange={setEndDate}
@@ -433,45 +452,41 @@ export default function NewTripScreen() {
               <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
             </Field>
           </View>
-          <Field label="Countries visited (optional)">
+          <Field label="Countries visited">
             <CountryMultiPicker selected={countries} onChange={setCountries} />
           </Field>
-          <Field label="Daily budget (home currency)">
-            <TextInput style={styles.input} value={dailyBudget} onChangeText={setDailyBudget} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.mutedForeground} />
+          <Field label="Daily budget">
+            <TextInput style={styles.input} value={dailyBudget} onChangeText={setDailyBudget} keyboardType="decimal-pad" placeholder="No budget" placeholderTextColor={colors.mutedForeground} />
           </Field>
 
           {/* Trip photo (optional) — replaces the airplane icon on the trip card */}
-          <Field label="Trip photo (optional)">
+          <Field label="Trip photo">
             {coverPreview ? (
-              <View style={styles.coverRow}>
-                <Image source={{ uri: coverPreview }} style={styles.coverThumb} />
-                <Pressable
-                  style={[styles.coverBtn, { backgroundColor: colors.destructive }]}
-                  onPress={() => { setCoverBytes(null); setCoverPreview(null); setCoverRemoved(true); }}
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
-                  <Text style={styles.coverBtnText}>Remove</Text>
-                </Pressable>
+              <View style={styles.coverPreviewBlock}>
+                {/* SAME format as the trip card stage (src/components/TripCard.tsx):
+                    full width × TRIP_COVER_HEIGHT, cover-fit, same corner radius.
+                    A single width constant keeps the two in lockstep. */}
+                <Image
+                  source={{ uri: coverPreview }}
+                  style={styles.coverStage}
+                  resizeMode="cover"
+                />
+                <View style={styles.coverActions}>
+                  <Pressable style={[styles.coverBtn, styles.coverBtnGrow]} onPress={() => { void pickCover(); }}>
+                    <Ionicons name="swap-horizontal-outline" size={16} color={colors.primaryForeground} />
+                    <Text style={styles.coverBtnText}>Change photo</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.coverBtn, styles.coverBtnGrow, { backgroundColor: colors.destructive }]}
+                    onPress={() => { setCoverBytes(null); setCoverPreview(null); setCoverRemoved(true); }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
+                    <Text style={styles.coverBtnText}>Remove</Text>
+                  </Pressable>
+                </View>
               </View>
             ) : (
-              <Pressable
-                style={styles.coverAdd}
-                onPress={async () => {
-                  const res = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                    base64: true,
-                    quality: 0.7,
-                    allowsEditing: true,
-                    aspect: [4, 3],
-                  });
-                  if (!res.canceled && res.assets[0]?.base64) {
-                    // Resize ≤2000px/≤500KB + true EXIF/GPS strip (§2.2).
-                    const bytes = await processPhoto(res.assets[0].base64);
-                    setCoverBytes(bytes);
-                    setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
-                  }
-                }}
-              >
+              <Pressable style={styles.coverAdd} onPress={() => { void pickCover(); }}>
                 <Ionicons name="image-outline" size={20} color={colors.mutedForeground} />
                 <Text style={styles.coverAddText}>Choose a photo for this trip</Text>
               </Pressable>
@@ -566,10 +581,33 @@ const styles = StyleSheet.create({
   },
   pickerRowActive: {},
   pickerRowText: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-  coverRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  coverThumb: { width: 96, height: 72, borderRadius: radius.lg, backgroundColor: colors.secondary },
-  coverBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.full },
-  coverBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm },
+  coverPreviewBlock: { marginTop: spacing.xs },
+  // Trip cover preview — EXACTLY the trip card stage: full width ×
+  // TRIP_COVER_HEIGHT (shared constant, src/utils/image.ts), cover-fit, the
+  // card's radius['3xl'] corner. The old 132×100 thumb was a different shape.
+  coverStage: {
+    width: '100%',
+    height: TRIP_COVER_HEIGHT,
+    borderRadius: radius['3xl'],
+    backgroundColor: colors.secondary,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  // Buttons sit UNDER the full-width preview now (they no longer squeeze
+  // beside a small square), sharing the row equally.
+  coverActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  coverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+  },
+  coverBtnGrow: { flex: 1 },
+  coverBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.xs },
   coverAdd: {
     flexDirection: 'row',
     alignItems: 'center',

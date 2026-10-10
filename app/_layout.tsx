@@ -12,7 +12,6 @@ import {
   hasStoredPassphraseFlag,
   markPassphraseCreated,
 } from '../src/components/WebUnlockGate';
-import { StorageHealthBanner } from '../src/components/StorageHealthBanner';
 import { getStorageAdapter } from '../src/db';
 
 // PWA service worker registration (web only, static builds only). Deferred
@@ -121,8 +120,9 @@ export default function RootLayout() {
           options={{ title: 'Exchange rates', headerShown: false }}
         />
       </Stack>
-      {isWeb && <StorageHealthBanner />}
       <FloatingNav />
+      {/* Web notices (storage health + install nudge) render per screen, in the
+          flow under the header — see src/components/WebNotices.tsx. */}
     </View>
   );
 }

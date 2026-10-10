@@ -15,6 +15,29 @@ function toLocalYMD(d: Date): string {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** Split an ISO yyyy-mm-dd into its parts + a "14 Sep 2026" label. */
+function ymdParts(iso?: string): { y: number; m: number; d: number; label: string } | null {
+  const bits = (iso ?? '').slice(0, 10).split('-');
+  const [y, m, d] = bits.map((n) => parseInt(n, 10));
+  if (!y || !m || m < 1 || m > 12 || !d) return null;
+  return { y, m, d, label: `${d} ${MONTHS[m - 1]} ${y}` };
+}
+
+/**
+ * Trip date range for a card: "14 Sep – 11 Oct 2026", same month collapsed to
+ * "14–18 Sep 2026", no end date reads "14 Sep 2026 – open". Purely string
+ * based — a date here is a calendar day, never a timestamp to convert.
+ */
+export function formatDateRange(startISO?: string, endISO?: string): string {
+  const s = ymdParts(startISO);
+  if (!s) return startISO ?? '';
+  const e = ymdParts(endISO);
+  if (!e) return `${s.label} – open`;
+  if (s.y === e.y && s.m === e.m) return `${s.d}–${e.d} ${MONTHS[e.m - 1]} ${e.y}`;
+  if (s.y === e.y) return `${s.d} ${MONTHS[s.m - 1]} – ${e.d} ${MONTHS[e.m - 1]} ${e.y}`;
+  return `${s.d} ${MONTHS[s.m - 1]} ${s.y} – ${e.d} ${MONTHS[e.m - 1]} ${e.y}`;
+}
+
 /** "Today" / "Yesterday" / "Tomorrow" / "28 Aug 2026" for a date-ish value. */
 export function friendlyDayLabel(value?: string): string {
   if (!value) return '';

@@ -10,9 +10,11 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
+import { NavFadeScrim } from '../../src/components/FadeScrim';
+import { WebNotices } from '../../src/components/WebNotices';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
@@ -23,7 +25,10 @@ import { Card, SectionTitle, Button } from '../../src/components/ui';
 import { createBackup, restoreBackup } from '../../src/db/backup';
 import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
+import { v4 as uuid } from 'uuid';
+import type { Trip } from '../../src/types';
 import { saveExpense, loadExpenses } from '../../src/db/expenseRepo';
+import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
@@ -39,11 +44,40 @@ import {
 // Repository links for Source code and Report an issue in Settings → About.
 const SOURCE_CODE_URL = 'https://github.com/4mytravels/4mytravels-app';
 const ISSUES_URL = 'https://github.com/4mytravels/4mytravels-app/issues';
+// Privacy statement lives on the marketing site, not in the PWA bundle, so a
+// change to the statement never requires an app release. /privacy redirects to
+// /privacy/ on the site (nginx auto-index), so the short form is safe.
+const PRIVACY_URL = 'https://4mytravels.app/privacy';
+const WEBSITE_URL = 'https://4mytravels.app';
+
+// Sentinel for "import without choosing a trip".
+const AUTO_TRIP = '__auto__';
+
+/**
+ * Next free "import-tripN" number, derived from the trips that already exist.
+ *
+ * A React state counter was wrong: it resets to 0 on every screen remount, so a
+ * second import produced a second "import-trip1". Existing names are the single
+ * source of truth — gaps are never filled, so deleting "import-trip2" leaves
+ * "import-trip3" next (harmless; the old name would otherwise be reused and
+ * two trips could look identical).
+ */
+function nextImportTripNumber(trips: { name: string }[]): number {
+  const max = trips.reduce((acc, t) => {
+    const m = /^import-trip(\d+)$/.exec(t.name.trim());
+    return m ? Math.max(acc, parseInt(m[1], 10)) : acc;
+  }, 0);
+  return max + 1;
+}
 
 const CURRENCIES = SHARED_CURRENCIES;
 
 export default function SettingsScreen() {
+  // The floating nav overlaps the bottom of this screen, so the scroll content
+  // must clear it: nav height (60) + nav gap (18) + breathing room.
+  const insets = useSafeAreaInsets();
   const setTrips = useTripStore((s) => s.setTrips);
+  const addTripStore = useTripStore((s) => s.addTrip);
   const manualRates = useSettingsStore((s) => s.manualRates);
   const setManualRate = useSettingsStore((s) => s.setManualRate);
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
@@ -58,6 +92,9 @@ export default function SettingsScreen() {
   const [nudge, setNudge] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importTargetTrip, setImportTargetTrip] = useState<string | null>(null);
+  // 'auto' = no trip selected: a trip is created from the dates in the file
+  // (name from the export's trip_name, otherwise "import-trip1").
+  const importAuto = importTargetTrip === AUTO_TRIP;
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
   const [currencyQuery, setCurrencyQuery] = useState('');
 
@@ -102,27 +139,34 @@ export default function SettingsScreen() {
 
   const exportAllTrips = async () => {
     try {
-      let total = 0;
+      // ONE share sheet, ONE file. The old loop fired one system share dialog
+      // per trip, so "all trips" meant picking N files one by one. All trips
+      // are combined into a single CSV — the format already carries
+      // trip_id + trip_name per row, so nothing is lost.
+      const all: Array<{ trip: (typeof trips)[number]; list: Awaited<ReturnType<typeof loadExpenses>> }> = [];
       for (const t of trips) {
         const list = await loadExpenses(t.id);
-        if (list.length === 0) continue;
-        const csv = expensesToCsv(list, { [t.id]: t.name });
-        const safeName = t.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-        await shareCsv(csv, `4mt-expenses-${safeName || t.id}.csv`);
-        total += list.length;
+        if (list.length > 0) all.push({ trip: t, list });
       }
+      if (all.length === 0) {
+        Alert.alert('Nothing to export', 'No trips with expenses found.');
+        setExportOpen(false);
+        return;
+      }
+      const merged = all.flatMap(({ trip, list }) => list);
+      const names: Record<string, string> = {};
+      for (const { trip } of all) names[trip.id] = trip.name;
+      const csv = expensesToCsv(merged, names);
+      await shareCsv(csv, `4mt-expenses-all-${all.length}-trips.csv`);
       setExportOpen(false);
-      if (total === 0) Alert.alert('Nothing to export', 'No trips with expenses found.');
     } catch (e) {
       Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
     }
   };
 
-  // ---- CSV import: own format or TravelSpend ----
+  // ---- CSV import: own format or TravelSpend, with or without a target trip ----
   const doCsvImport = async () => {
     if (!importTargetTrip) return;
-    const trip = trips.find((t) => t.id === importTargetTrip);
-    if (!trip) return;
     setBusy(true);
     try {
       // 'text/csv' alone misses many file managers / downloads (Android mime
@@ -135,36 +179,88 @@ export default function SettingsScreen() {
       });
       const picked = doc.canceled ? null : doc.assets?.[0];
       if (!picked || typeof picked.uri !== 'string') { setBusy(false); return; }
-      // Read via expo-file-system to handle content:// URIs from cloud providers.
-      const file = new File(picked.uri);
-      const text = await file.text();
+      // Cross-platform read: web uses the picker's original File object
+      // (asset.file) because a blob: URL is not fetchable under COEP; native
+      // uses expo-file-system. See src/utils/readPickedDocument.ts.
+      const text = await readPickedDocumentText(picked);
       const rows = parseCsv(text);
       if (rows.length < 2) throw new Error('File appears to be empty.');
       const header = rows[0];
+
+      // Parse WITHOUT a trip id first — the auto mode needs the file's own
+      // trip name and date range before it can create the trip.
+      const PLACEHOLDER = 'pending';
       let items;
       let skippedNote = '';
       if (isOwnExpenseCsv(header)) {
-        items = parseOwnCsv(rows, trip.id);
+        items = parseOwnCsv(rows, PLACEHOLDER);
       } else if (looksLikeTravelSpendCsv(header)) {
-        const res = parseTravelSpendCsv(rows, trip.id);
+        const res = parseTravelSpendCsv(rows, PLACEHOLDER);
         items = res.items;
         skippedNote = res.skipped > 0 ? ` (${res.skipped} rows skipped)` : '';
       } else {
         throw new Error('Unrecognized CSV format — expected a 4MyTravels or compatible travel expense export.');
       }
+      if (items.length === 0) throw new Error('No expense rows found in the file.');
+
+      // --- Resolve the destination trip -----------------------------------
+      let tripId = importTargetTrip;
+      let tripName = trips.find((t) => t.id === importTargetTrip)?.name ?? '';
+      if (importAuto) {
+        // Date range from the expense dates.
+        const days = items
+          .map((i) => (i.createdAt || i.rateDate || '').slice(0, 10))
+          .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+          .sort();
+        const startDate = days[0] ?? new Date().toISOString().slice(0, 10);
+        const endDate = days[days.length - 1] ?? startDate;
+        // Name: the export's own trip_name when present, else import-tripN.
+        const headerLower = header.map((h) => h.trim().toLowerCase());
+        const nameIdx = headerLower.indexOf('trip_name');
+        const nameFromFile = nameIdx >= 0
+          ? (rows.slice(1).map((r) => (r[nameIdx] ?? '').trim()).find((v) => v !== '') ?? '')
+          : '';
+        // The counter must survive a screen remount (React state does not — the
+        // Trips tab stayed mounted, but any remount reset it to 0 and produced
+        // a second "import-trip1"). Derive the next free number from the trips
+        // that already exist instead.
+        const n = nextImportTripNumber(trips);
+        tripName = nameFromFile || `import-trip${n}`;
+        // Home currency: the most common home currency among the rows, EUR default.
+        const homeIdx = headerLower.indexOf('home_currency');
+        const homeCurrency = homeIdx >= 0
+          ? ((rows.slice(1).map((r) => (r[homeIdx] ?? '').trim()).find((v) => v !== '') ?? '') || 'EUR').toUpperCase()
+          : 'EUR';
+        const trip: Trip = {
+          id: uuid(),
+          name: tripName,
+          startDate,
+          endDate: endDate !== startDate ? endDate : undefined,
+          homeCurrency,
+          defaultCurrency: homeCurrency,
+          // No budget known from a CSV → 0 keeps the pace math honest instead
+          // of inventing one.
+          dailyBudget: 0,
+          countries: [],
+        };
+        await saveTrip(trip);
+        addTripStore(trip);
+        tripId = trip.id;
+      }
+
       let count = 0;
       for (const item of items) {
         const expense = {
           ...item,
           id: item.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-          tripId: trip.id,
+          tripId,
         };
         await saveExpense(expense as never); // INSERT OR REPLACE → re-import updates
         count++;
       }
       Alert.alert(
         'Import complete',
-        `${count} expense(s) imported into "${trip.name}"${skippedNote}.`,
+        `${count} expense(s) imported into "${tripName}"${skippedNote}.`,
       );
       setImportOpen(false);
       setImportTargetTrip(null);
@@ -208,8 +304,9 @@ export default function SettingsScreen() {
         setBusy(false);
         return;
       }
-      const file = new File(picked.uri);
-      const envelope = await file.text();
+      // Same cross-platform read as the CSV import (web: asset.file; a blob:
+      // URL is not fetchable under COEP — see src/utils/readPickedDocument.ts).
+      const envelope = await readPickedDocumentText(picked);
       const { trips, expenses } = await restoreBackup(envelope, passphrase);
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);
@@ -231,7 +328,14 @@ export default function SettingsScreen() {
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
       </View>
-      <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
+      {/* Web/PWA notices (storage health + install nudge) under the app title. */}
+      <WebNotices />
+
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 106 }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.section}>
           <SectionTitle title="Data" />
           <Card>
@@ -313,17 +417,28 @@ export default function SettingsScreen() {
               <Text style={styles.aboutLabel}>Version</Text>
               <Text style={styles.aboutValue}>{Constants.expoConfig?.version ?? '1.0.0'}</Text>
             </View>
+            <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(WEBSITE_URL))}>
+              <Text style={styles.aboutLink}>Website</Text>
+              <Ionicons name="globe-outline" size={16} color={colors.primary} />
+            </Pressable>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(SOURCE_CODE_URL))}>
               <Text style={styles.aboutLink}>Source code (GitHub)</Text>
               <Ionicons name="open-outline" size={16} color={colors.primary} />
             </Pressable>
-            <Pressable style={[styles.aboutRow, { marginBottom: 0 }]} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(ISSUES_URL))}>
+            <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(ISSUES_URL))}>
               <Text style={styles.aboutLink}>Report an issue</Text>
               <Ionicons name="bug-outline" size={16} color={colors.primary} />
+            </Pressable>
+            <Pressable style={[styles.aboutRow, { marginBottom: 0 }]} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(PRIVACY_URL))}>
+              <Text style={styles.aboutLink}>Privacy statement</Text>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
             </Pressable>
           </Card>
         </View>
       </ScrollView>
+
+      {/* Settings content fades out under the floating nav. */}
+      <NavFadeScrim />
 
       {/* Default home currency picker */}
       <Modal visible={currencyPickerOpen} transparent animationType="fade" onRequestClose={() => setCurrencyPickerOpen(false)}>
@@ -436,9 +551,28 @@ export default function SettingsScreen() {
           <View style={styles.pickerSheet}>
             <Text style={styles.pickerTitle}>Import into which trip?</Text>
             <Text style={[styles.note, { marginBottom: spacing.md }]}>
-              Expenses are added to the selected trip. Existing entries with the same id are updated.
+              Pick a trip, or let the app create one from the dates in the file.
+              Existing entries with the same id are updated.
             </Text>
-            <ScrollView style={{ maxHeight: 380 }}>
+            <Pressable
+              style={[styles.pickerRow, importAuto && styles.pickerRowActive]}
+              onPress={() => setImportTargetTrip(AUTO_TRIP)}
+            >
+              <Ionicons
+                name={importAuto ? 'radio-button-on' : 'radio-button-off'}
+                size={20}
+                color={importAuto ? colors.primary : colors.mutedForeground}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.pickerRowText, importAuto && { color: colors.primary, fontWeight: '700' }]}>
+                  New trip from file dates
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>
+                  Auto-detects start/end date and trip name
+                </Text>
+              </View>
+            </Pressable>
+            <ScrollView style={{ maxHeight: 320 }}>
               {trips.map((t) => (
                 <Pressable
                   key={t.id}
@@ -478,7 +612,9 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  body: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: 0 },
+  // Padding-bottom lives on the ScrollView's contentContainer (insets.bottom +
+  // 106, sized to the floating nav) — never here as well.
+  body: { flex: 1, paddingHorizontal: spacing.xl },
   section: { marginBottom: spacing.lg },
   note: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, lineHeight: 22, marginBottom: spacing.lg },
   actions: { marginTop: spacing.sm },

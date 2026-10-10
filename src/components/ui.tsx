@@ -57,9 +57,13 @@ export function Pill({
           alignItems: 'center',
           backgroundColor: colors.surfaceStrong,
           paddingVertical: spacing.sm,
-          paddingHorizontal: spacing.lg,
+          // Tighter horizontal padding than the other pills had: the icon's own
+          // glyph padding plus a wide inner gap read as dead space on the Home
+          // quick-facts row. 12px keeps the pill compact without clipping it.
+          paddingHorizontal: spacing.md,
           borderRadius: radius.full,
-          gap: spacing.sm,
+          // 4px (not 8) between icon and text: a compact single-line chip.
+          gap: spacing.xs,
         },
         style,
       ]}

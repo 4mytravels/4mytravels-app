@@ -23,21 +23,10 @@ import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { EXPENSE_CATEGORIES } from '../../src/types';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
-
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function shortDateRange(start: string, end: string): string {
-  const s = start.slice(0, 10);
-  const e = end.slice(0, 10);
-  const startDate = new Date(`${s}T12:00:00Z`);
-  const endDate = new Date(`${e}T12:00:00Z`);
-  const sDay = startDate.getUTCDate();
-  const eDay = endDate.getUTCDate();
-  if (startDate.getUTCMonth() === endDate.getUTCMonth()) {
-    return `${sDay}–${eDay} ${MONTHS_SHORT[startDate.getUTCMonth()]}`;
-  }
-  return `${sDay} ${MONTHS_SHORT[startDate.getUTCMonth()]}–${eDay} ${MONTHS_SHORT[endDate.getUTCMonth()]}`;
-}
+import { computeTripStats } from '../../src/utils/tripStats';
+import { ExpenseRow } from '../../src/components/ExpenseRow';
+import { NavFadeScrim } from '../../src/components/FadeScrim';
+import { WebNotices } from '../../src/components/WebNotices';
 
 export default function ExpensesScreen() {
   const params = useLocalSearchParams<{ tripId?: string; add?: string }>();
@@ -161,23 +150,13 @@ export default function ExpensesScreen() {
     return () => clearTimeout(timer);
   }, [todayIndex]);
 
-  // Daily average: split-aware total for elapsed days / days elapsed (min 1).
-  // For past trips, use the trip end date as reference (not today).
-  const dailyAverage = useMemo(() => {
-    const startMs = selectedTrip ? new Date(`${selectedTrip.startDate}T12:00:00`).getTime() : NaN;
-    const endMs = selectedTrip?.endDate ? new Date(`${selectedTrip.endDate}T12:00:00`).getTime() : NaN;
-    const todayMs = Date.now();
-    // Use end date for past trips, today for active trips
-    const referenceMs = !Number.isNaN(endMs) && endMs < todayMs ? endMs : todayMs;
-    const daysElapsed = Number.isNaN(startMs)
-      ? 1
-      : Math.max(1, Math.round((referenceMs - startMs) / 86_400_000));
-    // Sum per-day shares for elapsed days only
-    const splitAwareTotal = sections
-      .filter((s) => s.day <= todayStr)
-      .reduce((sum, s) => sum + s.data.reduce((sSum, entry) => sSum + (entry.splitShare ?? toHomeCurrency(entry.expense)), 0), 0);
-    return splitAwareTotal / daysElapsed;
-  }, [selectedTrip, sections, todayStr]);
+  // Daily average / total: the SAME shared helper the Trips tab and trip detail
+  // use, so the three screens can never show different numbers.
+  const stats = useMemo(
+    () => (selectedTrip ? computeTripStats(selectedTrip, expenses) : null),
+    [selectedTrip, expenses],
+  );
+  const dailyAverage = stats?.dailyAverage ?? 0;
 
   const hasTodaySection = todayIndex >= 0;
   const isAtToday = todayIndex === 0 && sections.length > 0 && sections[0].day === todayStr;
@@ -205,6 +184,9 @@ export default function ExpensesScreen() {
           <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
         </Pressable>
       </View>
+
+      {/* Web/PWA notices (storage health + install nudge) under the app title. */}
+      <WebNotices />
 
       {/* Title row with add + search actions */}
       <View style={styles.titleRow}>
@@ -293,6 +275,7 @@ export default function ExpensesScreen() {
             expense={item.expense}
             homeCurrency={homeCurrency}
             splitShare={item.splitShare}
+            background={colors.primary12}
             onPress={() => {
               setEditingExpense(item.expense);
               setFormOpen(true);
@@ -305,6 +288,11 @@ export default function ExpensesScreen() {
           </Text>
         }
       />
+
+      {/* Rows fade out under the floating nav (rendered after the list but
+          before the FAB / Today pill, so those stay crisp; the nav itself lives
+          in app/_layout and paints on top). Flag: FADE_UNDER_NAV in FadeScrim. */}
+      <NavFadeScrim />
 
       {/* Trip picker modal */}
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
@@ -388,50 +376,6 @@ export default function ExpensesScreen() {
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
     </View>
-  );
-}
-
-function ExpenseRow({
-  expense,
-  homeCurrency,
-  onPress,
-  splitShare = null,
-}: {
-  expense: Expense;
-  homeCurrency: string;
-  onPress: () => void;
-  /** Set when this row is one day of a multi-day split: shows the share. */
-  splitShare?: number | null;
-}) {
-  const isSplitDay = splitShare != null;
-  const displayAmount = isSplitDay
-    ? (splitShare as number) / expense.rateToHome
-    : expense.amount;
-  const displayCurrency = expense.currency;
-  const homeAmount = isSplitDay
-    ? (splitShare as number)
-    : toHomeCurrency(expense);
-
-  const detail = isSplitDay
-    ? `Shared · ${shortDateRange(expense.multiDaySplit!.splitStart, expense.multiDaySplit!.splitEnd)}`
-    : expense.location || expense.category;
-
-  return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <IconCircle icon={categoryIcons[expense.category]} size={40} color="#FFFFFF" />
-      <View style={styles.details}>
-        <Text style={styles.rowTitle}>{expense.notes || expense.category}</Text>
-        <Text style={styles.metaText}>{detail}</Text>
-      </View>
-      <View style={styles.priceCol}>
-        <Text style={styles.priceMain}>
-          {formatMoney(displayAmount, displayCurrency)}
-        </Text>
-        <Text style={styles.priceSub}>
-          ≈ {formatMoney(homeAmount, homeCurrency)}
-        </Text>
-      </View>
-    </Pressable>
   );
 }
 
@@ -561,10 +505,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    // No bottom border here: every row now carries its own top separator, so a
+    // rule here would render as a double line above the first entry.
+    marginBottom: spacing.xs,
     marginHorizontal: -spacing.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomWidth: 0,
   },
   dayLabel: {
     flex: 1,

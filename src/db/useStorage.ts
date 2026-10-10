@@ -8,6 +8,10 @@ import { useTripStore } from '../store/tripStore';
 import { getRates } from '../services/frankfurter';
 import { saveRateCache } from '../services/rateCache';
 import { WrongKeyError } from './storage.web';
+import {
+  EncryptionUnavailableError,
+  LegacyPlaintextDatabaseError,
+} from './errors';
 
 // Refresh the ECB rate cache at app open (best-effort; silent on failure —
 // the expense form falls back to the previously cached rates, or lets the user
@@ -122,11 +126,23 @@ export function useStorageInit(passphrase: string | null = null) {
           return;
         }
         const msg = e instanceof Error ? e.message : String(e);
+        // An encryption failure is not recoverable at runtime and must not
+        // render the app: continuing would let the user create plaintext
+        // expense records, which violates the local-only-encrypted contract.
+        // Stay on the loader with the error instead of proceeding.
+        const fatal =
+          Platform.OS !== 'web' &&
+          (e instanceof EncryptionUnavailableError ||
+            e instanceof LegacyPlaintextDatabaseError);
         if (mounted) {
           setError(msg);
-          // Surface the failure instead of hanging on the loader forever.
-          Alert.alert('Storage error', msg);
-          setReady(true); // allow UI to render; persistence will fail loud on write
+          Alert.alert(
+            fatal ? 'Storage is not encrypted' : 'Storage error',
+            msg,
+          );
+          // fatal: ready stays false so _layout keeps showing the loader with
+          // the error; non-fatal: render the UI and fail loud on write.
+          if (!fatal) setReady(true);
         }
       }
     })();

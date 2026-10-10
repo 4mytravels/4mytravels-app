@@ -104,3 +104,12 @@ coverage/
 .tmp/
 *.swp
 AGENTS.md
+scripts/deploy-web.sh
+
+# Dependency-manifest swap for the dev/prod build split (scripts/use-deps.sh).
+# package.dev.json IS committed (it is the dev manifest). The generated lockfile
+# pair is not: package-lock.json is always the production one in git, and the
+# dev variant plus the script's stashed copies stay local.
+package.prod.json
+package-lock.prod.json
+package-lock.dev.json

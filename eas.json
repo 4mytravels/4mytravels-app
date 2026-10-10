@@ -23,6 +23,16 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "production-apk": {
+      "env": {
+        "EXPO_NO_TELEMETRY": "1",
+        "EXPO_TARGET": "production"
+      },
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

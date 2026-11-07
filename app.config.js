@@ -12,6 +12,21 @@
 // profile below is only for Play -- the F-Droid build is the same commit.
 const isDevTarget = () => process.env.EXPO_TARGET === 'development';
 
+// Permissions the Expo/React-Native template manifest declares that this app
+// never uses, and that must NOT ship in a release build:
+//   SYSTEM_ALERT_WINDOW — "draw over other apps". Only react-native's DEBUG
+//     manifest needs it (redbox / dev overlay), so it stays in the dev build.
+//   VIBRATE — the app has no vibration/haptics code at all.
+// Stripped for every non-dev target (Play's `production`/`production-apk` and
+// the F-Droid recipe, which leaves EXPO_TARGET unset).
+// The four media/storage permissions are blocked unconditionally in app.json
+// (`android.blockedPermissions`); those are declared by library manifests
+// (expo-image-picker, expo-file-system) plus the image-picker plugin default.
+const PROD_BLOCKED_PERMISSIONS = [
+  'android.permission.SYSTEM_ALERT_WINDOW',
+  'android.permission.VIBRATE',
+];
+
 module.exports = ({ config }) => {
   const isDev = isDevTarget();
   const basePlugins = (config.plugins || []).filter(
@@ -32,6 +47,10 @@ module.exports = ({ config }) => {
       // Side-by-side install: dev build gets its own package id so the
       // production app on the device is untouched.
       package: isDev ? 'app.fourmytravels.dev' : 'app.fourmytravels',
+      blockedPermissions: [
+        ...(config.android?.blockedPermissions ?? []),
+        ...(isDev ? [] : PROD_BLOCKED_PERMISSIONS),
+      ],
     },
   };
 };

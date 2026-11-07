@@ -2,7 +2,7 @@
   "expo": {
     "name": "4MyTravels",
     "slug": "4mytravels",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "scheme": "fourmytravels",
     "userInterfaceStyle": "automatic",
@@ -13,6 +13,16 @@
     },
     "android": {
       "package": "app.fourmytravels",
+      "versionCode": 111,
+      "permissions": [
+        "android.permission.INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

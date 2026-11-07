@@ -14,16 +14,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { loadExpenses } from '../../src/db/expenseRepo';
+import { loadExpensesForList, loadExpense } from '../../src/db/expenseRepo';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
-import { IconCircle, categoryIcons, Button, StatBox } from '../../src/components/ui';
+import { IconCircle, Button, StatBox } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
+import { ModalHost } from '../../src/components/ModalHost';
 import { EXPENSE_CATEGORIES } from '../../src/types';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
+import { categoryIcon } from '../../src/utils/categoryIcons';
 import { computeTripStats } from '../../src/utils/tripStats';
+import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -47,13 +50,18 @@ export default function ExpensesScreen() {
     return active ?? [...trips].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
   }, [trips]);
 
-  // Exactly one trip is always selected; default to the param (deep link / FAB)
-  // or the active/most recent trip.
-  const [selectedId, setSelectedId] = useState<string | null>(
-    params.tripId ?? defaultTrip?.id ?? null,
-  );
+  // Trip filter — the SAME multi-select as the Statistics tab (src/utils/tripFilter.ts):
+  // an EMPTY selection means every trip, so "All trips" is a real choice here too.
+  //
+  // STARTUP REQUIREMENT (user): opening the app shows only the CURRENT trip. So
+  // the filter is seeded ONCE with the active/most-recent trip (or the deep-link
+  // tripId). It must NOT be re-seeded on later renders, or the user could never
+  // stay on "All trips". The seeding waits for the trip store to be populated
+  // (`trips.length === 0` means "not hydrated yet"), which is why the initial
+  // state is empty and the one-shot effect below fills it.
+  const [tripFilter, setTripFilter] = useState<string[]>([]);
+  const didSeedFilter = useRef(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [homeCurrency, setHomeCurrency] = useState('EUR');
   const [catFilter, setCatFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -61,20 +69,55 @@ export default function ExpensesScreen() {
   const [formOpen, setFormOpen] = useState(params.add === '1');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
-  const selectedTrip = trips.find((t) => t.id === selectedId);
-
   useEffect(() => {
-    if (!selectedId && defaultTrip) setSelectedId(defaultTrip.id);
-  }, [trips, selectedId, defaultTrip]);
+    if (didSeedFilter.current) return; // seed exactly once
+    if (trips.length === 0) return; // wait for the store to hydrate
+    didSeedFilter.current = true;
+    const seed = params.tripId
+      ? [params.tripId]
+      : defaultTrip
+        ? [defaultTrip.id]
+        : [];
+    setTripFilter(seed);
+  }, [trips, defaultTrip, params.tripId]);
 
-  useEffect(() => {
-    setHomeCurrency(selectedTrip?.homeCurrency ?? 'EUR');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, trips.length]);
+  // Ids that no longer match a trip are dropped (a trip deleted while the filter
+  // was active must not blank the list). Empty still means ALL trips.
+  const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
+  const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
 
-  // Reload on focus AND when the selected trip changes.
+  const toggleTrip = (id: string) =>
+    setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  // Which trip a NEW expense belongs to, and which currency the sheet uses.
+  // With exactly one trip filtered that trip is unambiguous; with several (or
+  // all) the active/most-recent trip is used, which is also the startup default.
+  // Without this the FAB would have no tripId at all under "All trips".
+  const singleTrip = useMemo(
+    () => (activeTripIds.length === 1 ? trips.find((t) => t.id === activeTripIds[0]) : undefined),
+    [activeTripIds, trips],
+  );
+  const formTrip = singleTrip ?? defaultTrip;
+
+  // Display currency: the filtered trip's own home currency when one trip is
+  // selected, otherwise the most common one among the shown trips (the same
+  // rule the Statistics tab uses for its charts).
+  const homeCurrency = useMemo(() => {
+    if (activeTripIds.length === 1) {
+      return trips.find((t) => t.id === activeTripIds[0])?.homeCurrency ?? 'EUR';
+    }
+    const scope = activeTripIds.length === 0 ? trips : trips.filter((t) => activeTripIds.includes(t.id));
+    const counts: Record<string, number> = {};
+    for (const t of scope) counts[t.homeCurrency] = (counts[t.homeCurrency] ?? 0) + 1;
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
+  }, [activeTripIds, trips]);
+
+  // ONE load of every expense, filtered in JS. Deliberately NOT re-queried per
+  // filter toggle: toggling a trip is instant, and the query is metadata-only
+  // (no receipt BLOBs) so it stays cheap even with thousands of rows.
+  //
   // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
+  // re-fetch.
   const skipNextFocusRef = useRef(false);
   useFocusEffect(() => {
     if (skipNextFocusRef.current) {
@@ -83,8 +126,7 @@ export default function ExpensesScreen() {
     }
     let alive = true;
     (async () => {
-      if (!selectedId) return;
-      const list = await loadExpenses(selectedId);
+      const list = await loadExpensesForList();
       if (alive) setExpenses(list);
     })();
     return () => {
@@ -92,9 +134,31 @@ export default function ExpensesScreen() {
     };
   });
 
-  // Filter by category + search
+  const filteredExpenses = useMemo(
+    () => filterExpensesByTrips(expenses, activeTripIds),
+    [expenses, activeTripIds],
+  );
+
+  // The list is loaded WITHOUT receipt BLOBs, and saveExpense writes
+  // `receiptPhoto` verbatim — so editing MUST get the full row or merely saving
+  // would delete the photo. Fetch that one row before opening the form.
+  const openExpenseForEdit = async (expense: Expense) => {
+    try {
+      const full = await loadExpense(expense.id);
+      if (!full) {
+        Alert.alert('Could not open expense', 'This expense could not be loaded.');
+        return;
+      }
+      setEditingExpense(full);
+      setFormOpen(true);
+    } catch (e) {
+      Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Filter by category + search — applied on top of the trip filter.
   const list = useMemo(() => {
-    return expenses.filter(
+    return filteredExpenses.filter(
       (e) =>
         (catFilter === 'All' || e.category === catFilter) &&
         (query.trim() === '' ||
@@ -102,7 +166,7 @@ export default function ExpensesScreen() {
             .filter(Boolean)
             .some((v) => String(v).toLowerCase().includes(query.trim().toLowerCase()))),
     );
-  }, [expenses, catFilter, query]);
+  }, [filteredExpenses, catFilter, query]);
 
   const totalHome = useMemo(() => list.reduce((sum, e) => sum + toHomeCurrency(e), 0), [list]);
 
@@ -150,11 +214,13 @@ export default function ExpensesScreen() {
     return () => clearTimeout(timer);
   }, [todayIndex]);
 
-  // Daily average / total: the SAME shared helper the Trips tab and trip detail
-  // use, so the three screens can never show different numbers.
+  // Daily average / budget: only meaningful for ONE trip (a budget is per trip),
+  // using the SAME shared helper the Trips tab and trip detail use, so the
+  // screens can never show different numbers. Under multi-select/"All trips"
+  // there is no single budget, so only the total is shown.
   const stats = useMemo(
-    () => (selectedTrip ? computeTripStats(selectedTrip, expenses) : null),
-    [selectedTrip, expenses],
+    () => (singleTrip ? computeTripStats(singleTrip, filteredExpenses) : null),
+    [singleTrip, filteredExpenses],
   );
   const dailyAverage = stats?.dailyAverage ?? 0;
 
@@ -188,28 +254,46 @@ export default function ExpensesScreen() {
       {/* Web/PWA notices (storage health + install nudge) under the app title. */}
       <WebNotices />
 
-      {/* Title row with add + search actions */}
+      {/* Title row: filter label under the title (same as Statistics), then the
+          search + trip-filter actions. */}
       <View style={styles.titleRow}>
-        <Text style={styles.screenTitle}>Expenses</Text>
+        <View style={styles.titleTextWrap}>
+          <Text style={styles.screenTitle}>Expenses</Text>
+          <Text style={styles.filterLabel} numberOfLines={1}>
+            {filterLabel}
+          </Text>
+        </View>
         <View style={styles.titleActions}>
           {!searchOpen && (
             <Pressable onPress={() => setSearchOpen(true)} style={styles.iconButtonLarge}>
               <Ionicons name="search-outline" size={28} color={colors.mutedForeground} />
             </Pressable>
           )}
-          <Pressable style={styles.iconButtonLarge} onPress={() => setPickerOpen(true)}>
+          <Pressable
+            style={styles.iconButtonLarge}
+            onPress={() => setPickerOpen(true)}
+            accessibilityLabel="Filter by trip"
+          >
             <Ionicons name="airplane-outline" size={26} color={colors.primary} />
+            {activeTripIds.length > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
+              </View>
+            )}
           </Pressable>
         </View>
       </View>
 
-      {/* Stats: daily avg + total trip */}
-      {selectedTrip && (
+      {/* Stats: daily avg / budget only for a single trip (a budget is per trip);
+          the total always applies to whatever is currently shown. */}
+      {(singleTrip || list.length > 0) && (
         <View style={styles.statsRow}>
-          <StatBox
-            label="Daily avg / budget"
-            value={`${formatMoney(dailyAverage, homeCurrency)} / ${formatMoney(selectedTrip.dailyBudget, homeCurrency)}`}
-          />
+          {singleTrip && (
+            <StatBox
+              label="Daily avg / budget"
+              value={`${formatMoney(dailyAverage, homeCurrency)} / ${formatMoney(singleTrip.dailyBudget, homeCurrency)}`}
+            />
+          )}
           <StatBox label="Total spend" value={formatMoney(totalHome, homeCurrency)} />
         </View>
       )}
@@ -263,6 +347,11 @@ export default function ExpensesScreen() {
                     onPress={() => setCatFilter(c)}
                     style={[styles.chip, active && styles.chipActive]}
                   >
+                    <Ionicons
+                      name={c === 'All' ? 'apps-outline' : categoryIcon(c)}
+                      size={14}
+                      color={active ? colors.foreground : colors.mutedForeground}
+                    />
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>{c}</Text>
                   </Pressable>
                 );
@@ -276,15 +365,21 @@ export default function ExpensesScreen() {
             homeCurrency={homeCurrency}
             splitShare={item.splitShare}
             background={colors.primary12}
+            dense
             onPress={() => {
-              setEditingExpense(item.expense);
-              setFormOpen(true);
+              // Full row (incl. the receipt) before the form opens — see
+              // openExpenseForEdit.
+              void openExpenseForEdit(item.expense);
             }}
           />
         )}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            {selectedTrip ? 'No expenses for this trip yet.' : 'Create a trip first.'}
+            {trips.length === 0
+              ? 'Create a trip first.'
+              : activeTripIds.length === 0
+                ? 'No expenses yet.'
+                : 'No expenses for the selected trips.'}
           </Text>
         }
       />
@@ -294,46 +389,62 @@ export default function ExpensesScreen() {
           in app/_layout and paints on top). Flag: FADE_UNDER_NAV in FadeScrim. */}
       <NavFadeScrim />
 
-      {/* Trip picker modal */}
+      {/* Trip filter sheet — tap to toggle, any number of trips (or none = all).
+          Same interaction as the Statistics tab. */}
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
           <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
-            <Text style={styles.pickerTitle}>Select trip</Text>
+            <Text style={styles.pickerTitle}>Filter by trip</Text>
             <ScrollView style={{ maxHeight: 400 }}>
-              {trips.map((t) => (
-                <Pressable
-                  key={t.id}
-                  style={[styles.pickerRow, t.id === selectedId && styles.pickerRowActive]}
-                  onPress={() => {
-                    setSelectedId(t.id);
-                    setPickerOpen(false);
-                  }}
+              <Pressable style={styles.pickerRow} onPress={() => setTripFilter([])}>
+                <Ionicons
+                  name="apps-outline"
+                  size={18}
+                  color={activeTripIds.length === 0 ? colors.primary : colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.pickerRowText,
+                    activeTripIds.length === 0 && { color: colors.primary, fontWeight: '700' },
+                  ]}
                 >
-                  <Ionicons
-                    name="airplane-outline"
-                    size={18}
-                    color={t.id === selectedId ? colors.primary : colors.mutedForeground}
-                  />
-                  <Text style={[styles.pickerRowText, t.id === selectedId && { color: colors.primary, fontWeight: '700' }]}>
-                    {t.name}
-                  </Text>
-                  {t.id === selectedId && (
-                    <Ionicons name="checkmark" size={18} color={colors.primary} />
-                  )}
-                </Pressable>
-              ))}
+                  All trips
+                </Text>
+                {activeTripIds.length === 0 && (
+                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                )}
+              </Pressable>
+              {trips.map((t) => {
+                const on = activeTripIds.includes(t.id);
+                return (
+                  <Pressable key={t.id} style={styles.pickerRow} onPress={() => toggleTrip(t.id)}>
+                    <Ionicons
+                      name="airplane-outline"
+                      size={18}
+                      color={on ? colors.primary : colors.mutedForeground}
+                    />
+                    <Text style={[styles.pickerRowText, on && { color: colors.primary, fontWeight: '700' }]}>
+                      {t.name}
+                    </Text>
+                    {on && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
+            <View style={styles.pickerDoneWrap}>
+              <Button label="Done" onPress={() => setPickerOpen(false)} />
+            </View>
           </View>
         </Pressable>
       </Modal>
 
       {/* Add/edit-expense sheet */}
-      <Modal visible={formOpen} animationType="slide" onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
-        {selectedTrip && (
+      <ModalHost visible={formOpen} onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
+        {formTrip && (
           <ExpenseForm
-            tripId={selectedTrip.id}
-            defaultCurrency={selectedTrip.defaultCurrency}
-            homeCurrency={selectedTrip.homeCurrency}
+            tripId={formTrip.id}
+            defaultCurrency={formTrip.defaultCurrency}
+            homeCurrency={formTrip.homeCurrency}
             initialExpense={editingExpense ?? undefined}
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={handleSave}
@@ -357,7 +468,7 @@ export default function ExpensesScreen() {
             }}
           />
         )}
-      </Modal>
+      </ModalHost>
 
       {showTodayJump && (
         <View style={[styles.todayWrap, { bottom: insets.bottom + 88 }]}>
@@ -368,10 +479,17 @@ export default function ExpensesScreen() {
         </View>
       )}
 
-      {/* FAB — pinned above the floating nav */}
+      {/* FAB — pinned above the floating nav. Files the expense under `formTrip`
+          (the single filtered trip, else the active/most-recent one). */}
       <Pressable
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
-        onPress={() => setFormOpen(true)}
+        onPress={() => {
+          if (!formTrip) {
+            Alert.alert('No trip yet', 'Create a trip before adding expenses.');
+            return;
+          }
+          setFormOpen(true);
+        }}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
@@ -417,6 +535,34 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  titleTextWrap: { flex: 1 },
+  // Which trips the list below is showing ("All trips" / one name / "3 trips").
+  // Same treatment as the Statistics tab.
+  filterLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.sans,
+    marginTop: 2,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: colors.primaryForeground,
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: fontFamily.sans,
+  },
+  pickerDoneWrap: { marginTop: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   titleActions: {
     flexDirection: 'row',
@@ -502,12 +648,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    // Tightened for the dense list: the day label is a divider, not a block.
+    // (paddingTop 12 → 8, paddingBottom 8 → 4, margins 4/4 → 4/0.)
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
     marginTop: spacing.xs,
-    // No bottom border here: every row now carries its own top separator, so a
+    // No bottom border here: every row now carries its own separator, so a
     // rule here would render as a double line above the first entry.
-    marginBottom: spacing.xs,
+    marginBottom: 0,
     marginHorizontal: -spacing.xl,
     borderBottomWidth: 0,
   },
@@ -544,6 +692,9 @@ const styles = StyleSheet.create({
   chipScroll: { marginTop: spacing.md, marginBottom: spacing.sm },
   chips: { gap: spacing.sm, paddingRight: spacing.xl },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,

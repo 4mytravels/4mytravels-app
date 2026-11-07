@@ -2,6 +2,198 @@
 
 All notable changes to 4MyTravels will be documented in this file.
 
+## [Unreleased]
+
+## [1.1.1] - 2026-11-07
+
+### Android permissions — allow-list
+- **The release build now requests exactly ONE permission: `android.permission.INTERNET`.**
+  Until now the APK asked for six: `CAMERA` and `READ_/WRITE_EXTERNAL_STORAGE`
+  (declared by the `expo-image-picker` and `expo-file-system` library manifests
+  and merged into the APK), `RECORD_AUDIO` (the image-picker plugin's default
+  `microphonePermission`), plus `SYSTEM_ALERT_WINDOW` and `VIBRATE` from the
+  Expo/React-Native template manifest. The app only ever opens the system photo
+  picker — it has no camera, no microphone, no vibration and writes nothing
+  outside its own cache.
+- The four media/storage permissions are blocked unconditionally in
+  `app.json` → `android.blockedPermissions`. `SYSTEM_ALERT_WINDOW` and `VIBRATE`
+  are blocked only for non-dev targets, from `app.config.js`
+  (`PROD_BLOCKED_PERMISSIONS`) — react-native's *debug* manifest uses
+  `SYSTEM_ALERT_WINDOW` for the redbox/dev overlay, so the dev client keeps it.
+- Import and export are unaffected: both write to `Paths.cache` (app-internal)
+  and share via `expo-sharing`'s FileProvider; CSV/backup import goes through
+  `expo-document-picker` (SAF `ACTION_OPEN_DOCUMENT`, per-URI grant, the module
+  declares no permissions at all); receipt/cover photos go through
+  `launchImageLibraryAsync`, which launches the Android photo picker
+  (`PickVisualMedia`) or `ACTION_GET_CONTENT` and never asks for a permission —
+  `READ_/WRITE_EXTERNAL_STORAGE` are only requested by the explicit
+  `requestMediaLibraryPermissionsAsync`, which the app never calls.
+- Verified by generating the Android project for both targets (`expo prebuild`):
+  the release manifest carries `<uses-permission … tools:node="remove"/>` for all
+  six, only `INTERNET` is left declared.
+
+### Changed
+- **Statistics sub-pages: "This year" instead of "Year to date"**, and the trip /
+  country / category filter sheets lost their search field — they now follow the
+  same build-up as the Statistics trip filter (title, icon + label rows with a
+  checkmark, Done). `PickerSheet`'s search row is optional now: omitting
+  `onQueryChange` hides it entirely, so the long currency/country pickers in the
+  expense form and the trip editor keep theirs.
+- **Countries: filters follow the handoff mock.** One horizontally scrollable
+  chip row, each chip showing a label + the current value with a chevron-down
+  caret (`Trip: All ▾`, `Category: All ▾`, `Highest spend ▾`). The sort is now a
+  single chip that opens a `Sort by` sheet (`Highest spend` / `Lowest spend` /
+  `A-Z`) instead of three separate chips, so the row never becomes two lines.
+- **The category filter is MULTI-select now** on Countries and Over time. Tapping
+  several categories in the sheet ORs them (the sheet stays open, `Done` closes
+  it) and the chip reads `Category: All` / one name / `N categories`.
+  `StatsFilter` carries `categories?: string[]` instead of `category?: string`,
+  and an EMPTY array means every category — the screens hold an array in state,
+  so "All" needs no special case.
+- **Category icons are ONE map now** (`src/utils/categoryIcons.ts`). The expense
+  form's grid, the Statistics donut + legend, `ExpenseRow`, and the trip/category
+  filter sheets all read `categoryIcons` / `categoryIcon()`. There were TWO maps
+  that disagreed (Transport: bus vs car, Groceries: cart vs basket, General:
+  wallet vs grid), so the same category showed a different icon per screen.
+  Unknown categories (imported CSVs, the donut's synthetic "Others" slice) fall
+  back to `ellipsis-horizontal-outline` instead of rendering blank — never index
+  the map directly.
+- **The category filter sheets on Countries and Over time show the real
+  per-category icons** (every row was a pricetag); `All categories` uses
+  `apps-outline`, matching `All trips`.
+- **Countries: the bare summary line is a summary block now** — globe icon,
+  `N countries • €X total`, a subtitle `From N trips and D days` and a bar-chart
+  icon, sitting between the filter chips and the country list. The subtitle's
+  numbers are DISTINCT trips and DISTINCT local days in the filtered set
+  (`summarizeStats` in `src/utils/countryStats.ts`) — never the SUM of each
+  country row's `days`, which double-counts a travel day with expenses in two
+  countries. It follows the trip/period/category filter but NOT the search box.
+- **Statistics: "By payment" is the last preview block again** (below `By country`
+  and `Over time`, directly above `Export CSV`).
+- **Countries lost its "Filter by country" chip and sheet.** That screen already
+  IS the country breakdown, so the filter could only hide the other countries;
+  `Over time` keeps it, where it genuinely narrows a time series.
+- **Fixed the doubled top inset on Statistics / Countries / Over time.** All three
+  wrapped their header in a `SafeAreaView` (which already pads the top inset) AND
+  set `paddingTop: insets.top` on the header itself, stacking the status-bar inset
+  twice.
+
+### Removed
+- **Unused asset `assets/earth-night.jpg`.** It was referenced nowhere in code
+  or config (verified across the whole repo, excluding `node_modules`/`dist`),
+  so it is gone from the index and the working tree.
+
+### Added
+- **Expenses: filter on ANY set of trips** (same multi-select as Statistics).
+  The airplane button now opens "Filter by trip" with `All trips` + a checkbox
+  per trip; an empty selection means every trip, and the label under the title
+  reads `All trips` / one name / `A + B` / `N trips` with a count badge. The
+  filtering itself is the shared `src/utils/tripFilter.ts` (already unit-tested).
+  - **Startup behaviour is unchanged (explicit requirement):** the filter is
+    seeded ONCE with the active/most-recent trip (or the `?tripId` deep link), so
+    opening the app still shows only the current trip. The seed waits for the
+    trip store to hydrate and is guarded by a ref, so a deliberate "All trips"
+    choice is never overwritten on the next render.
+  - The FAB always has a trip: with exactly one trip filtered it files the
+    expense there, otherwise it falls back to the active/most-recent trip.
+  - `Daily avg / budget` is only shown for a SINGLE filtered trip (a budget is
+    per trip); the `Total spend` figure always applies to what is on screen.
+
+### Performance
+- **List screens no longer load receipt photos.** `loadExpenses` gained a
+  `withReceipts` option plus a `loadExpensesForList()` wrapper; home, Expenses,
+  Statistics, the trip cards and the CSV export now select the metadata columns
+  only. Measured on a 2000-expense table (2 of 3 with a ~350 KB receipt):
+  `SELECT *` took **814 ms** and moved **456 MB** of BLOBs across the
+  storage/JS boundary, the same rows without the BLOB column took **4.1 ms** —
+  ~200x faster, before SQLCipher decryption. `ExpenseRow` renders no receipt at
+  all, so nothing on those screens needed the bytes.
+  - The edit path is the one place that DOES need them: `saveExpense` writes
+    `receiptPhoto` verbatim, so a receipt-less row handed to the form would have
+    CLEARED the photo on the next save. `loadExpense(id)` fetches that single row
+    (with bytes) before the form opens, and the form does not open at all if that
+    load fails. Regression-tested in `scripts/test-expense-receipts.mjs` (40
+    assertions, fake recording adapter — no DB or native module needed).
+- This means "All trips" on the Expenses tab stays cheap at thousands of rows.
+
+### Fixed
+- **PWA: deleting a trip left a blank screen instead of returning to the Trips
+  tab.** Two independent causes, both fixed.
+  1. *Trip detail screen* — `app/trip/[id].tsx` had an early `if (!trip) return`
+     between `useEffect` and `useMemo` (5 hooks before, 1 after). Deleting the
+     trip from that screen removed it from the store while the `/trip/<id>` route
+     stayed mounted, so the component re-rendered with `trip === undefined` and
+     called 5 hooks instead of 6 → **React error #300** ("Rendered fewer hooks
+     than expected"), which unmounts the entire tree. Reproduced live on the
+     deployed PWA: the click produced `Uncaught Error: Minified React error #300`
+     and `#root` ended up empty. The hook list is now unconditional (`useMemo`
+     returns `[]` when there is no trip), and the "Trip not found." state offers
+     a "Back to trips" button that navigates with `router.replace('/trips')`
+     (`router.back()` can be a no-op on web when the screen was opened directly).
+  2. *Destructive confirmations* — `window.confirm` is auto-dismissed by Chrome
+     ("prevent abusive dialogs") when the page has not been interacted with, so
+     the delete was silently skipped and the button looked dead. Every
+     destructive action now goes through **one in-app dialog** (`ConfirmHost`,
+     mounted once in `app/_layout.tsx` above the navigator): a real `<Modal>` on
+     native, a `document.body` portal at z-index 10000 on web (react-native-web's
+     `<Modal>` would both clip it and paint it behind the sheet that asked for
+     it). `confirmDestructive` is now async and resolves `true` only on an actual
+     confirmation, so the trip-manage sheet is closed *after* the answer is known
+     (previously it closed first, which left the sheet open after a refusal).
+- **PWA: importing a CSV from a cloud drive (Proton Drive, Dropbox, …) did
+  nothing.** Picking a file from a local folder worked, picking the same file
+  from Proton Drive produced no message and no expenses. Measured on the deployed
+  PWA (Android 10, Chrome 155) with a temporary in-origin probe page: the picker
+  *does* deliver the file — `name`/`type`/`size` all correct — but **every way of
+  reading it fails with `NotReadableError: … permission problems that have
+  occurred after a reference to a file was acquired`** (`File.text()`,
+  `File.arrayBuffer()`, `FileReader.readAsText`, `FileReader.readAsArrayBuffer`;
+  `fetch(objectURL)` fails with `Failed to fetch`). Android hands
+  `<input type=file>` a `content://` **proxy** URI from cloud providers, which
+  Chrome can stat but not read; local files carry a real path and are unaffected.
+  This cannot be fixed in the picker, so the file now arrives through the share
+  sheet instead:
+  - `manifest.webmanifest` registers a **Web Share Target** (`POST /import`,
+    multipart/form-data).
+  - `public/sw.js` intercepts that POST (a static host cannot read a request body
+    from JS), stashes the file's text in a dedicated Cache entry and
+    `303`-redirects to the app — 303 so the POST becomes a GET. The shared cache
+    survives `activate` cleanup, so a deploy mid-share cannot drop the import.
+  - `SharedImportHost` (web only) consumes the stashed file on app start and runs
+    the import, reporting the result in-app.
+  - The import logic moved to **one** service (`src/services/csvImport.ts`) used
+    by both Settings and the share path, so the two can no longer drift.
+  - Verified end-to-end on the deployed PWA: POST → stash → redirect → import →
+    `2 expense(s) imported into "Shared India 2026"`, rows visible in Expenses.
+  - Caveat: the PWA has to be **installed** for 4MyTravels to appear in the share
+    sheet, and the app must be opened once after the update so the new service
+    worker takes over.
+- **PWA: import/restore/backup errors were invisible.** `Alert.alert` is a no-op
+  in react-native-web, so every failure — including the one above — looked like
+  "nothing happened". Status messages now go through `showStatus` +
+  `StatusHost` (a `document.body` portal at z-index 10000 on web, `Alert.alert`
+  on native), which covers Settings' import/export/backup/restore paths and the
+  share import.
+- **Web export failed to bundle: `Unable to resolve module uuid`.** The code
+  imported `uuid` while only `@types/uuid` was ever declared; it resolved from a
+  hoisted transitive dependency until a prod-mode install pruned it. Invalid
+  package ids now come from `expo-crypto`'s `randomUUID()`, which is a declared
+  dependency in both manifests.
+- **PWA: the search field in the currency / country pickers could not be
+  selected inside the expense form** ("Add expense" / Home FAB and Expenses
+  FAB), while the same picker worked in the trip editor. react-native-web's
+  `<Modal>` installs `ModalFocusTrap`, a capture-phase `focus` listener that
+  pulls focus back to the first focusable element *inside* the modal; the picker
+  sheet is portalled into `document.body`, i.e. outside that modal, so the field
+  lost focus the instant it got it (measured focus log:
+  `INPUT#Search currency` → `DIV`). The trip editor uses a route, not a Modal,
+  which is why it was unaffected. The expense form is now hosted by
+  `ModalHost` (a native `<Modal>` on device, a `document.body` portal at
+  z-index 9000 — below `SheetPortal`'s 10000 — on web), so picker search fields
+  take and keep focus. Verified live on the PWA: real click holds focus, typing
+  filters (THB → 🇹🇭 THB — Thai Baht), selecting a row closes the sheet and only
+  the picker closes on a backdrop tap.
+
 ## [1.1.0] - 2026-10-10
 
 The headline feature of this release is the **encrypted PWA**: 4MyTravels now

@@ -9,6 +9,7 @@
 //     is fine — no TravelSpend code is used). Their column names are matched
 //     by alias detection; unknown rows are skipped and reported.
 import type { Expense, ExpenseCategory, PaymentMethod } from '../types';
+import { localDateTimeISO } from '../utils/days';
 
 export const EXPENSE_CSV_HEADER = [
   'id', 'trip_id', 'trip_name', 'date', 'amount', 'currency', 'rate_to_home',
@@ -83,6 +84,25 @@ export function isOwnExpenseCsv(header: string[]): boolean {
   return h.includes('trip_id') && h.includes('amount') && h.includes('rate_to_home');
 }
 
+/**
+ * Imported rows carry a DATE but no time-of-day. Stamp them at LOCAL noon of
+ * that date instead of `T12:00:00Z`: UTC noon lands on the NEXT local day in
+ * UTC+13/+14, so an imported expense appeared a day late, and every row on the
+ * same day tied at exactly 12:00:00Z — which left the list ordering same-day
+ * imports by random uuid. Rows on the same day get a millisecond offset from
+ * their position in the file (exports are written newest-first, so an earlier
+ * row keeps the later stamp and a round trip preserves the order).
+ */
+function stampImportedDates<T extends { rateDate: string }>(rows: T[]): T[] {
+  const perDay = new Map<string, number>();
+  return rows.map((r) => {
+    const day = (r.rateDate ?? '').slice(0, 10);
+    const n = perDay.get(day) ?? 0;
+    perDay.set(day, n + 1);
+    return { ...r, createdAt: localDateTimeISO(day, '12:00', 0, Math.max(0, 999 - n)) };
+  });
+}
+
 /** Parse our own CSV back into partial Expenses (ids preserved). */
 export function parseOwnCsv(rows: string[][], tripIdFallback: string): ParsedExpense[] {
   const header = rows[0].map((x) => x.trim().toLowerCase());
@@ -96,18 +116,24 @@ export function parseOwnCsv(rows: string[][], tripIdFallback: string): ParsedExp
     out.push({
       id: get('id') || undefined,
       tripId: get('trip_id') || tripIdFallback,
-      amount: parseCsvNumber(get('amount'), cur) || 0,
+      // Our own export is machine-written, so the amount is a plain JS number and
+      // must round-trip EXACTLY. The locale heuristic mangled it for zero-decimal
+      // currencies: a JPY expense of 12.5 was read back as 125 ("12.5" → strip
+      // every separator). That heuristic belongs to FOREIGN files only.
+      amount: Number(get('amount').replace(/[^\d.\-]/g, '')) || 0,
       currency: cur,
-      rateToHome: parseCsvNumber(get('rate_to_home')) || 1,
+      // A conversion rate is never thousands-grouped (see parseCsvNumber).
+      rateToHome: parseCsvNumber(get('rate_to_home'), undefined, false) || 1,
       rateDate: get('rate_date') || get('date'),
       category: (CATEGORY_VALUES as string[]).includes(category) ? category : 'General',
-      createdAt: get('date') ? `${get('date')}T12:00:00Z` : new Date().toISOString(),
+      // Local noon of the imported day (stampImportedDates refines the ms).
+      createdAt: localDateTimeISO(get('date') || get('rate_date') || '', '12:00'),
       country: get('country') || undefined,
       paymentMethod: (get('payment_method') === 'card' ? 'card' : 'cash') as PaymentMethod,
       notes: get('notes') || undefined,
     });
   }
-  return out;
+  return stampImportedDates(out);
 }
 
 /**
@@ -325,11 +351,11 @@ export function parseTravelSpendCsv(rows: string[][], tripIdFallback: string): {
           : 1,
       rateDate: iso,
       category: mapTsCategory(getCell(c, 'category')),
-      createdAt: `${iso}T12:00:00Z`,
+      createdAt: localDateTimeISO(iso, '12:00'),
       country: getCell(c, 'countryCode') || getCell(c, 'country') || undefined,
       paymentMethod: mapTsPayment(getCell(c, 'paymentMethod')),
       notes: getCell(c, 'notes') || undefined,
     });
   }
-  return { items, skipped };
+  return { items: stampImportedDates(items), skipped };
 }

@@ -7,6 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { colors } from '../src/theme/theme';
 import { FloatingNav } from '../src/components/FloatingNav';
+import { ConfirmHost } from '../src/components/ConfirmHost';
+import { StatusHost } from '../src/components/StatusHost';
+import { SharedImportHost } from '../src/components/SharedImportHost';
 import {
   WebUnlockGate,
   hasStoredPassphraseFlag,
@@ -119,8 +122,22 @@ export default function RootLayout() {
           name="settings/exchange-rates"
           options={{ title: 'Exchange rates', headerShown: false }}
         />
+        <Stack.Screen name="stats" options={{ headerShown: false }} />
       </Stack>
       <FloatingNav />
+      {/* ONE confirmation dialog for every destructive action, mounted above the
+          navigator so it can never be clipped by a screen or a sheet. Web: a
+          body portal at z-index 10000 (see ConfirmHost.web.tsx). */}
+      <ConfirmHost />
+      {/* Status messages (import/restore results, errors). Alert.alert is a
+          NO-OP in react-native-web, so without this host every failure was
+          invisible on the PWA — an import "just did nothing". */}
+      <StatusHost />
+      {/* Web share target: finishes an import that arrived through the Android
+          share sheet (Delen -> 4MyTravels). Reads the file the service worker
+          stashed; mounted only once storage is unlocked, because it writes to
+          the encrypted database. No-op on native. */}
+      <SharedImportHost />
       {/* Web notices (storage health + install nudge) render per screen, in the
           flow under the header — see src/components/WebNotices.tsx. */}
     </View>

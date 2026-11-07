@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,22 +23,19 @@ import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/t
 import { Card, SectionTitle, Button } from '../../src/components/ui';
 import { createBackup, restoreBackup } from '../../src/db/backup';
 import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
-import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { v4 as uuid } from 'uuid';
-import type { Trip } from '../../src/types';
-import { saveExpense, loadExpenses } from '../../src/db/expenseRepo';
+import { saveTrip } from '../../src/db/tripRepo';
+import type { Expense } from '../../src/types';
+import { saveExpense, loadExpensesForList } from '../../src/db/expenseRepo';
 import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
+import { showStatus } from '../../src/utils/statusDialog';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
-import {
-  expensesToCsv,
-  parseCsv,
-  isOwnExpenseCsv,
-  looksLikeTravelSpendCsv,
-  parseOwnCsv,
-  parseTravelSpendCsv,
-} from '../../src/services/csv';
+import { expensesToCsv } from '../../src/services/csv';
+// AUTO_TRIP = "import without choosing a trip, create it from the file".
+// It lives in the shared import service so this screen and the web share-target
+// path can never disagree about what the sentinel means.
+import { AUTO_TRIP, importExpensesFromCsv } from '../../src/services/csvImport';
 
 // Repository links for Source code and Report an issue in Settings → About.
 const SOURCE_CODE_URL = 'https://github.com/4mytravels/4mytravels-app';
@@ -50,26 +46,6 @@ const ISSUES_URL = 'https://github.com/4mytravels/4mytravels-app/issues';
 const PRIVACY_URL = 'https://4mytravels.app/privacy';
 const WEBSITE_URL = 'https://4mytravels.app';
 
-// Sentinel for "import without choosing a trip".
-const AUTO_TRIP = '__auto__';
-
-/**
- * Next free "import-tripN" number, derived from the trips that already exist.
- *
- * A React state counter was wrong: it resets to 0 on every screen remount, so a
- * second import produced a second "import-trip1". Existing names are the single
- * source of truth — gaps are never filled, so deleting "import-trip2" leaves
- * "import-trip3" next (harmless; the old name would otherwise be reused and
- * two trips could look identical).
- */
-function nextImportTripNumber(trips: { name: string }[]): number {
-  const max = trips.reduce((acc, t) => {
-    const m = /^import-trip(\d+)$/.exec(t.name.trim());
-    return m ? Math.max(acc, parseInt(m[1], 10)) : acc;
-  }, 0);
-  return max + 1;
-}
-
 const CURRENCIES = SHARED_CURRENCIES;
 
 export default function SettingsScreen() {
@@ -77,7 +53,6 @@ export default function SettingsScreen() {
   // must clear it: nav height (60) + nav gap (18) + breathing room.
   const insets = useSafeAreaInsets();
   const setTrips = useTripStore((s) => s.setTrips);
-  const addTripStore = useTripStore((s) => s.addTrip);
   const manualRates = useSettingsStore((s) => s.manualRates);
   const setManualRate = useSettingsStore((s) => s.setManualRate);
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
@@ -123,9 +98,9 @@ export default function SettingsScreen() {
     const trip = trips.find((t) => t.id === tripId);
     if (!trip) return;
     try {
-      const list = await loadExpenses(tripId);
+      const list = await loadExpensesForList(tripId);
       if (list.length === 0) {
-        Alert.alert('Nothing to export', 'This trip has no expenses yet.');
+        showStatus('Nothing to export', 'This trip has no expenses yet.');
         return;
       }
       const csv = expensesToCsv(list, { [trip.id]: trip.name });
@@ -133,7 +108,7 @@ export default function SettingsScreen() {
       await shareCsv(csv, `4mt-expenses-${safeName || 'trip'}.csv`);
       setExportOpen(false);
     } catch (e) {
-      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+      showStatus('Export failed', e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -143,13 +118,13 @@ export default function SettingsScreen() {
       // per trip, so "all trips" meant picking N files one by one. All trips
       // are combined into a single CSV — the format already carries
       // trip_id + trip_name per row, so nothing is lost.
-      const all: Array<{ trip: (typeof trips)[number]; list: Awaited<ReturnType<typeof loadExpenses>> }> = [];
+      const all: Array<{ trip: (typeof trips)[number]; list: Expense[] }> = [];
       for (const t of trips) {
-        const list = await loadExpenses(t.id);
+        const list = await loadExpensesForList(t.id);
         if (list.length > 0) all.push({ trip: t, list });
       }
       if (all.length === 0) {
-        Alert.alert('Nothing to export', 'No trips with expenses found.');
+        showStatus('Nothing to export', 'No trips with expenses found.');
         setExportOpen(false);
         return;
       }
@@ -160,11 +135,13 @@ export default function SettingsScreen() {
       await shareCsv(csv, `4mt-expenses-all-${all.length}-trips.csv`);
       setExportOpen(false);
     } catch (e) {
-      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+      showStatus('Export failed', e instanceof Error ? e.message : String(e));
     }
   };
 
   // ---- CSV import: own format or TravelSpend, with or without a target trip ----
+  // The parsing + trip resolution + saving all live in src/services/csvImport.ts
+  // so this path and the web share-target path (Delen → 4MyTravels) cannot drift.
   const doCsvImport = async () => {
     if (!importTargetTrip) return;
     setBusy(true);
@@ -182,90 +159,25 @@ export default function SettingsScreen() {
       // Cross-platform read: web uses the picker's original File object
       // (asset.file) because a blob: URL is not fetchable under COEP; native
       // uses expo-file-system. See src/utils/readPickedDocument.ts.
+      //
+      // KNOWN LIMIT (2026-10-28): on Android a file picked from a CLOUD provider
+      // (Proton Drive, Dropbox, …) is a content:// PROXY that Chrome cannot
+      // read — every read path throws NotReadableError. No code change fixes
+      // that; the file must be shared instead ("Delen → 4MyTravels", handled by
+      // the service worker + SharedImportHost).
       const text = await readPickedDocumentText(picked);
-      const rows = parseCsv(text);
-      if (rows.length < 2) throw new Error('File appears to be empty.');
-      const header = rows[0];
-
-      // Parse WITHOUT a trip id first — the auto mode needs the file's own
-      // trip name and date range before it can create the trip.
-      const PLACEHOLDER = 'pending';
-      let items;
-      let skippedNote = '';
-      if (isOwnExpenseCsv(header)) {
-        items = parseOwnCsv(rows, PLACEHOLDER);
-      } else if (looksLikeTravelSpendCsv(header)) {
-        const res = parseTravelSpendCsv(rows, PLACEHOLDER);
-        items = res.items;
-        skippedNote = res.skipped > 0 ? ` (${res.skipped} rows skipped)` : '';
-      } else {
-        throw new Error('Unrecognized CSV format — expected a 4MyTravels or compatible travel expense export.');
-      }
-      if (items.length === 0) throw new Error('No expense rows found in the file.');
-
-      // --- Resolve the destination trip -----------------------------------
-      let tripId = importTargetTrip;
-      let tripName = trips.find((t) => t.id === importTargetTrip)?.name ?? '';
-      if (importAuto) {
-        // Date range from the expense dates.
-        const days = items
-          .map((i) => (i.createdAt || i.rateDate || '').slice(0, 10))
-          .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-          .sort();
-        const startDate = days[0] ?? new Date().toISOString().slice(0, 10);
-        const endDate = days[days.length - 1] ?? startDate;
-        // Name: the export's own trip_name when present, else import-tripN.
-        const headerLower = header.map((h) => h.trim().toLowerCase());
-        const nameIdx = headerLower.indexOf('trip_name');
-        const nameFromFile = nameIdx >= 0
-          ? (rows.slice(1).map((r) => (r[nameIdx] ?? '').trim()).find((v) => v !== '') ?? '')
-          : '';
-        // The counter must survive a screen remount (React state does not — the
-        // Trips tab stayed mounted, but any remount reset it to 0 and produced
-        // a second "import-trip1"). Derive the next free number from the trips
-        // that already exist instead.
-        const n = nextImportTripNumber(trips);
-        tripName = nameFromFile || `import-trip${n}`;
-        // Home currency: the most common home currency among the rows, EUR default.
-        const homeIdx = headerLower.indexOf('home_currency');
-        const homeCurrency = homeIdx >= 0
-          ? ((rows.slice(1).map((r) => (r[homeIdx] ?? '').trim()).find((v) => v !== '') ?? '') || 'EUR').toUpperCase()
-          : 'EUR';
-        const trip: Trip = {
-          id: uuid(),
-          name: tripName,
-          startDate,
-          endDate: endDate !== startDate ? endDate : undefined,
-          homeCurrency,
-          defaultCurrency: homeCurrency,
-          // No budget known from a CSV → 0 keeps the pace math honest instead
-          // of inventing one.
-          dailyBudget: 0,
-          countries: [],
-        };
-        await saveTrip(trip);
-        addTripStore(trip);
-        tripId = trip.id;
-      }
-
-      let count = 0;
-      for (const item of items) {
-        const expense = {
-          ...item,
-          id: item.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-          tripId,
-        };
-        await saveExpense(expense as never); // INSERT OR REPLACE → re-import updates
-        count++;
-      }
-      Alert.alert(
+      const target = importAuto ? null : importTargetTrip;
+      const { count, tripName, skippedNote } = await importExpensesFromCsv(text, {
+        targetTripId: target,
+      });
+      showStatus(
         'Import complete',
         `${count} expense(s) imported into "${tripName}"${skippedNote}.`,
       );
       setImportOpen(false);
       setImportTargetTrip(null);
     } catch (e) {
-      Alert.alert('Import failed', e instanceof Error ? e.message : String(e));
+      showStatus('Import failed', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -273,7 +185,7 @@ export default function SettingsScreen() {
 
   const doBackup = async () => {
     if (passphrase.length < 8) {
-      Alert.alert('Passphrase too short', 'Use at least 8 characters. This passphrase cannot be recovered.');
+      showStatus('Passphrase too short', 'Use at least 8 characters. This passphrase cannot be recovered.');
       return;
     }
     setBusy(true);
@@ -285,7 +197,7 @@ export default function SettingsScreen() {
       await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save encrypted backup' });
       close();
     } catch (e) {
-      Alert.alert('Backup failed', e instanceof Error ? e.message : String(e));
+      showStatus('Backup failed', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -293,7 +205,7 @@ export default function SettingsScreen() {
 
   const doRestore = async () => {
     if (passphrase.length < 8) {
-      Alert.alert('Passphrase too short', 'Enter the passphrase used when the backup was created.');
+      showStatus('Passphrase too short', 'Enter the passphrase used when the backup was created.');
       return;
     }
     setBusy(true);
@@ -311,10 +223,10 @@ export default function SettingsScreen() {
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);
       setTrips(trips);
-      Alert.alert('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
+      showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
       close();
     } catch (e) {
-      Alert.alert('Restore failed', e instanceof Error ? e.message : String(e));
+      showStatus('Restore failed', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

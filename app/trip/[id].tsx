@@ -1,17 +1,18 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, SectionList, Modal, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet, SectionList, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpenses, saveExpense, deleteExpense } from '../../src/db/expenseRepo';
+import { loadExpensesForList, loadExpense, saveExpense, deleteExpense } from '../../src/db/expenseRepo';
 import type { Expense } from '../../src/types';
 import { groupByDaySplitAware } from '../../src/utils/days';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { SectionTitle, Button, IconCircle, categoryIcons } from '../../src/components/ui';
+import { SectionTitle, Button, IconCircle } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
 import { confirmDestructive } from '../../src/utils/confirm';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
+import { ModalHost } from '../../src/components/ModalHost';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
@@ -34,7 +35,10 @@ export default function TripDetailScreen() {
       return;
     }
     if (!id) return;
-    setExpenses(await loadExpenses(id));
+    // Metadata only (no receipt BLOBs): the list renders no photo, and this
+    // screen refetches on every focus. The photo is fetched per-expense when the
+    // edit form is opened (see openExpenseForEdit).
+    setExpenses(await loadExpensesForList(id));
   };
 
   useEffect(() => {
@@ -42,20 +46,51 @@ export default function TripDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // ALL hooks are declared before the first early return. `if (!trip) return …`
+  // used to sit between `useEffect` and `useMemo` (verified: 5 hooks before,
+  // 1 after). Deleting the trip from this screen removes it from the store
+  // while the /trip/<id> route stays mounted, so the component re-rendered
+  // with trip === undefined and called 5 hooks instead of 6 — React error
+  // #300 ("Rendered fewer hooks than expected"), which unmounts the whole
+  // tree and leaves a blank screen. The rule: never let a conditional return
+  // split the hook list.
+  const sections = useMemo(
+    () => (trip ? groupByDaySplitAware(expenses) : []),
+    [trip, expenses],
+  );
+
+  // The list is loaded WITHOUT receipt BLOBs (see loadExpensesForList), and
+  // saveExpense writes `receiptPhoto` verbatim — so the form MUST get the full
+  // row, or merely opening + saving an expense would delete its photo. Fetch the
+  // one row (indexed by primary key) before opening the sheet. If that fails we
+  // do NOT open the form: a receipt-less expense in the edit path is a
+  // data-loss bug, not a degraded UI.
+  const openExpenseForEdit = async (expense: Expense) => {
+    try {
+      const full = await loadExpense(expense.id);
+      if (!full) {
+        Alert.alert('Could not open expense', 'This expense could not be loaded.');
+        return;
+      }
+      setEditingExpense(full);
+      setExpenseOpen(true);
+    } catch (e) {
+      Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
+    }
+  };
+
   if (!trip) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.center}>
           <Text style={styles.body}>Trip not found.</Text>
           <View style={{ marginTop: spacing.xl, width: '60%' }}>
-            <Button label="Back" onPress={() => router.back()} />
+            <Button label="Back to trips" onPress={() => router.replace('/trips')} />
           </View>
         </View>
       </SafeAreaView>
     );
   }
-
-  const sections = useMemo(() => groupByDaySplitAware(expenses), [expenses]);
 
   const handleSave = async (expense: Expense) => {
     await saveExpense(expense);
@@ -83,21 +118,24 @@ export default function TripDetailScreen() {
           <Pressable style={styles.headerAction} onPress={() => {
             // confirmDestructive, not Alert.alert: the latter is a no-op on the
             // PWA, so the trash icon would silently do nothing (see src/utils/confirm.ts).
-            confirmDestructive({
-              title: 'Delete trip',
-              message: `Delete "${trip.name}" and all its expenses?`,
-              onConfirm: async () => {
-                const { deleteTrip: deleteTripDb } = await import('../../src/db/tripRepo');
-                const removeTripStore = useTripStore.getState().removeTrip;
-                removeTripStore(trip.id);
-                try {
-                  await deleteTripDb(trip.id);
-                  router.back();
-                } catch (e) {
-                  Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
-                }
-              },
-            });
+            // The dialog is host-independent (ConfirmHost is mounted in the root
+            // layout), so this works from a screen that is about to unmount.
+            void (async () => {
+              const ok = await confirmDestructive({
+                title: 'Delete trip',
+                message: `Delete "${trip.name}" and all its expenses?`,
+              });
+              if (!ok) return;
+              const { deleteTrip: deleteTripDb } = await import('../../src/db/tripRepo');
+              const removeTripStore = useTripStore.getState().removeTrip;
+              removeTripStore(trip.id);
+              try {
+                await deleteTripDb(trip.id);
+                router.back();
+              } catch (e) {
+                Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+              }
+            })();
           }}>
             <Ionicons name="trash-outline" size={24} color={colors.destructive} />
           </Pressable>
@@ -150,8 +188,7 @@ export default function TripDetailScreen() {
             splitShare={item.splitShare}
             background={colors.primary12}
             onPress={() => {
-              setEditingExpense(item.expense);
-              setExpenseOpen(true);
+              void openExpenseForEdit(item.expense);
             }}
           />
         )}
@@ -168,7 +205,7 @@ export default function TripDetailScreen() {
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
 
-      <Modal visible={expenseOpen} animationType="slide" onRequestClose={() => setExpenseOpen(false)}>
+      <ModalHost visible={expenseOpen} onRequestClose={() => setExpenseOpen(false)}>
         <ExpenseForm
           tripId={trip.id}
           defaultCurrency={trip.defaultCurrency}
@@ -190,7 +227,7 @@ export default function TripDetailScreen() {
             }
           }}
         />
-      </Modal>
+      </ModalHost>
     </SafeAreaView>
   );
 }

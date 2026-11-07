@@ -77,7 +77,78 @@
 //                     via File.text() on web (verified). Native unchanged.
 //                     (2) autoFocus in the web portal broke typing — replaced
 //                     with a ref + focus effect so search reliably filters.
-const CACHE_NAME = '4mytravels-v40-2026-10-10';
+//   v43 2026-10-23 — deleting a trip no longer blanks the screen.
+//                     (1) trip detail crashed with React error #300 (an early
+//                     return between two hooks) the moment the trip was deleted
+//                     from that screen; the hook list is now unconditional.
+//                     (2) destructive confirmations go through ONE in-app
+//                     dialog (ConfirmHost, mounted in the root layout) instead
+//                     of window.confirm — Chrome auto-dismisses the latter, so
+//                     the delete was silently skipped.
+//   v44 2026-10-23 — Expenses can filter on ANY set of trips (the same
+//                     multi-select as Statistics), while startup still opens on
+//                     the current trip. Receipt BLOBs are no longer loaded by
+//                     the list screens (metadata-only query: 814 ms -> 4 ms on a
+//                     2000-row table); the edit form fetches the full row via
+//                     loadExpense() so a save can never clear a photo.
+//   v45 2026-10-28 — CSV import from a CLOUD DRIVE works via the share sheet.
+//                     The Android document picker hands <input type=file> a
+//                     content:// proxy from cloud providers (Proton Drive, …)
+//                     which Chrome cannot read: File.text(), arrayBuffer(),
+//                     FileReader and fetch(objectURL) all throw NotReadableError.
+//                     This worker now intercepts the share target POST /import,
+//                     stores the shared file's text in a Cache entry and
+//                     redirects to the app, which imports it (SharedImportHost).
+//   v46 2026-10-28 — share flow polish: the ?shared marker is cleared once the
+//                     share has been handled, so a later reload cannot
+//                     re-evaluate it. Also fixes the web export itself: the
+//                     undeclared `uuid` import (only @types/uuid was ever a
+//                     dependency) no longer bundles after a prod-mode install —
+//                     ids now come from expo-crypto's randomUUID(), which IS a
+//                     declared dependency.
+const CACHE_NAME = '4mytravels-v46-2026-10-28';
+// Cache entry holding the file a share target POST delivered, until the app
+// consumes it. Must be excluded from the activate() cleanup below.
+const SHARED_CACHE = '4mytravels-shared';
+const SHARED_KEY = '/__shared-file';
+
+/**
+ * Handle a Web Share Target POST: read the shared file, stash its TEXT in the
+ * SHARED_CACHE, then 303-redirect to the app.
+ *
+ * 303 (not 307) matters: it turns the POST into a GET, so the app loads
+ * normally instead of the browser re-POSTing the file.
+ *
+ * A failure is signalled with `?shared=error` rather than thrown, because the
+ * share sheet has no way to display an error of its own.
+ */
+async function handleShareTarget(request) {
+  try {
+    const form = await request.formData();
+    const file = form.get('file');
+    // A share without a file (a link or plain text) has nothing to import.
+    if (!file || typeof file.text !== 'function') {
+      return Response.redirect('/?shared=error', 303);
+    }
+    const text = await file.text();
+    const cache = await caches.open(SHARED_CACHE);
+    await cache.put(
+      SHARED_KEY,
+      new Response(text, {
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          // Header values must be latin-1 safe: encodeURIComponent the name.
+          'x-shared-name': encodeURIComponent(file.name || 'shared.csv'),
+          'x-shared-size': String(file.size || 0),
+        },
+      }),
+    );
+    return Response.redirect('/?shared=1', 303);
+  } catch (err) {
+    return Response.redirect('/?shared=error', 303);
+  }
+}
+
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -98,15 +169,35 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))),
+      Promise.all(
+        keys
+          // Keep a pending shared file: a deploy that activates between the
+          // share and the app reading it must not drop the user's import.
+          .filter((k) => k !== CACHE_NAME && k !== SHARED_CACHE)
+          .map((k) => caches.delete(k)),
+      ),
     ).then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // Web Share Target (Android "Delen -> 4MyTravels"). A static host cannot read
+  // a request body from JS, so the worker is the only place the shared file can
+  // be picked up. It stashes the file's TEXT in a Cache entry and redirects the
+  // app to itself, where SharedImportHost consumes it.
+  //
+  // This is the way around the cloud-drive picker bug: sharing delivers the real
+  // file content in the POST body, unlike <input type=file> on Android which
+  // gets an unreadable content:// proxy from Proton Drive et al.
+  if (req.method === 'POST' && url.origin === self.location.origin && url.pathname === '/import') {
+    event.respondWith(handleShareTarget(req));
+    return;
+  }
+
+  if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return; // Frankfurter etc.: network only
 
   // SPA navigations: network-first (so deploys are picked up immediately),

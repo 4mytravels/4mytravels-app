@@ -33,5 +33,21 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/import",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": ["text/csv", "text/comma-separated-values", "application/csv", "application/vnd.ms-excel", "text/plain", "*/*"]
+        }
+      ]
+    }
+  }
 }

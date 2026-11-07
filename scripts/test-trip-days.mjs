@@ -53,7 +53,14 @@ try {
 const { computePace, inclusiveDays, formatDayProgress, dayProgressRatio } = require(join(cache, 'utils', 'pace.js'));
 const { computeTripStats } = require(join(cache, 'utils', 'tripStats.js'));
 const { formatMoney, formatMoneyWhole } = require(join(cache, 'utils', 'currency.js'));
-const { formatDateRange } = require(join(cache, 'utils', 'days.js'));
+const {
+  formatDateRange,
+  groupByDay,
+  groupByDaySplitAware,
+  localDateTimeISO,
+  localTimeHM,
+  localNoon,
+} = require(join(cache, 'utils', 'days.js'));
 
 const trip = {
   id: 't1', name: 'Japan', startDate: '2026-09-01', endDate: '2026-09-10',
@@ -188,6 +195,51 @@ assert(dayProgressRatio(20, 14) === 1, 'meer dagen dan de reis lang is → afgek
 assert(dayProgressRatio(3, undefined) === 0, 'open reis zonder einddatum → geen dagbalk');
 assert(dayProgressRatio(3, 0) === 0, 'totalDays 0 → 0 (geen deling door nul)');
 assert(dayProgressRatio(-2, 10) === 0, 'negatief → 0');
+
+// ---- device-local timestamps (the "server time" bug) -------------------
+// An expense must be stamped with the PHONE's wall-clock time. Instants used to
+// be built with new Date(`${date}T${time}:00`): the offset-less ISO form is the
+// one shape the two engines we ship on may read differently, so the native build
+// resolved it in the server's zone and rows sorted/bucketed like entries from
+// another time. Built from components instead, the instant always means "this
+// clock time on this device" — no matter which zone the phone or the server is in.
+const mkExp = (id, createdAt) => ({
+  id, tripId: 't1', amount: 10, currency: 'EUR', rateToHome: 1,
+  rateDate: createdAt.slice(0, 10), category: 'Food', createdAt, paymentMethod: 'card',
+});
+
+const noon = localNoon('2026-10-17');
+assert(noon.getFullYear() === 2026 && noon.getMonth() === 9 && noon.getDate() === 17,
+  'localNoon houdt de kalenderdag in de lokale zone (got ' + noon.toString() + ')');
+assert(noon.getHours() === 12, 'localNoon zet 12:00 lokale tijd (got ' + noon.getHours() + ')');
+
+const evening = localDateTimeISO('2026-10-17', '20:15');
+const eveningDate = new Date(evening);
+assert(eveningDate.getHours() === 20 && eveningDate.getMinutes() === 15,
+  'opgeslagen 20:15 is lokaal 20:15 (got ' + eveningDate.getHours() + ':' + eveningDate.getMinutes() + ')');
+assert(localTimeHM(evening) === '20:15',
+  'localTimeHM leest de lokale tijd terug, niet de UTC-slice (got ' + localTimeHM(evening) + ')');
+
+// Late-evening entries are where an off-zone stamp becomes "the wrong day".
+const late = localDateTimeISO('2026-10-17', '23:30');
+assert(localTimeHM(late) === '23:30', '23:30 blijft 23:30 (got ' + localTimeHM(late) + ')');
+assert(new Date(late).getDate() === 17,
+  '23:30 blijft op 17 okt (got ' + new Date(late).toString() + ')');
+const lateGroups = groupByDay([mkExp('late', late)]);
+assert(lateGroups.length === 1 && lateGroups[0].day === '2026-10-17',
+  '23:30 valt in de dag van invoer, niet in de volgende dag (got ' + (lateGroups[0] && lateGroups[0].day) + ')');
+
+// Same minute, different entry order: newest first — never a random uuid tiebreak.
+const firstEntry = localDateTimeISO('2026-10-17', '20:15', 5, 100);
+const secondEntry = localDateTimeISO('2026-10-17', '20:15', 40, 900);
+const sameMinute = groupByDay([mkExp('a-first', firstEntry), mkExp('b-second', secondEntry)])[0].data;
+assert(sameMinute[0].id === 'b-second' && sameMinute[1].id === 'a-first',
+  'twee invoeren in dezelfde minuut: de laatste staat bovenaan (got ' + sameMinute.map((e) => e.id).join(',') + ')');
+
+// The split-aware grouping must apply the SAME rule (both lists, one behaviour).
+const splitLate = groupByDaySplitAware([mkExp('late2', late)]);
+assert(splitLate.length === 1 && splitLate[0].day === '2026-10-17',
+  'groupByDaySplitAware: 23:30 in dezelfde dag (got ' + (splitLate[0] && splitLate[0].day) + ')');
 
 rmSync(cache, { recursive: true, force: true });
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILURE(S)`);

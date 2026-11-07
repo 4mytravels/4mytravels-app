@@ -40,11 +40,12 @@ import {
   type PaymentMethod,
 } from '../types';
 import { allocateSplit } from '../utils/pace';
+import { localDateTimeISO, localNoon, localTimeHM } from '../utils/days';
 import { CategoryChip, Button } from './ui';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'expo-crypto';
 
 // base64 helpers (React Native exposes atob/btoa globally)
 // Split an array into fixed-size rows (category grid: 3 per row).
@@ -117,9 +118,9 @@ export function ExpenseForm({
   const [pickerInitial, setPickerInitial] = useState<Date>(new Date());
   const openDatePicker = (which: 'date' | 'end') => {
     const current = which === 'end' ? endDate || date : date;
-    const t = Date.parse(`${current}T12:00:00`);
-    const d = Number.isNaN(t) ? new Date() : new Date(t);
-    d.setHours(12, 0, 0, 0);
+    // Local noon from components — see localNoon() (offset-less ISO parsing
+    // differs between the native engine and the web engine).
+    const d = localNoon(current);
     if (Platform.OS === 'android') {
       // Imperative API: the dialog is presented once and is immune to
       // re-renders of this component (the declarative <DateTimePicker> re-opened
@@ -145,7 +146,10 @@ export function ExpenseForm({
   };
   const [time, setTime] = useState(
     initialExpense
-      ? (initialExpense.createdAt || new Date().toISOString()).slice(11, 16)
+      ? // LOCAL wall-clock time. `.slice(11, 16)` read the UTC time-of-day, so an
+        // expense saved at 20:15 in UTC+2 came back as "18:15" and every re-save
+        // pushed it further away from when it actually happened.
+        localTimeHM(initialExpense.createdAt)
       : (() => {
           const d = new Date();
           return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -277,13 +281,26 @@ export function ExpenseForm({
   const save = () => {
     // Guard: reject Infinity, NaN, negative, and zero amounts
     if (!Number.isFinite(amountNum) || amountNum <= 0) return;
+    // Sub-minute part of createdAt: on EDIT carry the original instant's seconds/ms
+    // so the row keeps its position among same-minute neighbours; on a NEW expense
+    // take them from the clock so two entries in the same minute still order by
+    // entry order (a hard-coded :00.000 made them tie and sort by random uuid).
+    const keptSubMinute = (): [number, number] => {
+      const prev = isEdit && initialExpense?.createdAt ? Date.parse(initialExpense.createdAt) : NaN;
+      if (Number.isNaN(prev)) {
+        const n = new Date();
+        return [n.getSeconds(), n.getMilliseconds()];
+      }
+      const d = new Date(prev);
+      return [d.getSeconds(), d.getMilliseconds()];
+    };
     // Multi-day split only when the end date is a real later date.
     const split =
       endDate && endDate > date
         ? { splitStart: date, splitEnd: endDate }
         : undefined;
     const expense: Expense = {
-      id: initialExpense?.id ?? uuid(),
+      id: initialExpense?.id ?? randomUUID(),
       tripId,
       amount: amountNum,
       currency,
@@ -291,16 +308,26 @@ export function ExpenseForm({
       rateToHome: rate ?? 0,
       rateDate: date,
       category,
-      // Timezone-aware: combine the chosen date + local time-of-day on the
-      // device, then normalize to UTC ISO (§2.1).
+      // Timezone-aware: the chosen date + the LOCAL time-of-day ON THIS DEVICE,
+      // normalised to UTC ISO (§2.1).
       //
-      // On EDIT the timestamp must be REBUILT from the chosen date + time.
-      // Keeping `initialExpense.createdAt` pinned the entry to its ORIGINAL day:
-      // moving an expense to another date saved the new rateDate but left
-      // createdAt on the old day, and groupByDay/groupByDaySplitAware bucket by
-      // createdAt — so the Expenses tab still showed it under the old day.
-      // The time-of-day is preserved; only the day is taken from `date`.
-      createdAt: new Date(`${date}T${time}:00`).toISOString(),
+      // Built from numeric components on purpose. `new Date(`${date}T${time}:00`)`
+      // leaves the offset to the engine, and the native build (Hermes) resolved it
+      // against the server's zone instead of the phone's — the saved instant was
+      // then off by the device's UTC offset, so the row sorted and bucketed like
+      // an entry from a different time (see localDateTimeISO in utils/days.ts).
+      //
+      // On EDIT the timestamp is REBUILT from the chosen date + time. Keeping
+      // `initialExpense.createdAt` pinned the entry to its ORIGINAL day: moving an
+      // expense to another date saved the new rateDate but left createdAt on the
+      // old day, and groupByDay/groupByDaySplitAware bucket by createdAt — so the
+      // Expenses tab still showed it under the old day.
+      //
+      // Seconds/ms: on edit they are carried over from the original instant so the
+      // row does not jump relative to same-minute neighbours; on a new expense they
+      // come from the clock so two entries in the SAME minute keep entry order
+      // (the old hard-coded :00.000 made those rows tie and sort by random uuid).
+      createdAt: localDateTimeISO(date, time, ...keptSubMinute()),
       country: country.trim() || undefined,
       paymentMethod,
       notes: note.trim() || undefined,

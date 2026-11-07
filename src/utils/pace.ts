@@ -10,6 +10,8 @@
 // why day 1 always read as "over budget" (expected spend 0 while a real
 // expense was already logged).
 
+import { localNoon } from './days';
+
 export type PaceStatus = 'on_track' | 'over_budget';
 
 export interface PaceInput {
@@ -39,7 +41,7 @@ export interface PaceResult {
 
 /** Parse YYYY-MM-DD at local noon — avoids UTC off-by-one and DST edges. */
 export function parseLocalDay(date: string): Date {
-  return new Date(`${date}T12:00:00`);
+  return localNoon(date);
 }
 
 /** Inclusive day count between two YYYY-MM-DD dates (start day = 1, min 1). */

@@ -27,7 +27,7 @@ const DateTimePicker: React.ComponentType<Record<string, unknown>> | null = (() 
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'expo-crypto';
 import { WebDateButton } from '../../src/components/WebDateButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
@@ -318,7 +318,7 @@ export default function NewTripScreen() {
     setErrorMsg(null);
     setPhase('building trip object');
     const trip: Trip = {
-      id: existing?.id ?? uuid(),
+      id: existing?.id ?? randomUUID(),
       name: name.trim(),
       startDate,
       endDate: endDate.trim() || undefined,

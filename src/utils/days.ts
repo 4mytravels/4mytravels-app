@@ -13,6 +13,67 @@ function toLocalYMD(d: Date): string {
   ).padStart(2, '0')}`;
 }
 
+const YMD_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+const HM_RE = /^(\d{1,2}):(\d{1,2})/;
+
+/**
+ * A calendar day as a Date at LOCAL noon. Build it from numeric components:
+ * `new Date('2026-10-17T12:00:00')` is an offset-less ISO form, and the two JS
+ * engines we ship on do not have to agree on how to read it — the native build
+ * (Hermes) then resolved it against the wrong zone, so a "today" computed on the
+ * device landed on the server's day. Components are unambiguous everywhere.
+ */
+export function localNoon(ymd?: string): Date {
+  const m = YMD_RE.exec((ymd ?? '').slice(0, 10));
+  if (!m) return new Date();
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10), 12, 0, 0, 0);
+}
+
+/**
+ * The UTC instant for "this calendar day at this wall-clock time ON THE DEVICE".
+ *
+ * Always build the Date from components. `new Date(`${date}T${time}:00`)` leaves
+ * the string's timezone to the engine, which is where the native app ended up
+ * saving the server's time instead of the phone's: an expense entered at 20:15
+ * in UTC+2 was stored as 20:15 UTC, so it sorted and bucketed like a 22:15
+ * entry. Seconds/ms are passed in so two expenses saved in the same minute keep
+ * their entry order (the old code hard-coded :00.000, so same-minute rows tied
+ * and the list fell back to a random uuid tiebreak).
+ */
+export function localDateTimeISO(
+  ymd: string,
+  hhmm: string,
+  seconds = 0,
+  ms = 0,
+): string {
+  const d = localNoon(ymd);
+  const hm = HM_RE.exec(hhmm ?? '');
+  d.setHours(
+    hm ? parseInt(hm[1], 10) : 0,
+    hm ? parseInt(hm[2], 10) : 0,
+    seconds,
+    ms,
+  );
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+/**
+ * Local wall-clock "HH:mm" for a stored UTC instant. NEVER `.slice(11, 16)` on
+ * the ISO string — that is the UTC time-of-day, so an expense saved at 20:15 in
+ * UTC+2 was shown as "18:15" in the edit form and every re-save shifted it
+ * further away from the moment it happened.
+ */
+export function localTimeHM(iso?: string): string {
+  const t = Date.parse(iso ?? '');
+  const d = Number.isNaN(t) ? new Date() : new Date(t);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** "YYYY-MM-DD" for a Date, in the DEVICE's timezone. */
+export function toLocalDayKey(d: Date = new Date()): string {
+  return toLocalYMD(d);
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Split an ISO yyyy-mm-dd into its parts + a "14 Sep 2026" label. */

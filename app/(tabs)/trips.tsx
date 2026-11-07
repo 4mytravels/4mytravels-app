@@ -6,7 +6,7 @@ import { AppLogo } from '../../src/components/AppLogo';
 import { TripCard } from '../../src/components/TripCard';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
-import { loadExpenses } from '../../src/db/expenseRepo';
+import { loadExpensesForList } from '../../src/db/expenseRepo';
 import { deleteTrip as deleteTripDb } from '../../src/db/tripRepo';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
@@ -50,7 +50,7 @@ export default function TripsScreen() {
     (async () => {
       const map: Record<string, Expense[]> = {};
       for (const t of trips) {
-        map[t.id] = await loadExpenses(t.id);
+        map[t.id] = await loadExpensesForList(t.id);
       }
       if (alive) setExpensesByTrip(map);
     })();
@@ -63,20 +63,22 @@ export default function TripsScreen() {
 
   const visible = trips.filter((t) => filter === 'All' || deriveTripStatus(t) === filter);
 
-  const handleDelete = (trip: Trip) => {
-    // Alert.alert does nothing on the PWA — see src/utils/confirm.ts.
-    confirmDestructive({
+  const handleDelete = async (trip: Trip) => {
+    // The sheet must stay open until the answer is known: closing it first
+    // destroyed the dialog's host on web (measured: the sheet stayed open after
+    // a refused confirmation, so the user could not tell whether the delete had
+    // run). confirmDestructive resolves true only when the user confirms.
+    const ok = await confirmDestructive({
       title: 'Delete trip',
       message: `Delete "${trip.name}" and all its expenses?`,
-      onConfirm: async () => {
-        removeTripStore(trip.id);
-        try {
-          await deleteTripDb(trip.id);
-        } catch (e) {
-          Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
-        }
-      },
     });
+    if (!ok) return;
+    removeTripStore(trip.id);
+    try {
+      await deleteTripDb(trip.id);
+    } catch (e) {
+      Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+    }
   };
 
   if (trips.length === 0) {
@@ -100,7 +102,7 @@ export default function TripsScreen() {
     setRefreshing(true);
     const map: Record<string, Expense[]> = {};
     for (const t of trips) {
-      map[t.id] = await loadExpenses(t.id);
+      map[t.id] = await loadExpensesForList(t.id);
     }
     setExpensesByTrip(map);
     setRefreshing(false);
@@ -164,12 +166,16 @@ export default function TripsScreen() {
         trip={managing}
         onClose={() => setManaging(null)}
         onEdit={(t) => {
-          setManaging(null);
           router.push({ pathname: '/trips/new', params: { editId: t.id } });
-        }}
-        onDelete={(t) => {
+          // Close AFTER the push: closing the sheet first left the pushed route
+          // unreachable on web (the sheet's backdrop swallowed the tap).
           setManaging(null);
-          handleDelete(t);
+        }}
+        onDelete={async (t) => {
+          // Keep the sheet open until the user answers — confirmDestructive
+          // resolves true only on an actual confirmation.
+          await handleDelete(t);
+          setManaging(null);
         }}
       />
     </SafeAreaView>

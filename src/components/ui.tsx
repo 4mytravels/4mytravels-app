@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../types';
+import { categoryIcon } from '../utils/categoryIcons';
 
 // ---------- Card ----------
 export function Card({
@@ -250,7 +251,7 @@ export function CategoryChip({
       ]}
     >
       <Ionicons
-        name={categoryIcons[category]}
+        name={categoryIcon(category)}
         size={stretch ? 20 : 16}
         color={colors.foreground}
       />
@@ -300,21 +301,9 @@ export function SectionTitle({ title, count }: { title: string; count?: string }
 }
 
 // ---------- Category icon mapping (Ionicons) ----------
-export const categoryIcons: Record<ExpenseCategory, keyof typeof Ionicons.glyphMap> = {
-  Food: 'restaurant-outline',
-  Transport: 'bus-outline',
-  Accommodation: 'bed-outline',
-  Groceries: 'cart-outline',
-  Shopping: 'bag-outline',
-  Activities: 'film-outline',
-  Drinks: 'wine-outline',
-  Coffee: 'cafe-outline',
-  Flights: 'airplane-outline',
-  General: 'wallet-outline',
-  Laundry: 'shirt-outline',
-  Gym: 'barbell-outline',
-  Work: 'briefcase-outline',
-};
+// Moved to src/utils/categoryIcons.ts so the form, the Statistics donut and the
+// filter sheets can never drift apart. Re-exported for existing importers.
+export { categoryIcons, categoryIcon } from '../utils/categoryIcons';
 
 // ---------- Heading text helper ----------
 export function headingStyle(size: keyof typeof fontSize = '3xl'): TextStyle {

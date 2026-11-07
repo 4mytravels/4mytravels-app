@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Modal,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,9 +17,10 @@ import { Pill } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
+import { ModalHost } from '../../src/components/ModalHost';
 import { WebNotices } from '../../src/components/WebNotices';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
-import { loadExpenses } from '../../src/db/expenseRepo';
+import { loadExpensesForList } from '../../src/db/expenseRepo';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache } from '../../src/services/rateCache';
@@ -50,7 +50,9 @@ export default function HomeScreen() {
     let alive = true;
     (async () => {
       try {
-        const list = await loadExpenses();
+        // Metadata only: this screen renders no receipt photos, and loading the
+        // BLOBs on every focus was the single most expensive query in the app.
+        const list = await loadExpensesForList();
         if (alive) {
           setExpenses(list);
           setLoading(false);
@@ -210,10 +212,16 @@ export default function HomeScreen() {
           />
         )}
 
-        {/* Quick facts */}
+        {/* Quick facts — elke pil opent het bijbehorende Stats-scherm:
+            countries → Countries-pagina, days → Over time-pagina, spent → de
+            Statistics-tab. */}
         <View style={styles.quickFacts}>
-          <Pill icon="location-outline" text={`${countries} countries`} />
-          <Pill icon="calendar-outline" text={`${totalDays} ${totalDays === 1 ? 'day' : 'days'}`} />
+          <Pressable onPress={() => router.push('/stats/countries')}>
+            <Pill icon="location-outline" text={`${countries} countries`} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/stats/over-time')}>
+            <Pill icon="calendar-outline" text={`${totalDays} ${totalDays === 1 ? 'day' : 'days'}`} />
+          </Pressable>
           <Pressable onPress={() => router.push('/statistics')}>
             <Pill icon="wallet-outline" text={`${formatMoneyWhole(totalSpent, displayCurrency)} spent`} />
           </Pressable>
@@ -270,7 +278,7 @@ export default function HomeScreen() {
       </Pressable>
 
       {/* Add/edit-expense sheet (one tap from Home; rows open in edit mode) */}
-      <Modal visible={formOpen && (!!targetTrip || !!editingExpense)} animationType="slide" onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
+      <ModalHost visible={formOpen && (!!targetTrip || !!editingExpense)} onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
         {targetTrip && (
           <ExpenseForm
             tripId={editingExpense?.tripId ?? targetTrip.id}
@@ -303,7 +311,7 @@ export default function HomeScreen() {
             }}
           />
         )}
-      </Modal>
+      </ModalHost>
     </View>
   );
 }

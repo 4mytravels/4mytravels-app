@@ -45,24 +45,32 @@ export function PickerSheet({
   visible: boolean;
   onClose: () => void;
   title: string;
-  query: string;
-  onQueryChange: (v: string) => void;
-  queryPlaceholder: string;
+  /**
+   * SEARCH IS OPTIONAL. Omit `onQueryChange` for a short list (the trip /
+   * country / category FILTERS on the stats pages) and the sheet renders no
+   * search bar at all — the same build-up as the Statistics trip filter:
+   * title, plain rows, Done. The currency/country pickers in the expense form
+   * and the trip editor DO pass it (long lists need a search field).
+   */
+  query?: string;
+  onQueryChange?: (v: string) => void;
+  queryPlaceholder?: string;
   maxListHeight?: number;
   footer?: ReactNode;
 }>) {
   const keyboardHeight = useKeyboardHeight();
   const searchRef = useRef<TextInput>(null);
+  const hasSearch = typeof onQueryChange === 'function';
   // Focus the search field once the sheet is open. Done in an effect (NOT via
   // the TextInput `autoFocus` prop): autoFocus inside a web portal overlay is
   // unreliable — the field appears focused but typing does not register (the
   // "search werkt niet" regression). A ref + effect focuses the real node
   // after mount on web and native alike.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !hasSearch) return;
     const t = setTimeout(() => searchRef.current?.focus(), 120);
     return () => clearTimeout(t);
-  }, [visible]);
+  }, [visible, hasSearch]);
   // Android/OEM keyboards and mobile-web virtual keyboards do not resize the
   // window reliably; pad the sheet by the measured overlap so the search field
   // stays reachable.
@@ -88,26 +96,28 @@ export function PickerSheet({
             <Text style={styles.done}>Done</Text>
           </Pressable>
         </View>
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={18} color={colors.mutedForeground} />
-          <TextInput
-            ref={searchRef}
-            style={styles.searchInput}
-            value={query}
-            onChangeText={onQueryChange}
-            placeholder={queryPlaceholder}
-            placeholderTextColor={colors.mutedForeground}
-            autoCapitalize="none"
-            autoCorrect={false}
-            // No `autoFocus` here (it broke typing in the web portal — see the
-            // focus effect above). Explicit props keep typing reliable.
-          />
-          {query !== '' && (
-            <Pressable hitSlop={8} onPress={() => onQueryChange('')}>
-              <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
-            </Pressable>
-          )}
-        </View>
+        {hasSearch && (
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={18} color={colors.mutedForeground} />
+            <TextInput
+              ref={searchRef}
+              style={styles.searchInput}
+              value={query ?? ''}
+              onChangeText={onQueryChange}
+              placeholder={queryPlaceholder}
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+              // No `autoFocus` here (it broke typing in the web portal — see the
+              // focus effect above). Explicit props keep typing reliable.
+            />
+            {(query ?? '') !== '' && (
+              <Pressable hitSlop={8} onPress={() => onQueryChange?.('')}>
+                <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
+              </Pressable>
+            )}
+          </View>
+        )}
         {footer}
         {/* A real ScrollView (not a plain View): on web a View never scrolls, so
             the long currency/country lists were cut off with no way to reach the
@@ -125,13 +135,20 @@ export function PickerRow({
   label,
   active,
   onPress,
+  icon,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
+  /** Optional leading icon — used by the filter sheets so they look like the
+   *  Statistics trip filter (icon + label + checkmark). */
+  icon?: keyof typeof Ionicons.glyphMap;
 }) {
   return (
     <Pressable style={[styles.row, active && styles.rowActive]} onPress={onPress}>
+      {icon && (
+        <Ionicons name={icon} size={18} color={active ? colors.primary : colors.mutedForeground} />
+      )}
       <Text style={[styles.rowText, active && { color: colors.primary, fontWeight: '700' }]} numberOfLines={1}>
         {label}
       </Text>

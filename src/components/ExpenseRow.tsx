@@ -8,7 +8,8 @@
 // stay identical.
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { IconCircle, categoryIcons } from './ui';
+import { IconCircle } from './ui';
+import { categoryIcon } from '../utils/categoryIcons';
 import { countryName } from '../data/countries';
 import { formatMoney, toHomeCurrency } from '../utils/currency';
 import { colors, fontFamily, fontSize, spacing } from '../theme/theme';
@@ -46,6 +47,13 @@ export function ExpenseRow({
    * applies its own `spacing.xl`, landing the text exactly on the screen edge.
    */
   fullBleed = true,
+  /**
+   * Tighter vertical rhythm for a long log list (the Expenses tab). Only the
+   * padding changes — plus the separator collapses to ONE hairline between two
+   * adjacent rows (top border off) instead of two stacked 1px rules, which
+   * otherwise read as a 2px line. The trip detail / home rows stay roomy.
+   */
+  dense = false,
 }: {
   expense: Expense;
   homeCurrency: string;
@@ -56,6 +64,7 @@ export function ExpenseRow({
   /** Draw the separator above AND below the row. */
   bordered?: boolean;
   fullBleed?: boolean;
+  dense?: boolean;
 }) {
   const isSplitDay = splitShare != null;
   // The per-day share is stored in the trip home currency, so it is shown as-is;
@@ -77,12 +86,14 @@ export function ExpenseRow({
       style={[
         styles.row,
         fullBleed && styles.rowFullBleed,
+        dense && styles.rowDense,
         { backgroundColor: background },
         bordered && styles.border,
+        bordered && dense && styles.borderDense,
       ]}
       onPress={onPress}
     >
-      <IconCircle icon={categoryIcons[expense.category]} size={40} color="#FFFFFF" />
+      <IconCircle icon={categoryIcon(expense.category)} size={40} color="#FFFFFF" />
       <View style={styles.details}>
         <Text style={styles.rowTitle} numberOfLines={1}>
           {expense.notes || expense.category}
@@ -125,6 +136,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  // Dense (Expenses tab): 8px top/bottom instead of 16px, and the 40px icon
+  // circle no longer floats in a 72px box. Two adjacent rows used to show TWO
+  // 1px rules (borderBottom + borderTop) = a 2px line; in dense mode the top
+  // rule is dropped so the pair collapses to one hairline. The first row of a
+  // day then relies on the day header above it, which is exactly the intent.
+  rowDense: { paddingVertical: spacing.sm },
+  borderDense: { borderTopWidth: 0 },
   details: { flex: 1, marginLeft: spacing.md },
   rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
   metaText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: 2 },

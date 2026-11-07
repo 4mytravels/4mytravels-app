@@ -16,16 +16,20 @@ import { AppLogo } from '../../src/components/AppLogo';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpenses } from '../../src/db/expenseRepo';
+import { loadExpensesForList } from '../../src/db/expenseRepo';
 import { expensesToCsv } from '../../src/services/csv';
 import type { Expense } from '../../src/types';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
+import { TimeChart } from '../../src/components/TimeChart';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { countryLabel, flagEmoji } from '../../src/data/countries';
 import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
+import { categoryIcon } from '../../src/utils/categoryIcons';
+import { groupByCountry } from '../../src/utils/countryStats';
+import { groupByTime } from '../../src/utils/timeStats';
+import { expenseDay } from '../../src/utils/periods';
 
 // Premium dark-mode donut palette.
 const DONUT_COLORS = [
@@ -37,24 +41,8 @@ const DONUT_COLORS = [
   '#6B7280', // gray — Others
 ];
 
-// Category icon map (Ionicons names).
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Accommodation: 'bed-outline',
-  Flights: 'airplane-outline',
-  General: 'grid-outline',
-  Transport: 'car-outline',
-  Drinks: 'wine-outline',
-  Activities: 'compass-outline',
-  Groceries: 'basket-outline',
-  Coffee: 'cafe-outline',
-  Other: 'ellipsis-horizontal-outline',
-  Others: 'ellipsis-horizontal-outline',
-  Shopping: 'bag-outline',
-  Food: 'restaurant-outline',
-  Laundry: 'shirt-outline',
-  Gym: 'barbell-outline',
-  Work: 'briefcase-outline',
-};
+// Category icons come from the ONE map (src/utils/categoryIcons.ts) — the form,
+// this donut and the filter sheets must agree on a category's icon.
 
 interface DonutSlice {
   category: string;
@@ -164,7 +152,7 @@ function DonutChart({
           >
             <View style={styles.sliceLabelRow}>
               <Ionicons
-                name={CATEGORY_ICONS[s.category] ?? 'ellipse-outline'}
+                name={categoryIcon(s.category)}
                 size={10}
                 color="#fff"
                 style={{ marginRight: 2 }}
@@ -189,19 +177,11 @@ function DonutChart({
         ]}
         pointerEvents="none"
       >
-        <Text style={styles.donutCenterLabel}>Total Spent</Text>
+        <Text style={styles.donutCenterLabel}>Total</Text>
         <Text style={styles.donutCenterValue}>{formatMoney(total, 'EUR')}</Text>
       </View>
     </View>
   );
-}
-
-// YYYY-MM → "Aug 2026"
-function monthLabel(ym: string): string {
-  const [y, m] = ym.split('-').map((n) => parseInt(n, 10));
-  if (!y || !m || m < 1 || m > 12) return ym;
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${names[m - 1]} ${y}`;
 }
 
 // Horizontal bar for sections — large flag to the left, name + bar stacked.
@@ -418,7 +398,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Empty({ text = 'No data yet.' }: { text?: string }) {
+function Empty({ text = 'No data.' }: { text?: string }) {
   return <Text style={styles.emptyText}>{text}</Text>;
 }
 
@@ -449,13 +429,22 @@ export default function StatisticsScreen() {
     [expenses, activeTripIds],
   );
   const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
+  // Het Over time-blok hieronder toont DEZELFDE grafiek als de Over time-pagina,
+  // dus via dezelfde aggregatie (groupByTime) — maar als PREVIEW met alleen de
+  // laatste 12 maanden (12 kolommen van ~23px i.p.v. 47 van ~6px). De volledige
+  // reeks staat achter "View all".
+  const chartRows = useMemo(
+    () => groupByTime(filteredExpenses, { period: 'month' }).slice(-12),
+    [filteredExpenses],
+  );
 
   const toggleTrip = (id: string) =>
     setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const loadData = useMemo(() => {
     return async () => {
-      const list = await loadExpenses();
+      // Metadata only — the charts never draw a receipt photo.
+      const list = await loadExpensesForList();
       setExpenses(list);
     };
   }, []);
@@ -508,28 +497,11 @@ export default function StatisticsScreen() {
     });
   }
 
-  // --- Country breakdown ---
-  const byCountry: Record<string, number> = {};
-  for (const e of filteredExpenses) {
-    if (e.country) {
-      const label = countryLabel(e.country);
-      byCountry[label] = (byCountry[label] ?? 0) + toHomeCurrency(e);
-    }
-  }
-  const countryEntries = Object.entries(byCountry).sort((a, b) => b[1] - a[1]);
-  const maxCountry = countryEntries.length ? countryEntries[0][1] : 1;
-
-  // --- Month breakdown ---
-  const byMonth: Record<string, number> = {};
-  for (const e of filteredExpenses) {
-    const day = (e.createdAt ?? e.rateDate).slice(0, 10);
-    if (day.length >= 7) {
-      const month = day.slice(0, 7);
-      byMonth[month] = (byMonth[month] ?? 0) + toHomeCurrency(e);
-    }
-  }
-  const monthEntries = Object.entries(byMonth).sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  const maxMonth = monthEntries.length ? monthEntries[0][1] : 1;
+  // --- Country breakdown (top 5 preview) ---
+  // Trip filtering already happened above; pass no filter here.
+  const countryEntries = groupByCountry(expenses, { tripIds: activeTripIds });
+  const maxCountry = countryEntries.length ? countryEntries[0].amount : 1;
+  const topCountries = countryEntries.slice(0, 5);
 
   // --- Payment breakdown ---
   const byPayment: Record<string, number> = {};
@@ -622,7 +594,7 @@ export default function StatisticsScreen() {
                 <View style={styles.legendRow}>
                   <View style={[styles.legendDot, { backgroundColor: s.color }]} />
                   <Ionicons
-                    name={CATEGORY_ICONS[s.category] ?? 'ellipse-outline'}
+                    name={categoryIcon(s.category)}
                     size={14}
                     color={colors.mutedForeground}
                     style={{ marginLeft: 8 }}
@@ -642,7 +614,7 @@ export default function StatisticsScreen() {
                     return (
                       <View key={cat} style={styles.legendSubRow}>
                         <Ionicons
-                          name={CATEGORY_ICONS[cat] ?? 'ellipse-outline'}
+                          name={categoryIcon(cat)}
                           size={11}
                           color={colors.mutedForeground}
                         />
@@ -663,35 +635,45 @@ export default function StatisticsScreen() {
 
         {/* By country */}
         <Section title="By country">
-          {countryEntries.length === 0 ? (
+          {topCountries.length === 0 ? (
             <Empty text="No countries tagged yet." />
           ) : (
-            countryEntries.map(([k, v]) => (
-              <Bar key={k} label={k} value={v} max={maxCountry} displayCurrency={displayCurrency} color={colors.accent} flag={flagEmoji(k)} />
+            topCountries.map((c) => (
+              <Bar key={c.code} label={c.name} value={c.amount} max={maxCountry} displayCurrency={displayCurrency} color={colors.accent} flag={c.flag} />
             ))
           )}
+          <Pressable style={styles.seeAll} onPress={() => router.push('/stats/countries')}>
+            <Text style={styles.seeAllText}>View all</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          </Pressable>
         </Section>
 
-        {/* Over time */}
+        {/* Over time — DEZELFDE grafiek als op de Over time-pagina
+            (src/components/TimeChart.tsx), niet de oude mini-balkjesstrook van
+            12 maanden: die had geen as, geen jaargrenzen en een andere eenheid.
+            Wel dezelfde horizon als die strook: de laatste 12 maanden. */}
         <Section title="Over time">
-          {monthEntries.length === 0 ? (
+          {chartRows.length === 0 ? (
             <Empty />
           ) : (
-            <LineChart
-              data={monthEntries.map(([ym, v]) => ({ month: ym, value: v, ym }))}
-              displayCurrency={displayCurrency}
-              width={300}
-            />
+            <>
+              <TimeChart rows={chartRows} period="month" plotH={140} />
+              <Pressable style={styles.seeAll} onPress={() => router.push('/stats/over-time')}>
+                <Text style={styles.seeAllText}>View all</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+              </Pressable>
+            </>
           )}
         </Section>
 
-        {/* By payment — split bar */}
+        {/* By payment — LAST of the preview blocks (below country and over
+            time), directly above the export button. */}
         <Section title="By payment">
-          {cardValue === 0 && cashValue === 0 ? (
-            <Empty />
-          ) : (
-            <SplitPaymentBar cardValue={cardValue} cashValue={cashValue} displayCurrency={displayCurrency} />
-          )}
+          <SplitPaymentBar
+            cardValue={cardValue}
+            cashValue={cashValue}
+            displayCurrency={displayCurrency}
+          />
         </Section>
 
         {/* Export button */}
@@ -960,6 +942,14 @@ const styles = StyleSheet.create({
   // Sections
   section: {
     marginTop: spacing.xl,
+    padding: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sectionTitle: {
     color: colors.foreground,
@@ -1066,6 +1056,21 @@ const styles = StyleSheet.create({
   exportWrap: {
     marginTop: spacing.xl,
   },
+  // "See all" link under a preview section.
+  seeAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginTop: spacing.md,
+  },
+  seeAllText: {
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    fontFamily: fontFamily.sans,
+  },
+  chartWrap: { alignItems: 'center' },
   legendSubRow: {
     flexDirection: 'row',
     alignItems: 'center',

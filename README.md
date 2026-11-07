@@ -4,9 +4,7 @@ Privacy-first travel expense tracker. Open source (React Native + Expo, GPL-3.0)
 
 **Download:** get the APK from the [Releases](https://github.com/4mytravels/4mytravels-app/releases) section.
 
-## App screenshots
-
-![1](fastlane/metadata/android/en-US/images/phoneScreenshots/1.png)![2](fastlane/metadata/android/en-US/images/phoneScreenshots/2.png)![3](fastlane/metadata/android/en-US/images/phoneScreenshots/3.png)![4](fastlane/metadata/android/en-US/images/phoneScreenshots/4.png)![5](fastlane/metadata/android/en-US/images/phoneScreenshots/5.png)
+![featureGraphic](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
 ## What it does
 
@@ -19,6 +17,10 @@ Track spending on trips with automatic currency conversion. Everything stays on 
 - Statistics: spend by category, country, and over time
 - Encrypted CSV export/import
 - Encrypted local backup/restore (Argon2 + XChaCha20-Poly1305)
+
+## App screenshots
+
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="240"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="240"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="240"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="240"><img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="240">
 
 ## Stack
 

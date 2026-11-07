@@ -55,7 +55,10 @@
     "test:cover": "node scripts/test-trip-cover.mjs",
     "test:days": "node scripts/test-trip-days.mjs",
     "test:csv": "node scripts/test-csv-numbers.mjs",
-    "test": "npm run test:cover && npm run test:days && npm run test:csv"
+    "test:filter": "node scripts/test-trip-filter.mjs",
+    "test:receipts": "node scripts/test-expense-receipts.mjs",
+    "test:stats": "node scripts/test-stats-utils.mjs",
+    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats"
   },
   "private": true
 }

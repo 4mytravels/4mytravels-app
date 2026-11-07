@@ -1,0 +1,17 @@
+Track travel expenses with automatic currency conversion. Everything stays on your device: expenses, trip budgets, receipt photos, and exchange rates are stored in an encrypted local SQLite database protected by SQLCipher and the Android Keystore. No account. No cloud sync. No tracking. No ads.
+
+What it does:
+
+• Log expenses with amount, category, country, payment method, notes, and receipt photos. EXIF/GPS data is stripped from photos automatically.
+• Automatic FX conversion via Frankfurter (ECB rates), cached locally for offline use. Every conversion is snapshotted at entry time, so historical amounts never drift when rates change.
+• Multi-day split for hotel bookings and other multi-night expenses, with per-day budget pacing.
+• Trip budgets with daily pace tracking. See at a glance whether you are on track, over budget, or ahead of plan.
+• Statistics: spend by category (donut chart), country (bar chart), over time (line chart), and payment method.
+• Encrypted CSV export/import (Argon2 + XChaCha20-Poly1305) for backups that you control.
+• Dark-mode UI designed for readability in bright sunlight.
+
+Offline-first: open the app on a plane, in a tunnel, or in a country with no signal. The cached rates keep currency conversion accurate, and your data is always yours.
+
+Open source under the GNU GPL v3.0. Source code and issue tracker: https://github.com/4mytravels/4mytravels-app
+
+F-Droid builds do not include the encrypted PWA. The installable web app is built separately and published at https://app.4mytravels.app.

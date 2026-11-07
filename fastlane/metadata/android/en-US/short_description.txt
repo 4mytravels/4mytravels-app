@@ -1,0 +1,1 @@
+Privacy-first travel expense tracker. Encrypted local database, offline currency rates, no account, no tracking.

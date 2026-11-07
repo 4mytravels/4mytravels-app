@@ -4,6 +4,10 @@ Privacy-first travel expense tracker. Open source (React Native + Expo, GPL-3.0)
 
 **Download:** get the APK from the [Releases](https://github.com/4mytravels/4mytravels-app/releases) section.
 
+## App screenshots
+
+![1](fastlane/metadata/android/en-US/images/phoneScreenshots/1.png)![2](fastlane/metadata/android/en-US/images/phoneScreenshots/2.png)![3](fastlane/metadata/android/en-US/images/phoneScreenshots/3.png)![4](fastlane/metadata/android/en-US/images/phoneScreenshots/4.png)![5](fastlane/metadata/android/en-US/images/phoneScreenshots/5.png)
+
 ## What it does
 
 Track spending on trips with automatic currency conversion. Everything stays on your device — encrypted local database, no account, no tracking, no ads.

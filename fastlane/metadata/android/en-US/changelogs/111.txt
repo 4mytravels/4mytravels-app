@@ -1,0 +1,9 @@
+Privacy: the app now requests only the INTERNET permission on Android.
+
+New Statistics pages: Countries and Over time, with multi-select trip and category filters. Expenses can filter on any set of trips.
+
+Performance: list screens are about 200x faster - receipt photos are no longer loaded for lists.
+
+PWA: CSV import from cloud drives via the share sheet; fixes for blank screen after trip delete, picker search focus, invisible errors.
+
+Fixed: expense times now use your local timezone.

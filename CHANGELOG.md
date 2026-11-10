@@ -4,6 +4,17 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
+### PWA
+- **The deployed PWA now serves the v1.1.1 build** (service-worker cache
+  bumped to `4mytravels-v47-2026-11-10`): the Statistics tab carries the
+  **By country** and **Over time** sections and both dedicated pages
+  (`/stats/countries`, `/stats/over-time`) are reachable from it. The live
+  site was still the 2026-10-28 shell, so the new pages were absent.
+- The **Over time** section's "View all" link now renders even when there is
+  no data yet. It was inside the `chartRows.length > 0` branch, which made
+  `/stats/over-time` unreachable on an empty dataset — the By country link
+  already rendered unconditionally.
+
 ## [1.1.1] - 2026-11-07
 
 ### Android permissions — allow-list

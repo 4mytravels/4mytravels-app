@@ -656,14 +656,15 @@ export default function StatisticsScreen() {
           {chartRows.length === 0 ? (
             <Empty />
           ) : (
-            <>
-              <TimeChart rows={chartRows} period="month" plotH={140} />
-              <Pressable style={styles.seeAll} onPress={() => router.push('/stats/over-time')}>
-                <Text style={styles.seeAllText}>View all</Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-              </Pressable>
-            </>
+            <TimeChart rows={chartRows} period="month" plotH={140} />
           )}
+          {/* Altijd een link naar de pagina, ook zonder data — anders is
+              /stats/over-time onbereikbaar op een lege dataset (By country
+              toont zijn link altijd). */}
+          <Pressable style={styles.seeAll} onPress={() => router.push('/stats/over-time')}>
+            <Text style={styles.seeAllText}>View all</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          </Pressable>
         </Section>
 
         {/* By payment — LAST of the preview blocks (below country and over

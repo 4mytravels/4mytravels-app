@@ -106,7 +106,7 @@
 //                     dependency) no longer bundles after a prod-mode install —
 //                     ids now come from expo-crypto's randomUUID(), which IS a
 //                     declared dependency.
-const CACHE_NAME = '4mytravels-v46-2026-10-28';
+const CACHE_NAME = '4mytravels-v47-2026-11-10';
 // Cache entry holding the file a share target POST delivered, until the app
 // consumes it. Must be excluded from the activate() cleanup below.
 const SHARED_CACHE = '4mytravels-shared';

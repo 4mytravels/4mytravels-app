@@ -1,0 +1,5 @@
+Trips without a daily budget no longer show "On track" or "Over budget"; only the day counter remains.
+
+Statistics: the Over time page is reachable from the Statistics tab even before you log expenses.
+
+F-Droid: first release built reproducibly; the F-Droid and GitHub APKs share the same signature, so you can switch between them without reinstalling.

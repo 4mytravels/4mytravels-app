@@ -51,7 +51,7 @@ try {
 }
 
 const { computePace, inclusiveDays, formatDayProgress, dayProgressRatio } = require(join(cache, 'utils', 'pace.js'));
-const { computeTripStats } = require(join(cache, 'utils', 'tripStats.js'));
+const { computeTripStats, hasDailyBudget } = require(join(cache, 'utils', 'tripStats.js'));
 const { formatMoney, formatMoneyWhole } = require(join(cache, 'utils', 'currency.js'));
 const {
   formatDateRange,
@@ -167,6 +167,21 @@ assert(running.tripBudget === 1000, 'actieve reis: tripBudget = volledige reis (
 const openEnded = computeTripStats({ ...trip, endDate: undefined }, expenses, today);
 assert(openEnded.tripBudget === openEnded.cumulativeBudget,
   'open reis zonder einddatum: tripBudget valt terug op budget tot datum (got ' + openEnded.tripBudget + ')');
+
+// ---- budget status only exists when a daily budget is set -----------------
+// A trip created without a budget (the editor's "No budget" → 0, CSV import
+// default 0) must not show "On track" / "Over budget": with an expected spend
+// of 0 every trip would read as a budget verdict about a budget that is absent.
+assert(hasDailyBudget(trip) === true, 'reis met dagbudget → hasDailyBudget true');
+assert(hasDailyBudget({ ...trip, dailyBudget: 0 }) === false, 'dailyBudget 0 = geen budget');
+assert(hasDailyBudget({ ...trip, dailyBudget: undefined }) === false,
+  'dailyBudget undefined = geen budget');
+assert(hasDailyBudget({ ...trip, dailyBudget: -5 }) === false, 'negatief budget = geen budget');
+// A no-budget trip still has a day counter and figures — only the verdict goes.
+const noBudgetStats = computeTripStats({ ...trip, dailyBudget: 0 }, expenses, today);
+assert(noBudgetStats.pace.daysElapsed === s.daysActive,
+  'reis zonder budget: dagen tellen nog steeds mee (got ' + noBudgetStats.pace.daysElapsed + ')');
+assert(noBudgetStats.tripBudget === 0, 'reis zonder budget: tripBudget 0 (got ' + noBudgetStats.tripBudget + ')');
 
 // ---- trip date range on the photo card --------------------------------
 // The card shows a friendly range instead of two raw ISO dates.

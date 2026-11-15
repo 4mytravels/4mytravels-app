@@ -16,6 +16,22 @@ export function localDayKey(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * Does this trip have a daily budget configured?
+ *
+ * The trip editor stores an empty budget as 0 (the "No budget" placeholder →
+ * `parseFloat('') || 0`) and CSV imports default to 0, so 0 means "no budget".
+ *
+ * A trip without a budget has NO pace verdict: expected spend is 0, so any
+ * logged expense reads as "Over budget" and a fresh trip reads as "On track" —
+ * both are meaningless. Every surface that shows a budget STATUS ("On track" /
+ * "Over budget") must gate on this helper, so the card, the list and the detail
+ * screen can never disagree about when the verdict exists.
+ */
+export function hasDailyBudget(trip: Trip): boolean {
+  return typeof trip.dailyBudget === 'number' && trip.dailyBudget > 0;
+}
+
 export interface TripStats {
   /** Sum of every expense in the trip, converted to the trip home currency. */
   totalSpend: number;

@@ -4,6 +4,26 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-15
+
+### Trips
+- **Trips without a daily budget no longer show "On track" / "Over budget".**
+  The trip editor stores "No budget" as 0 (CSV import defaults to 0 too), so
+  the expected spend was 0 and every such trip read "Over budget" after its
+  first expense. The verdict now only renders when a daily budget is set
+  (`hasDailyBudget()` in `src/utils/tripStats.ts`); the day counter stays.
+
+### Statistics
+- The **Over time** "View all" link on the Statistics tab now renders even
+  when there is no data yet; `/stats/over-time` was unreachable on an empty
+  dataset.
+
+### Distribution
+- First release built in the F-Droid build environment and signed with the
+  project's release key, so the GitHub and F-Droid APKs are interchangeable
+  (same signature, reproducible build).
+- The prebuilt Android project (`android/`) is committed for F-Droid.
+
 ### PWA
 - **The deployed PWA now serves the v1.1.1 build** (service-worker cache
   bumped to `4mytravels-v47-2026-11-10`): the Statistics tab carries the

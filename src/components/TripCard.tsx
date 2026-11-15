@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, fontFamily, radius, fontSize, spacing, cardShadow } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
-import { computeTripStats } from '../utils/tripStats';
+import { computeTripStats, hasDailyBudget } from '../utils/tripStats';
 import { dayProgressRatio, formatDayProgress } from '../utils/pace';
 import { formatDateRange } from '../utils/days';
 import { formatMoney, formatMoneyWhole } from '../utils/currency';
@@ -50,11 +50,18 @@ export function TripCard({
   // The bar shows the DAY you are on, not the money spent: day 7 of 14 → half
   // full. Finished trips are always full (daysElapsed == totalDays).
   const ratio = dayProgressRatio(stats.pace.daysElapsed, stats.totalDays);
+  // No daily budget → no pace verdict at all. With a budget of 0 the expected
+  // spend is 0, so EVERY trip would read "Over budget" (or "On track" before
+  // the first expense) — a status about a budget that does not exist. The day
+  // counter below is not a budget status and stays visible.
+  const showBudgetStatus = hasDailyBudget(trip);
   const overBudget = stats.totalSpend > budget;
   const paceOver = stats.pace.status === 'over_budget';
-  const verdict = overBudget || paceOver
-    ? { text: 'Over budget', color: colors.destructive }
-    : { text: 'On track', color: colors.success };
+  const verdict = showBudgetStatus
+    ? overBudget || paceOver
+      ? { text: 'Over budget', color: colors.destructive }
+      : { text: 'On track', color: colors.success }
+    : null;
   // TWO colours only (user rule): blue for every trip that is still running or
   // not started yet — including one that is over budget — and grey ONLY once the
   // trip is finished. No red bar, ever; the "Over budget" label carries that.
@@ -136,10 +143,12 @@ export function TripCard({
           </View>
 
           <View style={styles.verdictRow}>
-            <Text style={[styles.verdictText, { color: verdict.color }]} numberOfLines={1}>
-              {verdict.text}
-            </Text>
-            <Text style={styles.verdictDay} numberOfLines={1}>
+            {verdict && (
+              <Text style={[styles.verdictText, { color: verdict.color }]} numberOfLines={1}>
+                {verdict.text}
+              </Text>
+            )}
+            <Text style={[styles.verdictDay, !verdict && styles.verdictDaySolo]} numberOfLines={1}>
               {dayText}
             </Text>
           </View>
@@ -340,6 +349,9 @@ const styles = StyleSheet.create({
   // Verdict + day counter, on the photo (the image is their background).
   verdictRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
   verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3 },
+  // Without a verdict there is only the day counter: fill the row and keep it
+  // right-aligned, where it sat next to the verdict.
+  verdictDaySolo: { flex: 1, textAlign: 'right' },
   verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: 'rgba(226,232,240,0.82)' },
   // Flat surface under the photo: the two figures, no image behind them.
   footer: {

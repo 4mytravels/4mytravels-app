@@ -2,7 +2,7 @@
   "expo": {
     "name": "4MyTravels",
     "slug": "4mytravels",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "orientation": "portrait",
     "scheme": "fourmytravels",
     "userInterfaceStyle": "automatic",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "app.fourmytravels",
-      "versionCode": 111,
+      "versionCode": 112,
       "permissions": [
         "android.permission.INTERNET"
       ],

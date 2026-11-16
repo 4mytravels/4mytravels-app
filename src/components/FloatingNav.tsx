@@ -1,5 +1,5 @@
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing, navShadow } from '../../src/theme/theme';

@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 // Lazy + guarded: this package calls TurboModuleRegistry.getEnforcing() at
 // import time, which THROWS on dev-client builds that predate the dependency.
 // Resolving it lazily lets us fall back to manual date entry instead of

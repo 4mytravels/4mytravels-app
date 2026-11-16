@@ -3,7 +3,7 @@
 // platforms never render this; they keep the existing picker flow.
 
 import React from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Platform, Pressable } from 'react-native';
 import { colors, spacing } from '../theme/theme';
 

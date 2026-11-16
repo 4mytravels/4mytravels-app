@@ -4,9 +4,8 @@ import { Asset } from 'expo-asset';
 import { useFonts } from 'expo-font';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-
-const MANROPE = require('../assets/fonts/Manrope.ttf');
-const SORA = require('../assets/fonts/Sora.ttf');
+// M6: subset TTF on native, subset WOFF2 on web (fontFiles.web.ts).
+import { MANROPE, SORA } from './fontFiles';
 
 // Web: expo-font registers the variable TTFs with a single weight (400), so
 // the browser fakes bold by smearing glyphs (cramped/blurry headings). Re-register

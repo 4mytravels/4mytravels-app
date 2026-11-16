@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses } from '../../src/store/expenseStore';
 import { groupByCountry, searchCountries, sortCountries, summarizeStats, type CountrySort } from '../../src/utils/countryStats';

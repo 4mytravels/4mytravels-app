@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

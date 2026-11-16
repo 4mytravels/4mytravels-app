@@ -7,7 +7,7 @@
 // confirmation is pending and closes only after the answer (pattern 42).
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import type { Trip } from '../types';
 import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';

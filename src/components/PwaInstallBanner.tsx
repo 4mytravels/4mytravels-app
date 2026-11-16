@@ -19,7 +19,7 @@
 // minimal-ui display mode) or right after an appinstalled event.
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, fontFamily, radius, spacing, cardShadow } from '../theme/theme';
 
 type BipEvent = Event & { prompt: () => Promise<void>; userChoice?: Promise<unknown> };

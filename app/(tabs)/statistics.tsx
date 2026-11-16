@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Path, G, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { AppLogo } from '../../src/components/AppLogo';
 import * as Sharing from 'expo-sharing';

@@ -24,7 +24,7 @@
 
 import { PropsWithChildren, ReactNode, useEffect, useRef } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetPortal } from './SheetPortal';
 import { useKeyboardHeight } from '../utils/useKeyboardHeight';
 import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';

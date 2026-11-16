@@ -14,7 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Card, SectionTitle } from '../../src/components/ui';

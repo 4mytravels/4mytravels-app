@@ -13,7 +13,7 @@ import {
   type TextInputProps,
   type TextProps,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   colors,
   fontFamily,

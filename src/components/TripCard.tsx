@@ -8,7 +8,7 @@
 import { useMemo, useRef } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';

@@ -16,7 +16,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { confirmDestructive } from '../utils/confirm';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { processPhoto } from '../utils/image';

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../../src/theme/theme';
 
 // Bottom-tab shell for the MVP. We hide the default tab bar and render a

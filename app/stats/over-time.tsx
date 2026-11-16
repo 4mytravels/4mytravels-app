@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses } from '../../src/store/expenseStore';
 import { groupByTime, timeTotal, periodLabelLong, type TimePeriod } from '../../src/utils/timeStats';

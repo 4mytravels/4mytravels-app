@@ -13,7 +13,7 @@ import { AppLogo } from '../../src/components/AppLogo';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
-import { Pill } from '../../src/components/ui';
+import { Pill, Button } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
@@ -77,6 +77,7 @@ export default function HomeScreen() {
   );
 
   const trips = useTripStore((s) => s.trips);
+  const tripsHydrated = useTripStore((s) => s.hydrated);
   // Home-wide display currency = the global default home currency from Settings
   // (not the per-trip currency), so the totals follow what the user set there.
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
@@ -188,6 +189,20 @@ export default function HomeScreen() {
   // was pre-logged. Falls back to the most recently started trip.
   const targetTrip = activeTrip ?? [...trips].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
 
+  // Q8 hero selection. Upcoming: the soonest start. Past: the latest end.
+  const nextTrip = activeTrip
+    ? undefined
+    : trips
+        .filter((t) => deriveTripStatus(t) === 'upcoming')
+        .sort((a, b) => (a.startDate < b.startDate ? -1 : 1))[0];
+  const lastTrip = activeTrip || nextTrip
+    ? undefined
+    : trips
+        .filter((t) => deriveTripStatus(t) === 'past')
+        .sort((a, b) => ((a.endDate ?? a.startDate) < (b.endDate ?? b.startDate) ? 1 : -1))[0];
+  const heroTrip = activeTrip ?? nextTrip ?? lastTrip;
+  const heroLabel = activeTrip ? null : nextTrip ? 'Next trip' : lastTrip ? 'Last trip' : null;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
@@ -209,17 +224,33 @@ export default function HomeScreen() {
         {/* Web/PWA notices (storage health + install nudge) under the app title. */}
         <WebNotices />
 
-        {/* Active trip — the SAME card as the Trips tab
-            (src/components/TripCard.tsx): photo stage with badge/name/dates/day
-            bar/verdict, flat footer with Daily avg + Total. Tapping opens the
-            trip detail screen, exactly like the Trips tab does. */}
-        {activeTrip && (
-          <TripCard
-            style={styles.tripCard}
-            trip={activeTrip}
-            expenses={expenses.filter((e) => e.tripId === activeTrip.id)}
-            onPress={() => router.push(`/trip/${activeTrip.id}`)}
-          />
+        {/* Q8 hero — three variants: the ACTIVE trip; otherwise the next
+            upcoming (or else the most recent past) trip with a label; with no
+            trips at all a "create your first trip" card. The active-trip card
+            is the SAME card as the Trips tab (src/components/TripCard.tsx). */}
+        {heroTrip ? (
+          <>
+            {heroLabel && <Text style={styles.heroLabel}>{heroLabel}</Text>}
+            <TripCard
+              style={styles.tripCard}
+              trip={heroTrip}
+              expenses={expenses.filter((e) => e.tripId === heroTrip.id)}
+              onPress={() => router.push(`/trip/${heroTrip.id}`)}
+            />
+          </>
+        ) : tripsHydrated ? (
+          <View style={[styles.emptyCard, styles.tripCard, styles.firstTripCard]}>
+            <Ionicons name="airplane-outline" size={40} color={colors.primaryText} />
+            <Text style={styles.firstTripTitle}>Plan your first trip</Text>
+            <Text style={styles.emptyText}>
+              Create a trip, then log what you spend — converted to your home currency.
+            </Text>
+            <View style={styles.firstTripButton}>
+              <Button label="Create your first trip" icon="add" onPress={() => router.push('/trips/new')} />
+            </View>
+          </View>
+        ) : (
+          <ActivityIndicator color={colors.primaryText} style={styles.tripCard} />
         )}
 
         {/* Quick facts — elke pil opent het bijbehorende Stats-scherm:
@@ -364,6 +395,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   emptyText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, textAlign: 'center' },
+  heroLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    fontFamily: fontFamily.sans,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: spacing.sm,
+  },
+  firstTripCard: { alignItems: 'center', gap: spacing.sm },
+  firstTripTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
+  firstTripButton: { alignSelf: 'stretch', marginTop: spacing.md },
   fab: {
     position: 'absolute',
     right: spacing.xl,

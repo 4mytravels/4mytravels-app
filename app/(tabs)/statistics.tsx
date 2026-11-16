@@ -7,6 +7,7 @@ import {
   RefreshControl,
   Pressable,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -410,6 +411,9 @@ export default function StatisticsScreen() {
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  // Q8: spinner until the first load, then ONE empty card instead of three
+  // empty sections.
+  const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   // Trip filter: empty = every trip. Otherwise only the selected trips count
   // towards the charts (1, several, or all — user request).
@@ -449,6 +453,7 @@ export default function StatisticsScreen() {
       // Metadata only — the charts never draw a receipt photo.
       const list = await loadExpensesForList();
       setExpenses(list);
+      setLoaded(true);
     };
   }, []);
 
@@ -585,6 +590,29 @@ export default function StatisticsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {!loaded ? (
+          <ActivityIndicator color={colors.primaryText} style={{ marginTop: spacing['3xl'] }} accessibilityLabel="Loading stats" />
+        ) : filteredExpenses.length === 0 ? (
+          /* Q8: one empty-state card instead of a "No data" donut and three
+             empty sections. The sub-page links stay reachable (pattern 54). */
+          <View style={styles.emptyCard}>
+            <Ionicons name="pie-chart-outline" size={40} color={colors.mutedForeground} />
+            <Text style={styles.emptyCardTitle}>No expenses to analyse yet</Text>
+            <Text style={styles.emptyCardBody}>
+              {activeTripIds.length > 0
+                ? 'The selected trips have no expenses. Change the trip filter or log an expense.'
+                : 'Log an expense on a trip and your spending breakdown appears here.'}
+            </Text>
+            <Pressable style={styles.seeAll} onPress={() => router.push('/stats/countries')}>
+              <Text style={styles.seeAllText}>By country</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
+            </Pressable>
+            <Pressable style={styles.seeAll} onPress={() => router.push('/stats/over-time')}>
+              <Text style={styles.seeAllText}>Over time</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
+            </Pressable>
+          </View>
+        ) : (<>
         {/* Donut chart */}
         <View style={styles.donutSection}>
           <DonutChart
@@ -692,6 +720,7 @@ export default function StatisticsScreen() {
         <View style={styles.exportWrap}>
           <Button label="Export CSV" icon="document-text-outline" onPress={exportCsv} />
         </View>
+        </>)}
       </ScrollView>
 
       {/* Trip filter sheet — tap to toggle, any number of trips (or none = all). */}
@@ -952,6 +981,31 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   // Sections
+  emptyCard: {
+    marginTop: spacing.xl,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyCardTitle: {
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    fontFamily: fontFamily.heading,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  emptyCardBody: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.md,
+    fontFamily: fontFamily.sans,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
   section: {
     marginTop: spacing.xl,
     padding: spacing.md,

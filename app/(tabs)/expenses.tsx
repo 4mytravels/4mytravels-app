@@ -8,6 +8,7 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
 import { Ionicons } from '@expo/vector-icons';
@@ -63,6 +64,9 @@ export default function ExpensesScreen() {
   const [tripFilter, setTripFilter] = useState<string[]>([]);
   const didSeedFilter = useRef(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  // Q8: false until the first focus load landed — the list shows a spinner,
+  // not "No expenses yet.", during a cold start.
+  const [loaded, setLoaded] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -143,6 +147,7 @@ export default function ExpensesScreen() {
         const list = await loadExpensesForList();
         if (alive) {
           setExpenses(list);
+          setLoaded(true);
           if (scrollPendingRef.current) setLoadTick((n) => n + 1);
         }
       })();
@@ -426,13 +431,19 @@ export default function ExpensesScreen() {
           />
         )}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            {trips.length === 0
-              ? 'Create a trip first.'
-              : activeTripIds.length === 0
-                ? 'No expenses yet.'
-                : 'No expenses for the selected trips.'}
-          </Text>
+          !loaded ? (
+            <ActivityIndicator color={colors.primaryText} style={{ marginTop: spacing.xl }} accessibilityLabel="Loading expenses" />
+          ) : trips.length === 0 ? (
+            // Q8: an action, not a dead sentence.
+            <View style={styles.emptyAction}>
+              <Text style={styles.empty}>Expenses belong to a trip.</Text>
+              <Button label="Create a trip" icon="add" onPress={() => router.push('/trips/new')} />
+            </View>
+          ) : (
+            <Text style={styles.empty}>
+              {activeTripIds.length === 0 ? 'No expenses yet.' : 'No expenses for the selected trips.'}
+            </Text>
+          )
         }
       />
 
@@ -775,6 +786,7 @@ const styles = StyleSheet.create({
   priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   empty: { color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.xl, fontFamily: fontFamily.sans },
+  emptyAction: { alignItems: 'center', gap: spacing.lg, paddingHorizontal: spacing.xl },
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,

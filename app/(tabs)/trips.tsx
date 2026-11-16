@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, Modal, RefreshControl } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, Modal, RefreshControl, ActivityIndicator } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,7 @@ export default function TripsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
+  const hydrated = useTripStore((s) => s.hydrated);
   const removeTripStore = useTripStore((s) => s.removeTrip);
   const [filter, setFilter] = useState<'All' | TripStatus>('All');
   // Which trip's manage sheet (Edit / Delete) is open.
@@ -88,6 +89,19 @@ export default function TripsScreen() {
       showStatus('Delete failed', e instanceof Error ? e.message : String(e));
     }
   };
+
+  // Q8: until the store has its first list, a spinner — never a flash of the
+  // "No trips yet" empty state on a cold start.
+  if (!hydrated) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Header />
+        <View style={styles.empty}>
+          <ActivityIndicator color={colors.primaryText} accessibilityLabel="Loading trips" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (trips.length === 0) {
     return (

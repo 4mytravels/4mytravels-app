@@ -4,7 +4,7 @@ import { useAppFonts } from '../src/theme/fonts';
 import { useStorageInit, refreshRateCache, useBackgroundRateRefresh, resetWebStorage } from '../src/db/useStorage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { colors } from '../src/theme/theme';
 import { FloatingNav } from '../src/components/FloatingNav';
 import { ConfirmHost } from '../src/components/ConfirmHost';
@@ -52,7 +52,7 @@ export default function RootLayout() {
 
   const [keyHex, setKeyHex] = useState<string | null>(null);
 
-  const { ready, error } = useStorageInit(passphrase, keyHex);
+  const { ready, error, retry: retryStorage } = useStorageInit(passphrase, keyHex);
   const wrongKey = isWeb && error === 'wrong-key';
 
   // A rejected passphrase resets the gate for a retry.
@@ -108,10 +108,35 @@ export default function RootLayout() {
   }
 
   if (!fontsLoaded || !ready) {
+    // Q7: a storage failure used to leave an endless spinner (`{error && <View />}`
+    // rendered nothing, and the Alert was invisible on web / before the hosts mount).
+    if (error && error !== 'wrong-key') {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Sora', fontSize: 20, marginBottom: 8 }}>
+            Storage could not be opened
+          </Text>
+          <Text selectable style={{ color: colors.mutedForeground, fontSize: 14, textAlign: 'center', marginBottom: 24, maxWidth: 420 }}>
+            {error}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              // Web: a clean reload re-runs the unlock + init from scratch.
+              // Native: re-run the init in place.
+              if (isWeb) globalThis.location?.reload();
+              else retryStorage();
+            }}
+            style={{ backgroundColor: colors.primarySolid, borderRadius: 9999, paddingVertical: 12, paddingHorizontal: 28, minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ color: colors.primaryForeground, fontSize: 16, fontWeight: '700' }}>Retry</Text>
+          </Pressable>
+        </View>
+      );
+    }
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color={colors.primaryText} />
-        {error && <View />}
       </View>
     );
   }

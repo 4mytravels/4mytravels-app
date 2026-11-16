@@ -6,8 +6,8 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
+import { showStatus } from '../../src/utils/statusDialog';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -313,7 +313,7 @@ export default function HomeScreen() {
                 setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                Alert.alert('Delete failed', msg);
+                showStatus('Delete failed', msg);
               }
             }}
           />

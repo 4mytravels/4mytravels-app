@@ -8,9 +8,9 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
 } from 'react-native';
+import { showStatus } from '../../src/utils/statusDialog';
 import { Ionicons } from '@expo/vector-icons';
 // Lazy + guarded: this package calls TurboModuleRegistry.getEnforcing() at
 // import time, which THROWS on dev-client builds that predate the dependency.
@@ -377,7 +377,7 @@ export default function NewTripScreen() {
       const msg = (e instanceof Error ? e.message : String(e)) + `\n[phase: ${phase}]`;
       setErrorMsg(msg);
       setPhase(null);
-      Alert.alert('Could not save trip', msg);
+      showStatus('Could not save trip', msg);
     } finally {
       setSaving(false);
     }

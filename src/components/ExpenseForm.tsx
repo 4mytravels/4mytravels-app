@@ -13,9 +13,9 @@ import {
   Platform,
   Image,
   Modal,
-  Alert,
   KeyboardAvoidingView,
 } from 'react-native';
+import { confirmDestructive } from '../utils/confirm';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -667,19 +667,14 @@ export function ExpenseForm({
                 label="Delete expense"
                 icon="trash-outline"
                 variant="ghost"
-                onPress={() => {
-                  Alert.alert(
-                    'Delete expense',
-                    `${initialExpense.notes || initialExpense.category} — ${initialExpense.amount} ${initialExpense.currency}?`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: () => onDelete(initialExpense),
-                      },
-                    ],
-                  );
+                onPress={async () => {
+                  // Q7: Alert.alert with buttons is a no-op on web — Delete did
+                  // nothing on the PWA. confirmDestructive renders on both.
+                  const ok = await confirmDestructive({
+                    title: 'Delete expense',
+                    message: `${initialExpense.notes || initialExpense.category} — ${initialExpense.amount} ${initialExpense.currency}?`,
+                  });
+                  if (ok) onDelete(initialExpense);
                 }}
               />
             </View>

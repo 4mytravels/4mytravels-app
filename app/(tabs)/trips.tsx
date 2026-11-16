@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, Modal, Alert, RefreshControl } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, Modal, RefreshControl } from 'react-native';
+import { showStatus } from '../../src/utils/statusDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
@@ -84,7 +85,7 @@ export default function TripsScreen() {
     try {
       await deleteTripDb(trip.id);
     } catch (e) {
-      Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+      showStatus('Delete failed', e instanceof Error ? e.message : String(e));
     }
   };
 

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, SectionList, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet, SectionList } from 'react-native';
+import { showStatus } from '../../src/utils/statusDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -69,13 +70,13 @@ export default function TripDetailScreen() {
     try {
       const full = await loadExpense(expense.id);
       if (!full) {
-        Alert.alert('Could not open expense', 'This expense could not be loaded.');
+        showStatus('Could not open expense', 'This expense could not be loaded.');
         return;
       }
       setEditingExpense(full);
       setExpenseOpen(true);
     } catch (e) {
-      Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
+      showStatus('Could not open expense', e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -133,7 +134,7 @@ export default function TripDetailScreen() {
                 await deleteTripDb(trip.id);
                 router.back();
               } catch (e) {
-                Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+                showStatus('Delete failed', e instanceof Error ? e.message : String(e));
               }
             })();
           }}>
@@ -221,7 +222,7 @@ export default function TripDetailScreen() {
               setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
-              Alert.alert('Delete failed', msg);
+              showStatus('Delete failed', msg);
             }
           }}
         />

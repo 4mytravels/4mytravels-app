@@ -8,8 +8,8 @@ import {
   ScrollView,
   Modal,
   TextInput,
-  Alert,
 } from 'react-native';
+import { showStatus } from '../../src/utils/statusDialog';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
@@ -164,13 +164,13 @@ export default function ExpensesScreen() {
     try {
       const full = await loadExpense(expense.id);
       if (!full) {
-        Alert.alert('Could not open expense', 'This expense could not be loaded.');
+        showStatus('Could not open expense', 'This expense could not be loaded.');
         return;
       }
       setEditingExpense(full);
       setFormOpen(true);
     } catch (e) {
-      Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
+      showStatus('Could not open expense', e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -515,7 +515,7 @@ export default function ExpensesScreen() {
                 console.log(`[delete] UI update took ${Date.now() - t0}ms`);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                Alert.alert('Delete failed', msg);
+                showStatus('Delete failed', msg);
               }
             }}
           />
@@ -537,7 +537,8 @@ export default function ExpensesScreen() {
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
         onPress={() => {
           if (!formTrip) {
-            Alert.alert('No trip yet', 'Create a trip before adding expenses.');
+            // Q7: no dead-end message — go straight to creating the first trip.
+            router.push('/trips/new');
             return;
           }
           setFormOpen(true);

@@ -24,7 +24,6 @@ const DateTimePicker: React.ComponentType<Record<string, unknown>> | null = (() 
     return null;
   }
 })();
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { randomUUID } from 'expo-crypto';
@@ -32,7 +31,8 @@ import { WebDateButton } from '../../src/components/WebDateButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { processPhoto, tripCoverStageSize } from '../../src/utils/image';
+import { tripCoverStageSize } from '../../src/utils/image';
+import { pickTripCoverBytes } from '../../src/utils/tripActions';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
@@ -384,23 +384,10 @@ export default function NewTripScreen() {
   };
 
   const pickCover = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      base64: true,
-      quality: 0.7,
-      allowsEditing: true,
-      // Wide landscape crop to MATCH the trip card's full-width 224px stage.
-      // The old 4:3 crop framed a different shape than the card renders, so
-      // the in/out-zoom did not match what the user saw on the card.
-      aspect: [16, 9],
-    });
-    if (res.canceled || !res.assets[0]?.base64) return;
-    // Resize ≤2000px (aspect preserved) + ≤500KB + true EXIF/GPS strip (§2.2).
-    // Picker dimensions are passed so no extra decode pass is needed.
-    const bytes = await processPhoto(res.assets[0].base64, {
-      width: res.assets[0].width,
-      height: res.assets[0].height,
-    });
+    // Shared picker + processing (src/utils/tripActions.ts): the SAME 16:9
+    // crop and EXIF strip as "Change photo" in the trip ⋯ menu (Q17).
+    const bytes = await pickTripCoverBytes();
+    if (!bytes) return;
     setCoverBytes(bytes);
     setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
     // Choosing a photo ALWAYS cancels a previous "Remove" click. Without this,

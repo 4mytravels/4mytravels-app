@@ -24,7 +24,8 @@ import { loadExpensesForList } from '../../src/db/expenseRepo';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache } from '../../src/services/rateCache';
-import type { Expense } from '../../src/types';
+import type { Expense, Trip } from '../../src/types';
+import { TripActionsMenu } from '../../src/components/TripActionsMenu';
 import { formatMoney, formatMoneyWhole, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
 import { inclusiveDays } from '../../src/utils/pace';
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [menuTrip, setMenuTrip] = useState<Trip | null>(null);
 
   // Skip one focus event after an incremental delete/save to avoid a full
   // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
@@ -236,6 +238,7 @@ export default function HomeScreen() {
               trip={heroTrip}
               expenses={expenses.filter((e) => e.tripId === heroTrip.id)}
               onPress={() => router.push(`/trip/${heroTrip.id}`)}
+              onManage={() => setMenuTrip(heroTrip)}
             />
           </>
         ) : tripsHydrated ? (
@@ -314,6 +317,9 @@ export default function HomeScreen() {
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
+
+      {/* Q17: same trip menu as Trips tab / trip detail (⋯ or long-press). */}
+      <TripActionsMenu trip={menuTrip} onClose={() => setMenuTrip(null)} />
 
       {/* Add/edit-expense sheet (one tap from Home; rows open in edit mode) */}
       <ModalHost visible={formOpen && (!!targetTrip || !!editingExpense)} onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>

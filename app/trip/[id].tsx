@@ -11,7 +11,7 @@ import { groupByDaySplitAware } from '../../src/utils/days';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { SectionTitle, Button, IconCircle } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
-import { confirmDestructive } from '../../src/utils/confirm';
+import { TripActionsMenu } from '../../src/components/TripActionsMenu';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
@@ -25,6 +25,7 @@ export default function TripDetailScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
 
   // Skip one focus event after an incremental delete/save to avoid a full
@@ -110,38 +111,27 @@ export default function TripDetailScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.foreground} />
         </Pressable>
         <View style={styles.headerActions}>
+          {/* Q17: one ⋯ menu (Edit, Change photo, Export CSV, Delete) — the
+              SAME menu a long-press on a TripCard opens. Delete is red, last,
+              and confirmed (confirmDestructive works on the PWA too). */}
           <Pressable
             style={styles.headerAction}
-            onPress={() => router.push({ pathname: '/trips/new', params: { editId: trip.id } })}
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Actions for ${trip.name}`}
           >
-            <Ionicons name="pencil-outline" size={24} color={colors.mutedForeground} />
-          </Pressable>
-          <Pressable style={styles.headerAction} onPress={() => {
-            // confirmDestructive, not Alert.alert: the latter is a no-op on the
-            // PWA, so the trash icon would silently do nothing (see src/utils/confirm.ts).
-            // The dialog is host-independent (ConfirmHost is mounted in the root
-            // layout), so this works from a screen that is about to unmount.
-            void (async () => {
-              const ok = await confirmDestructive({
-                title: 'Delete trip',
-                message: `Delete "${trip.name}" and all its expenses?`,
-              });
-              if (!ok) return;
-              const { deleteTrip: deleteTripDb } = await import('../../src/db/tripRepo');
-              const removeTripStore = useTripStore.getState().removeTrip;
-              removeTripStore(trip.id);
-              try {
-                await deleteTripDb(trip.id);
-                router.back();
-              } catch (e) {
-                showStatus('Delete failed', e instanceof Error ? e.message : String(e));
-              }
-            })();
-          }}>
-            <Ionicons name="trash-outline" size={24} color={colors.destructive} />
+            <Ionicons name="ellipsis-horizontal" size={24} color={colors.foreground} />
           </Pressable>
         </View>
       </View>
+
+      <TripActionsMenu
+        trip={menuOpen ? trip : null}
+        onClose={() => setMenuOpen(false)}
+        // replace, not back(): on web back() is a no-op when the screen was
+        // opened directly (pattern 41).
+        onDeleted={() => router.replace('/trips')}
+      />
 
       {/* Web/PWA notices (storage health + install nudge) under the screen header. */}
       <WebNotices />

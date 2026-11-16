@@ -32,6 +32,9 @@ import { groupByTime } from '../../src/utils/timeStats';
 import { expenseDay } from '../../src/utils/periods';
 
 // Premium dark-mode donut palette.
+// Donut: top N categories + "Others".
+const MAX_SLICES = 5;
+
 const DONUT_COLORS = [
   '#6366F1', // periwinkle blue
   '#EF4444', // coral red
@@ -463,58 +466,62 @@ export default function StatisticsScreen() {
     setRefreshing(false);
   };
 
-  // --- Category breakdown (top 5 + Others) ---
-  const byCategory: Record<string, number> = {};
-  for (const e of filteredExpenses) {
-    const h = toHomeCurrency(e);
-    byCategory[e.category] = (byCategory[e.category] ?? 0) + h;
-  }
-  const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+  // Q6: all breakdowns in one memo — they used to be recomputed on every
+  // render (pull-to-refresh spinner, filter-sheet toggles, …).
+  const { catEntries, slices, total, maxCountry, topCountries, cardValue, cashValue } = useMemo(() => {
+    // --- Category breakdown (top 5 + Others) ---
+    const byCategory: Record<string, number> = {};
+    for (const e of filteredExpenses) {
+      const h = toHomeCurrency(e);
+      byCategory[e.category] = (byCategory[e.category] ?? 0) + h;
+    }
+    const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
 
-  // Top 5 + Others
-  const MAX_SLICES = 5;
-  const topEntries = catEntries.slice(0, MAX_SLICES);
-  const othersValue = catEntries.slice(MAX_SLICES).reduce((s, [, v]) => s + v, 0);
-  const chartEntries = [...topEntries];
-  if (othersValue > 0) {
-    chartEntries.push(['Others', othersValue]);
-  }
+    // Top 5 + Others
+    const topEntries = catEntries.slice(0, MAX_SLICES);
+    const othersValue = catEntries.slice(MAX_SLICES).reduce((s, [, v]) => s + v, 0);
+    const chartEntries = [...topEntries];
+    if (othersValue > 0) {
+      chartEntries.push(['Others', othersValue]);
+    }
 
-  const total = catEntries.reduce((s, [, v]) => s + v, 0);
+    const total = catEntries.reduce((s, [, v]) => s + v, 0);
 
-  // Build donut slices
-  const slices: DonutSlice[] = [];
-  let acc = 0;
-  for (let i = 0; i < chartEntries.length; i++) {
-    const [cat, val] = chartEntries[i];
-    const frac = total > 0 ? val / total : 0;
-    const start = acc * 360;
-    acc += frac;
-    const end = acc * 360;
-    slices.push({
-      category: cat,
-      value: val,
-      color: DONUT_COLORS[i % DONUT_COLORS.length],
-      frac,
-      startAngle: start,
-      endAngle: end,
-    });
-  }
+    // Build donut slices
+    const slices: DonutSlice[] = [];
+    let acc = 0;
+    for (let i = 0; i < chartEntries.length; i++) {
+      const [cat, val] = chartEntries[i];
+      const frac = total > 0 ? val / total : 0;
+      const start = acc * 360;
+      acc += frac;
+      const end = acc * 360;
+      slices.push({
+        category: cat,
+        value: val,
+        color: DONUT_COLORS[i % DONUT_COLORS.length],
+        frac,
+        startAngle: start,
+        endAngle: end,
+      });
+    }
 
-  // --- Country breakdown (top 5 preview) ---
-  // Trip filtering already happened above; pass no filter here.
-  const countryEntries = groupByCountry(expenses, { tripIds: activeTripIds });
-  const maxCountry = countryEntries.length ? countryEntries[0].amount : 1;
-  const topCountries = countryEntries.slice(0, 5);
+    // --- Country breakdown (top 5 preview) ---
+    // Trip filtering already happened above; pass no filter here.
+    const countryEntries = groupByCountry(expenses, { tripIds: activeTripIds });
+    const maxCountry = countryEntries.length ? countryEntries[0].amount : 1;
+    const topCountries = countryEntries.slice(0, 5);
 
-  // --- Payment breakdown ---
-  const byPayment: Record<string, number> = {};
-  for (const e of filteredExpenses) {
-    const pm = e.paymentMethod === 'card' ? 'Card' : 'Cash';
-    byPayment[pm] = (byPayment[pm] ?? 0) + toHomeCurrency(e);
-  }
-  const cardValue = byPayment.Card ?? 0;
-  const cashValue = byPayment.Cash ?? 0;
+    // --- Payment breakdown ---
+    const byPayment: Record<string, number> = {};
+    for (const e of filteredExpenses) {
+      const pm = e.paymentMethod === 'card' ? 'Card' : 'Cash';
+      byPayment[pm] = (byPayment[pm] ?? 0) + toHomeCurrency(e);
+    }
+    const cardValue = byPayment.Card ?? 0;
+    const cashValue = byPayment.Cash ?? 0;
+    return { catEntries, slices, total, countryEntries, maxCountry, topCountries, cardValue, cashValue };
+  }, [filteredExpenses, expenses, activeTripIds]);
 
   // Export CSV.
   const tripNameById: Record<string, string> = {};

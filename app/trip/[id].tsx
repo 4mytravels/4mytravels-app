@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { View, Text, Pressable, StyleSheet, SectionList, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -65,7 +65,7 @@ export default function TripDetailScreen() {
   // one row (indexed by primary key) before opening the sheet. If that fails we
   // do NOT open the form: a receipt-less expense in the edit path is a
   // data-loss bug, not a degraded UI.
-  const openExpenseForEdit = async (expense: Expense) => {
+  const openExpenseForEdit = useCallback(async (expense: Expense) => {
     try {
       const full = await loadExpense(expense.id);
       if (!full) {
@@ -77,7 +77,7 @@ export default function TripDetailScreen() {
     } catch (e) {
       Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
     }
-  };
+  }, []);
 
   if (!trip) {
     return (
@@ -187,9 +187,7 @@ export default function TripDetailScreen() {
             homeCurrency={trip.homeCurrency}
             splitShare={item.splitShare}
             background={colors.primary12}
-            onPress={() => {
-              void openExpenseForEdit(item.expense);
-            }}
+            onPress={openExpenseForEdit}
           />
         )}
         ListEmptyComponent={

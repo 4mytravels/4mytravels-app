@@ -41,6 +41,12 @@ export default function HomeScreen() {
   // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
   const skipNextFocusRef = useRef(false);
 
+  // Stable row callback so memo(ExpenseRow) can skip unchanged rows (Q6).
+  const openTodayExpense = useCallback((expense: Expense) => {
+    setEditingExpense(expense);
+    setFormOpen(true);
+  }, []);
+
   // Reload on every focus so new expenses appear without an app restart.
   // useCallback is required: an inline callback re-runs after every render,
   // and setExpenses() re-renders → endless query loop (Q1).
@@ -254,10 +260,7 @@ export default function HomeScreen() {
               homeCurrency={displayCurrency}
               splitShare={entry.splitShare}
               background={colors.primary12}
-              onPress={() => {
-                setEditingExpense(entry.expense);
-                setFormOpen(true);
-              }}
+              onPress={openTodayExpense}
             />
           ))
         )}

@@ -160,7 +160,7 @@ export default function ExpensesScreen() {
   // The list is loaded WITHOUT receipt BLOBs, and saveExpense writes
   // `receiptPhoto` verbatim — so editing MUST get the full row or merely saving
   // would delete the photo. Fetch that one row before opening the form.
-  const openExpenseForEdit = async (expense: Expense) => {
+  const openExpenseForEdit = useCallback(async (expense: Expense) => {
     try {
       const full = await loadExpense(expense.id);
       if (!full) {
@@ -172,7 +172,7 @@ export default function ExpensesScreen() {
     } catch (e) {
       Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
     }
-  };
+  }, []);
 
   // Filter by category + search — applied on top of the trip filter.
   const list = useMemo(() => {
@@ -420,11 +420,9 @@ export default function ExpensesScreen() {
             splitShare={item.splitShare}
             background={colors.primary12}
             dense
-            onPress={() => {
-              // Full row (incl. the receipt) before the form opens — see
-              // openExpenseForEdit.
-              void openExpenseForEdit(item.expense);
-            }}
+            // Full row (incl. the receipt) before the form opens — see
+            // openExpenseForEdit. Stable callback so memo(ExpenseRow) holds (Q6).
+            onPress={openExpenseForEdit}
           />
         )}
         ListEmptyComponent={

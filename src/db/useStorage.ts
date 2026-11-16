@@ -67,8 +67,9 @@ export function useBackgroundRateRefresh(ready: boolean, delayMs = 10000) {
       if (!mounted) return;
       void (async () => {
         try {
-          const db = getStorageAdapter();
-          const trips = await loadTrips(db);
+          // Q4: read the trips useStorageInit already put in the store. A second
+          // loadTrips() here re-read every cover BLOB just to get a currency.
+          const trips = useTripStore.getState().trips;
           const base = trips[0]?.homeCurrency ?? 'EUR';
           await refreshRateCache(base);
         } catch {

@@ -71,7 +71,11 @@ export function TripCard({
   const fill = status === 'past' ? colors.mutedBar : colors.primaryBar;
 
   const coverBytes = (trip as Trip & { coverBytes?: Uint8Array | null }).coverBytes;
-  const tripCoverUri = coverBytes && coverBytes.length > 0 ? bytesToDataUri(coverBytes) : null;
+  // Q4: base64-encoding a cover is O(size) — once per cover, not per render.
+  const tripCoverUri = useMemo(
+    () => (coverBytes && coverBytes.length > 0 ? bytesToDataUri(coverBytes) : null),
+    [coverBytes],
+  );
   const dayText =
     status === 'upcoming'
       ? 'Not started'

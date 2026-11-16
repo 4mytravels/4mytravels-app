@@ -19,12 +19,23 @@ export const JPEG_QUALITY = 0.75;
 const TARGET_BYTES = 500 * 1024;
 
 /**
- * Trip cover photo stage height, shared by the TripCard stage (Home, Trips tab,
- * trip detail) AND the new/edit-trip preview. One constant so the form preview
- * is EXACTLY the same format the card renders — a solid bar on the card used to
- * be previewed at a totally different 4:3 shape in the editor.
+ * Trip cover photo stage, shared by the TripCard stage (Home, Trips tab, trip
+ * detail) AND the new/edit-trip preview, so the editor preview is EXACTLY the
+ * format the card renders (WYSIWYG).
+ *
+ * Q13: a fixed 16:9 ratio instead of a fixed 224px height — on a wide screen a
+ * fixed height cropped the photo to a letterbox, on a narrow phone to a near
+ * square. The minimum height keeps room for the badge row + name/dates/day bar
+ * on the narrowest phones (320px → 180px would clip the verdict line).
  */
-export const TRIP_COVER_HEIGHT = 224;
+export const TRIP_COVER_ASPECT = 16 / 9;
+export const TRIP_COVER_MIN_HEIGHT = 196;
+/** Style fragment for every cover stage — spread it, never re-type it. */
+export const tripCoverStageSize = {
+  width: '100%',
+  aspectRatio: TRIP_COVER_ASPECT,
+  minHeight: TRIP_COVER_MIN_HEIGHT,
+} as const;
 
 export interface SourceSize {
   width?: number;

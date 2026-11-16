@@ -9,14 +9,14 @@ import { useMemo, useRef } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, fontFamily, radius, fontSize, spacing, cardShadow } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
 import { computeTripStats, hasDailyBudget } from '../utils/tripStats';
 import { dayProgressRatio, formatDayProgress } from '../utils/pace';
 import { formatDateRange } from '../utils/days';
 import { formatMoney, formatMoneyWhole } from '../utils/currency';
-import { bytesToDataUri, TRIP_COVER_HEIGHT } from '../utils/image';
+import { bytesToDataUri, tripCoverStageSize } from '../utils/image';
 
 // Scrim colour = the app background; only the opacity changes over the photo.
 const SCRIM = '#0A0A1A';
@@ -296,11 +296,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     overflow: 'hidden',
   },
-  // Photo box: SAME 224px format as the new/edit-trip preview (shared
-  // TRIP_COVER_HEIGHT constant in src/utils/image.ts). The overflow keeps the
+  // Photo box: SAME 16:9 format as the new/edit-trip preview (shared
+  // tripCoverStageSize in src/utils/image.ts, Q13). The overflow keeps the
   // scrim and the absolute rows inside — the image never bleeds into the
   // figure footer below.
-  stage: { width: '100%', height: TRIP_COVER_HEIGHT, overflow: 'hidden' },
+  stage: { ...tripCoverStageSize, overflow: 'hidden' },
   // Brightening lift: a low white veil over the photo (under the scrim), so the
   // native Android JPEG — darker than the web canvas re-encode — matches the
   // PWA. 6% keeps it subtle; text contrast is unaffected (scrim sits on top).
@@ -340,8 +340,9 @@ const styles = StyleSheet.create({
     bottom: spacing.lg,
   },
   // SAME type as the home-screen journey title (fontSize.xl / 700 / heading).
-  tripName: { fontFamily: fontFamily.heading, fontSize: fontSize.xl, fontWeight: '700', color: '#FFFFFF' },
+  tripName: { fontFamily: fontFamily.heading, fontSize: fontSize.xl, fontWeight: '700', color: '#FFFFFF', ...onImageTextShadow },
   dates: {
+    ...onImageTextShadow,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.base,
     fontWeight: '500',
@@ -352,11 +353,11 @@ const styles = StyleSheet.create({
   track: { height: 4, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'hidden' },
   // Verdict + day counter, on the photo (the image is their background).
   verdictRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
-  verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3 },
+  verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3, ...onImageTextShadow },
   // Without a verdict there is only the day counter: fill the row and keep it
   // right-aligned, where it sat next to the verdict.
   verdictDaySolo: { flex: 1, textAlign: 'right' },
-  verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: 'rgba(226,232,240,0.82)' },
+  verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: 'rgba(226,232,240,0.82)', ...onImageTextShadow },
   // Flat surface under the photo: the two figures, no image behind them.
   footer: {
     paddingHorizontal: spacing.lg,

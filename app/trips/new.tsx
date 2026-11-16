@@ -32,7 +32,7 @@ import { WebDateButton } from '../../src/components/WebDateButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { processPhoto, TRIP_COVER_HEIGHT } from '../../src/utils/image';
+import { processPhoto, tripCoverStageSize } from '../../src/utils/image';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
@@ -464,8 +464,8 @@ export default function NewTripScreen() {
             {coverPreview ? (
               <View style={styles.coverPreviewBlock}>
                 {/* SAME format as the trip card stage (src/components/TripCard.tsx):
-                    full width × TRIP_COVER_HEIGHT, cover-fit, same corner radius.
-                    A single width constant keeps the two in lockstep. */}
+                    16:9 via the shared tripCoverStageSize (Q13), cover-fit,
+                    same corner radius — WYSIWYG with the card. */}
                 <Image
                   source={{ uri: coverPreview }}
                   style={styles.coverStage}
@@ -579,12 +579,11 @@ const styles = StyleSheet.create({
   pickerRowActive: {},
   pickerRowText: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   coverPreviewBlock: { marginTop: spacing.xs },
-  // Trip cover preview — EXACTLY the trip card stage: full width ×
-  // TRIP_COVER_HEIGHT (shared constant, src/utils/image.ts), cover-fit, the
-  // card's radius['3xl'] corner. The old 132×100 thumb was a different shape.
+  // Trip cover preview — EXACTLY the trip card stage: the shared 16:9
+  // tripCoverStageSize (src/utils/image.ts, Q13), cover-fit, the card's
+  // radius['3xl'] corner. The old 132×100 thumb was a different shape.
   coverStage: {
-    width: '100%',
-    height: TRIP_COVER_HEIGHT,
+    ...tripCoverStageSize,
     borderRadius: radius['3xl'],
     backgroundColor: colors.secondary,
     borderWidth: 1,

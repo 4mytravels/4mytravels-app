@@ -192,4 +192,13 @@ export const focusShadow = {
   elevation: 0,
 };
 
+// Q13: text that sits on a photo (trip cover). The scrim carries most of the
+// contrast; this shadow keeps the name/dates legible on a white/bright photo
+// where the gradient alone is not enough.
+export const onImageTextShadow = {
+  textShadowColor: 'rgba(0,0,0,0.55)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 4,
+};
+
 export type ThemeColors = typeof colors;

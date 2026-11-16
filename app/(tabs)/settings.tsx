@@ -361,6 +361,8 @@ export default function SettingsScreen() {
           </View>
         )}
 
+        {/* Q14: one "Data" card. No cloud-* icons — nothing leaves the device
+            except through the share sheet the user picks. */}
         <View style={styles.section}>
           <SectionTitle title="Data" />
           <Card>
@@ -373,20 +375,14 @@ export default function SettingsScreen() {
               </Text>
             )}
             <View style={styles.actions}>
-              <Button label="Create backup" icon="cloud-upload-outline" onPress={() => setMode('backup')} />
+              <Button label="Create backup" icon="archive-outline" onPress={() => setMode('backup')} />
               <View style={{ height: spacing.md }} />
-              <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={startRestore} />
+              <Button label="Restore backup" icon="arrow-undo-outline" variant="ghost" onPress={startRestore} />
             </View>
-          </Card>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle title="CSV export & import" />
-          <Card>
-            <View style={styles.actions}>
-              <Button label="Export expenses" icon="download-outline" onPress={() => setExportOpen(true)} />
+            <View style={[styles.actions, { marginTop: spacing.lg }]}>
+              <Button label="Export CSV" icon="document-text-outline" onPress={() => setExportOpen(true)} />
               <View style={{ height: spacing.md }} />
-              <Button label="Import from CSV" icon="cloud-download-outline" variant="ghost" onPress={() => setImportOpen(true)} />
+              <Button label="Import CSV" icon="document-attach-outline" variant="ghost" onPress={() => setImportOpen(true)} />
             </View>
             <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
               Export one trip as a single CSV, or every trip as separate files. Import supports
@@ -631,7 +627,7 @@ export default function SettingsScreen() {
             <View style={{ marginTop: spacing.lg }}>
               <Button
                 label={busy ? 'Importing…' : 'Choose CSV file'}
-                icon="cloud-download-outline"
+                icon="folder-open-outline"
                 disabled={!importTargetTrip || busy}
                 onPress={doCsvImport}
               />

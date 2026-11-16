@@ -683,7 +683,7 @@ export default function StatisticsScreen() {
 
         {/* Export button */}
         <View style={styles.exportWrap}>
-          <Button label="Export CSV" icon="download-outline" onPress={exportCsv} />
+          <Button label="Export CSV" icon="document-text-outline" onPress={exportCsv} />
         </View>
       </ScrollView>
 

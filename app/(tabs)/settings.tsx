@@ -37,6 +37,7 @@ import { saveTrip } from '../../src/db/tripRepo';
 import type { Expense } from '../../src/types';
 import { saveExpense, loadExpensesForList } from '../../src/db/expenseRepo';
 import { useExpenseStore } from '../../src/store/expenseStore';
+import { syncCoverThumbs } from '../../src/utils/coverThumbs';
 import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
 import { showStatus } from '../../src/utils/statusDialog';
 import {
@@ -315,6 +316,8 @@ export default function SettingsScreen() {
       setTrips(trips);
       // M1: bulk write → re-read the shared expense list once.
       await useExpenseStore.getState().reload();
+      // M4: the backup carries only full covers → build card thumbnails.
+      void syncCoverThumbs();
       close();
       showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
     } catch (e) {

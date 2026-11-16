@@ -70,7 +70,10 @@ export function TripCard({
   // achter beter zichtbaar wordt"). A solid fill hid the photo underneath.
   const fill = status === 'past' ? colors.mutedBar : colors.primaryBar;
 
-  const coverBytes = (trip as Trip & { coverBytes?: Uint8Array | null }).coverBytes;
+  // M4: the card draws the ~40 KB thumbnail. The full cover is only a
+  // fallback for the moment between a restore and its thumbnail backfill.
+  const t = trip as Trip & { coverBytes?: Uint8Array | null; coverThumb?: Uint8Array | null };
+  const coverBytes = t.coverThumb && t.coverThumb.length > 0 ? t.coverThumb : t.coverBytes;
   // Q4: base64-encoding a cover is O(size) — once per cover, not per render.
   const tripCoverUri = useMemo(
     () => (coverBytes && coverBytes.length > 0 ? bytesToDataUri(coverBytes) : null),

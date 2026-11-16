@@ -11,7 +11,10 @@ interface TripState {
   selectedTripId: string | null;
   setTrips: (trips: Trip[]) => void;
   addTrip: (trip: Trip) => void;
-  updateTrip: (id: string, patch: Partial<Trip> & { coverBytes?: Uint8Array | null }) => void;
+  updateTrip: (
+    id: string,
+    patch: Partial<Trip> & { coverBytes?: Uint8Array | null; coverThumb?: Uint8Array | null },
+  ) => void;
   removeTrip: (id: string) => void;
   selectTrip: (id: string | null) => void;
 }

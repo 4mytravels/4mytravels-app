@@ -55,6 +55,7 @@ export const MIGRATIONS: string[] = [
 // SQLite has no ADD COLUMN IF NOT EXISTS, so this runs guarded (see
 // ensureCountriesColumn) on every init instead of via MIGRATIONS.
 export const COUNTRIES_COLUMN_SQL = `ALTER TABLE trips ADD COLUMN countries TEXT`;
+export const COVER_THUMB_COLUMN_SQL = `ALTER TABLE trips ADD COLUMN cover_thumb BLOB`;
 
 export const SCHEMA_TABLE = `CREATE TABLE IF NOT EXISTS _schema (
   key TEXT PRIMARY KEY,
@@ -87,5 +88,13 @@ export async function runMigrations(
     await exec("SELECT countries FROM trips LIMIT 1");
   } catch {
     await exec(COUNTRIES_COLUMN_SQL);
+  }
+  // v4 (M4): trips.cover_thumb — a ~600px card thumbnail next to the full
+  // cover, so list screens never load the full BLOB. Filled lazily by
+  // backfillCoverThumbs() for covers stored before this column existed.
+  try {
+    await exec("SELECT cover_thumb FROM trips LIMIT 1");
+  } catch {
+    await exec(COVER_THUMB_COLUMN_SQL);
   }
 }

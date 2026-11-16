@@ -19,7 +19,7 @@
 // used instead to avoid a native zip dependency while keeping the same security
 // and portability properties. Can be wrapped in zip later without API change.
 
-import { loadTrips } from './tripRepo';
+import { loadTripsWithCovers } from './tripRepo';
 import { loadExpenses } from './expenseRepo';
 import { getStorageAdapter } from './index';
 import type { StorageAdapter } from './types';
@@ -54,7 +54,12 @@ export async function createBackup(
   progress: BackupProgress = {},
 ): Promise<string> {
   const t0 = now();
-  const [trips, expenses] = await Promise.all([loadTrips(db), loadExpenses(undefined, db)]);
+  // M4: the FULL covers — loadTrips() now returns only card thumbnails. The
+  // thumbnail is derived data: never put it in the backup (it is rebuilt after
+  // a restore), and a raw Uint8Array outside BINARY_FIELDS would not survive
+  // JSON anyway.
+  const [tripsFull, expenses] = await Promise.all([loadTripsWithCovers(db), loadExpenses(undefined, db)]);
+  const trips = tripsFull.map(({ coverThumb: _thumb, ...t }) => t);
   progress.onPhase?.('collect', now() - t0);
   return buildBackupEnvelope(
     { appVersion: '1.0.0', exportedAt: new Date().toISOString(), trips, expenses },

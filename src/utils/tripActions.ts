@@ -9,7 +9,7 @@ import { useTripStore } from '../store/tripStore';
 import { useExpenseStore } from '../store/expenseStore';
 import { loadExpensesForList } from '../db/expenseRepo';
 import { expensesToCsv } from '../services/csv';
-import { processPhoto } from './image';
+import { processPhoto, makeCoverThumb } from './image';
 import { confirmDestructive } from './confirm';
 import { showStatus } from './statusDialog';
 
@@ -38,10 +38,12 @@ export async function changeTripCover(trip: Trip): Promise<boolean> {
   try {
     const bytes = await pickTripCoverBytes();
     if (!bytes) return false;
+    const thumb = await makeCoverThumb(bytes);
     const { updateTrip } = await import('../db/tripRepo');
     // Explicit bytes = replace (pattern 19: undefined keeps, null clears).
-    await updateTrip(trip, bytes);
-    useTripStore.getState().updateTrip(trip.id, { coverBytes: bytes });
+    await updateTrip(trip, bytes, undefined, thumb);
+    // M4: only the thumbnail lives in memory.
+    useTripStore.getState().updateTrip(trip.id, { coverThumb: thumb ?? bytes, coverBytes: undefined });
     return true;
   } catch (e) {
     showStatus('Could not change photo', e instanceof Error ? e.message : String(e));

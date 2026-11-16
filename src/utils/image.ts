@@ -110,6 +110,28 @@ function approxBytes(b64: string): number {
   return Math.floor((b64.length * 3) / 4);
 }
 
+/** M4: card thumbnail width — 600px covers a ~390pt card at 1.5x and keeps
+ *  the JPEG around 40 KB. */
+export const COVER_THUMB_WIDTH = 600;
+
+/**
+ * Card thumbnail from a stored cover: 600px wide (aspect preserved), JPEG ~0.7.
+ * Returns null when the manipulator fails — the card then falls back to the
+ * gradient, and the next start tries again (thumb stays NULL).
+ */
+export async function makeCoverThumb(cover: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      `data:image/jpeg;base64,${bytesToBase64(cover)}`,
+      [{ resize: { width: COVER_THUMB_WIDTH } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+    );
+    return result.base64 ? base64ToBytes(result.base64) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);

@@ -119,6 +119,8 @@ export function useStorageInit(passphrase: string | null = null, keyHex: string 
         }
         // Best-effort rate refresh after the app is usable (not blocking boot).
         void refreshRateCache(trips[0]?.homeCurrency ?? 'EUR');
+        // M4: thumbnails for covers that predate cover_thumb (background).
+        void import('../utils/coverThumbs').then((m) => m.syncCoverThumbs());
       } catch (e) {
         if (e instanceof WrongKeyError) {
           // Web unlock: wrong passphrase — let the gate show again.

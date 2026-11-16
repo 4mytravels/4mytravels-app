@@ -30,8 +30,8 @@ import { randomUUID } from 'expo-crypto';
 import { WebDateButton } from '../../src/components/WebDateButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
-import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { tripCoverStageSize } from '../../src/utils/image';
+import { saveTrip, updateTrip, loadTripCover } from '../../src/db/tripRepo';
+import { tripCoverStageSize, makeCoverThumb } from '../../src/utils/image';
 import { pickTripCoverBytes } from '../../src/utils/tripActions';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
@@ -276,23 +276,26 @@ export default function NewTripScreen() {
   const [defaultCurrency, setDefaultCurrency] = useState(existing?.defaultCurrency ?? 'EUR');
   const [dailyBudget, setDailyBudget] = useState(existing ? String(existing.dailyBudget) : '');
   const [countries, setCountries] = useState<string[]>(existing?.countries ?? []);
-  const [coverPreview, setCoverPreview] = useState<string | null>(
-    // Edit mode: preview the existing photo so it survives a save without changes.
-    (() => {
-      const b = (existing as Trip & { coverBytes?: Uint8Array | null })?.coverBytes;
-      if (!b) return null;
-      let bin = '';
-      for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
-      return 'data:image/jpeg;base64,' + btoa(bin);
-    })(),
-  );
-  // Existing photo bytes — used when saving without picking a new photo so the
-  // DB write doesn't wipe the stored cover (INSERT OR REPLACE writes all cols).
-  const [existingCoverBytes] = useState<Uint8Array | null>(
-    (existing as Trip & { coverBytes?: Uint8Array | null })?.coverBytes ?? null,
-  );
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  // M4: the store only holds the card thumbnail, so the FULL cover is loaded
+  // once for the editor preview. Saving without a new pick passes `undefined`
+  // to updateTrip, which keeps the stored cover + thumbnail untouched.
+  const existingId = existing?.id;
+  useEffect(() => {
+    if (!existingId) return;
+    let alive = true;
+    void loadTripCover(existingId).then((b) => {
+      if (!alive || !b || b.length === 0) return;
+      // Only seed the preview when the user has not picked/removed meanwhile.
+      setCoverPreview((prev) => prev ?? 'data:image/jpeg;base64,' + bytesToBase64(b));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [existingId]);
   const [coverRemoved, setCoverRemoved] = useState(false);
   const [coverBytes, setCoverBytes] = useState<Uint8Array | null>(null);
+  const [coverThumb, setCoverThumb] = useState<Uint8Array | null>(null);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [phase, setPhase] = useState<string | null>(null);
@@ -341,6 +344,9 @@ export default function NewTripScreen() {
 
       if (isEdit) {
         setPhase('updateTripStore');
+        // M4: undefined = cover untouched (keeps cover + thumb in the DB and
+        // the store); null = removed; bytes = replaced (with its thumbnail).
+        const coverArg = coverRemoved ? null : coverBytes ?? undefined;
         updateTripStore(trip.id, {
           name: trip.name,
           startDate: trip.startDate,
@@ -349,17 +355,18 @@ export default function NewTripScreen() {
           defaultCurrency: trip.defaultCurrency,
           dailyBudget: trip.dailyBudget,
           countries: trip.countries,
-          coverBytes: coverRemoved ? null : coverBytes ?? existingCoverBytes,
+          ...(coverArg === undefined
+            ? {}
+            : { coverThumb: coverArg ? (coverThumb ?? coverArg) : null, coverBytes: undefined }),
         });
         await step('updateTrip (DB write)', () =>
-          updateTrip(trip, coverRemoved ? null : coverBytes ?? existingCoverBytes),
+          updateTrip(trip, coverArg, undefined, coverThumb),
         );
       } else {
         setPhase('addTrip (store)');
-        // Include the cover bytes in the stored object so the photo shows
-        // immediately (the DB row also carries them via saveTrip below).
-        addTrip({ ...trip, coverBytes } as Trip & { coverBytes?: Uint8Array | null });
-        await step('saveTrip (DB write)', () => saveTrip(trip, coverBytes));
+        // Only the thumbnail goes into the store (M4); the DB row gets both.
+        addTrip({ ...trip, coverThumb: coverBytes ? (coverThumb ?? coverBytes) : null } as Trip);
+        await step('saveTrip (DB write)', () => saveTrip(trip, coverBytes, undefined, coverThumb));
       }
       setPhase('navigating back');
       // Web (static export): back() on a modal route can trigger a remount
@@ -389,6 +396,8 @@ export default function NewTripScreen() {
     const bytes = await pickTripCoverBytes();
     if (!bytes) return;
     setCoverBytes(bytes);
+    // M4: the card thumbnail is made once here, not on every card render.
+    setCoverThumb(await makeCoverThumb(bytes));
     setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
     // Choosing a photo ALWAYS cancels a previous "Remove" click. Without this,
     // remove-then-pick left coverRemoved=true and save() wrote cover_photo =

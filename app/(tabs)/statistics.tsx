@@ -157,7 +157,7 @@ function DonutChart({
                 color="#fff"
                 style={{ marginRight: 2 }}
               />
-              <Text style={styles.sliceLabelText} numberOfLines={1}>
+              <Text maxFontSizeMultiplier={1.3} style={styles.sliceLabelText} numberOfLines={1}>
                 {s.category} {pct}%
               </Text>
             </View>
@@ -549,7 +549,7 @@ export default function StatisticsScreen() {
       </View>
       <View style={styles.titleWrap}>
         <View style={styles.titleTextWrap}>
-          <Text style={styles.screenTitle}>Statistics</Text>
+          <Text style={styles.screenTitle}>Stats</Text>
           <Text style={styles.filterLabel} numberOfLines={1}>
             {filterLabel}
           </Text>
@@ -563,7 +563,7 @@ export default function StatisticsScreen() {
           <Ionicons name="airplane-outline" size={26} color={colors.primaryText} />
           {activeTripIds.length > 0 && (
             <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
+              <Text maxFontSizeMultiplier={1.3} style={styles.filterBadgeText}>{activeTripIds.length}</Text>
             </View>
           )}
         </Pressable>
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: {
     color: colors.primaryForeground,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     fontFamily: fontFamily.sans,
   },
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
   },
   sliceLabelText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     fontFamily: fontFamily.sans,
   },

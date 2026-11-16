@@ -136,7 +136,7 @@ export function TimeChart({
           {/* Value axis — the bars are too small to carry a value label each. */}
           <View style={[styles.axis, { height: plotH }]} pointerEvents="none">
             {ticks.slice().reverse().map((t) => (
-              <Text key={t} style={styles.axisLabel} numberOfLines={1}>{compactMoney(t)}</Text>
+              <Text key={t} maxFontSizeMultiplier={1.3} style={styles.axisLabel} numberOfLines={1}>{compactMoney(t)}</Text>
             ))}
           </View>
 
@@ -206,6 +206,7 @@ export function TimeChart({
                 {rows.map((r) => (
                   <Text
                     key={`m-${r.key}`}
+                    maxFontSizeMultiplier={1.3}
                     style={[styles.monthLabel, { width: pitch }, selected === r.key && { color: colors.foreground }]}
                     numberOfLines={1}
                   >
@@ -223,6 +224,7 @@ export function TimeChart({
                   {yearGroups.map((g) => (
                     <Text
                       key={`y-${g.year}`}
+                      maxFontSizeMultiplier={1.3}
                       style={[styles.yearLabel, { width: pitch * g.count }]}
                       numberOfLines={1}
                     >
@@ -243,7 +245,7 @@ const styles = StyleSheet.create({
   chartArea: { marginBottom: spacing.md },
   chartRow: { flexDirection: 'row', alignItems: 'flex-start' },
   axis: { width: AXIS_W, justifyContent: 'space-between', alignItems: 'flex-end', paddingRight: 6 },
-  axisLabel: { color: colors.mutedForeground, fontSize: 9, fontFamily: fontFamily.sans },
+  axisLabel: { color: colors.mutedForeground, fontSize: 11, fontFamily: fontFamily.sans },
   plot: { overflow: 'hidden', justifyContent: 'flex-end' },
   gridLine: {
     position: 'absolute',
@@ -274,13 +276,13 @@ const styles = StyleSheet.create({
   labelsRow: { flexDirection: 'row', marginTop: 6 },
   monthLabel: {
     color: colors.mutedForeground,
-    fontSize: 9,
+    fontSize: 11,
     fontFamily: fontFamily.sans,
     textAlign: 'center',
   },
   yearLabel: {
     color: colors.mutedForeground,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: fontFamily.sans,
     textAlign: 'center',

@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   footerGrid: { flexDirection: 'row', alignItems: 'flex-end' },
   stat: { flex: 1 },
   statRight: { flex: 1, alignItems: 'flex-end' },
-  statLabel: { fontFamily: fontFamily.sans, fontSize: 10, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
+  statLabel: { fontFamily: fontFamily.sans, fontSize: 12, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
   statValue: { fontFamily: fontFamily.sans, fontSize: fontSize.lg, fontWeight: '700', color: colors.foreground },
   statOf: { fontFamily: fontFamily.sans, fontSize: fontSize.base, fontWeight: '500', color: colors.mutedForeground },
 });

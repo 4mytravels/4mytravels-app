@@ -68,6 +68,7 @@ export function FloatingNav() {
                 color={active ? colors.primaryForeground : colors.mutedForeground}
               />
               <Text
+                maxFontSizeMultiplier={1.3}
                 style={[
                   styles.navLabel,
                   { color: active ? colors.primaryForeground : colors.mutedForeground },
@@ -128,7 +129,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.94 }],
   },
   navLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: fontFamily.sans,
     lineHeight: 11,

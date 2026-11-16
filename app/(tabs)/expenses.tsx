@@ -331,7 +331,7 @@ export default function ExpensesScreen() {
             <Ionicons name="airplane-outline" size={26} color={colors.primaryText} />
             {activeTripIds.length > 0 && (
               <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
+                <Text maxFontSizeMultiplier={1.3} style={styles.filterBadgeText}>{activeTripIds.length}</Text>
               </View>
             )}
           </Pressable>
@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: {
     color: colors.primaryForeground,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     fontFamily: fontFamily.sans,
   },

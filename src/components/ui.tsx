@@ -167,7 +167,7 @@ export function StatBox({
       <Text
         style={{
           color: colors.mutedForeground,
-          fontSize: fontSize.xs,
+          fontSize: fontSize.sm,
           letterSpacing: 0.5,
           textTransform: 'uppercase',
           marginBottom: spacing.sm,

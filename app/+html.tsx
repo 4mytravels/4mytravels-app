@@ -44,6 +44,10 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="4MyTravels" />
         <title>4MyTravels</title>
+        {/* M2: a visible keyboard-focus ring on web (react-native-web strips
+            the default outline). :focus-visible only — a mouse/touch click
+            does not draw it. CSP allows inline styles (style-src). */}
+        <style>{`:focus-visible{outline:2px solid #A5B4FC;outline-offset:2px;border-radius:inherit}`}</style>
       </head>
       <body style={{ backgroundColor: '#0A0A1A' }}>
         {children}

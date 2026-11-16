@@ -207,6 +207,7 @@ export default function TripDetailScreen() {
       <ModalHost visible={expenseOpen} onRequestClose={() => setExpenseOpen(false)}>
         <ExpenseForm
           tripId={trip.id}
+          tripName={trip.name}
           defaultCurrency={trip.defaultCurrency}
           homeCurrency={trip.homeCurrency}
           initialExpense={editingExpense ?? undefined}

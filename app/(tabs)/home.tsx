@@ -289,6 +289,7 @@ export default function HomeScreen() {
         {targetTrip && (
           <ExpenseForm
             tripId={editingExpense?.tripId ?? targetTrip.id}
+            tripName={trips.find((t) => t.id === (editingExpense?.tripId ?? targetTrip.id))?.name}
             defaultCurrency={targetTrip.defaultCurrency}
             homeCurrency={targetTrip.homeCurrency}
             initialExpense={editingExpense ?? undefined}

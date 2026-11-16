@@ -2,7 +2,7 @@
 // (dark theme, large amount input, currency pill, category grid, save button).
 // Builds a full Expense with a Frankfurter rate snapshot at entry time (§2.2).
 // Supports edit mode (initialExpense) and a manual rate override (acceptance §2.5).
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -74,6 +74,7 @@ export function ExpenseForm({
   defaultCurrency,
   homeCurrency,
   initialExpense,
+  tripName,
   onSave,
   onDelete,
   onClose,
@@ -82,6 +83,8 @@ export function ExpenseForm({
   defaultCurrency: string;
   homeCurrency: string; // ISO 4217, the trip's home currency
   initialExpense?: Expense;
+  /** Shown as a chip so the user sees which trip the expense is filed under (Q15). */
+  tripName?: string;
   onSave: (expense: Expense) => void;
   onDelete?: (expense: Expense) => void;
   onClose?: () => void;
@@ -181,6 +184,35 @@ export function ExpenseForm({
     })();
     return () => { alive = false; };
   }, [tripId, initialExpense]);
+  // Q15: a new expense starts on the LAST category used (most logs repeat the
+  // previous one, e.g. coffee after coffee) instead of always 'Food'.
+  // Stored app-wide in app_settings; only applied while the user has not
+  // touched the grid yet.
+  const categoryTouchedRef = useRef(false);
+  useEffect(() => {
+    if (initialExpense) return;
+    let alive = true;
+    (async () => {
+      try {
+        const db = (await import('../db/index')).getStorageAdapter();
+        const rows = await db.query<{ value: string }>(
+          'SELECT value FROM app_settings WHERE key = ?',
+          ['last_category'],
+        );
+        const v = rows[0]?.value as ExpenseCategory | undefined;
+        if (alive && v && (EXPENSE_CATEGORIES as readonly string[]).includes(v) && !categoryTouchedRef.current) {
+          setCategory(v);
+        }
+      } catch {
+        // no remembered category
+      }
+    })();
+    return () => { alive = false; };
+  }, [initialExpense]);
+  const pickCategory = useCallback((c: ExpenseCategory) => {
+    categoryTouchedRef.current = true;
+    setCategory(c);
+  }, []);
   const [currencyQuery, setCurrencyQuery] = useState('');
   const [showCurrencies, setShowCurrencies] = useState(false);
   // Global manual FX overrides (Settings) — when one exists for this pair the
@@ -334,6 +366,15 @@ export function ExpenseForm({
       receiptPhoto: receiptBytes,
       multiDaySplit: split,
     };
+    // Q15: remember the category for the next new expense.
+    void (async () => {
+      try {
+        const db = (await import('../db/index')).getStorageAdapter();
+        await db.exec('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', ['last_category', category]);
+      } catch {
+        // non-fatal
+      }
+    })();
     // Remember the country per trip so the next expense starts pre-filled.
     if (country.trim()) {
       void (async () => {
@@ -375,6 +416,14 @@ export function ExpenseForm({
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{isEdit ? 'Edit expense' : 'Add expense'}</Text>
             <Text style={styles.subtitle}>Quickly log a travel spend.</Text>
+            {/* Q15: show which trip this expense is filed under — formTrip is
+                picked implicitly (filter or active trip) and was invisible. */}
+            {tripName ? (
+              <View style={styles.tripChip} accessibilityLabel={`Trip: ${tripName}`}>
+                <Ionicons name="airplane-outline" size={14} color={colors.primaryText} />
+                <Text style={styles.tripChipText} numberOfLines={1}>{tripName}</Text>
+              </View>
+            ) : null}
           </View>
           {onClose && (
             <Pressable style={styles.closeButton} onPress={onClose}>
@@ -474,7 +523,7 @@ export function ExpenseForm({
                       key={cat}
                       category={cat}
                       selected={category === cat}
-                      onSelect={setCategory}
+                      onSelect={pickCategory}
                       stretch
                     />
                   ))}
@@ -766,6 +815,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
   subtitle: { fontSize: fontSize.md, color: colors.mutedForeground, fontFamily: fontFamily.sans, marginTop: 2 },
+  tripChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.primary12, borderWidth: 1, borderColor: colors.primaryBorder, maxWidth: '100%' },
+  tripChipText: { fontSize: fontSize.sm, color: colors.primaryText, fontFamily: fontFamily.sans, fontWeight: '600', flexShrink: 1 },
   closeButton: { padding: spacing.xs },
   scroll: { paddingBottom: spacing.lg },
   section: { marginBottom: spacing.xl },

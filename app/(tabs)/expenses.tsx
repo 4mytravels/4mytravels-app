@@ -495,6 +495,7 @@ export default function ExpensesScreen() {
         {formTrip && (
           <ExpenseForm
             tripId={formTrip.id}
+            tripName={formTrip.name}
             defaultCurrency={formTrip.defaultCurrency}
             homeCurrency={formTrip.homeCurrency}
             initialExpense={editingExpense ?? undefined}

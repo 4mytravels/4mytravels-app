@@ -4,6 +4,24 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
+### Verbeterplan fase 1 (branch `verbeterplan-2026-11-16`, dev only)
+- **Fixed an endless query loop** on Home, Expenses and Stats (inline
+  `useFocusEffect` callbacks); `react-hooks/exhaustive-deps` is now an error. (Q1)
+- **Errors are visible on web**: `Alert.alert` replaced by the in-app status and
+  confirm hosts — *Delete expense* did nothing on the PWA before. The Expenses
+  `+` without a trip opens *New trip*; a storage failure shows a Retry screen. (Q7)
+- **Contrast** to WCAG AA: `primarySolid`/`primaryText` tokens, chart colours
+  `*-400`. (Q9) Minimum text size 11 px, 12 px uppercase labels. (Q10)
+- Dark-only UI (`userInterfaceStyle: dark`, `color-scheme`). (Q12)
+- New theme tokens (status colours, scrim, typeScale, iconSize). (Q11)
+- Settings: one *Data* card, no cloud icons, *Export CSV* / *Import CSV*. (Q14)
+- New expense starts on the last-used category and shows the target trip. (Q15)
+- `/` redirects to `/home`; wording cleanup. (Q16)
+- Performance: Trips loads expenses in 1 query (Q3), memoised covers and no
+  second `loadTrips` (Q4), `created_at` indexes, schema v3 (Q5), memoised
+  expense rows and stats breakdowns (Q6).
+- Tooling: ESLint flat config + `npm run lint` (dev manifest).
+
 ### Backup
 - **Create backup now shares the file and leaves no copy on disk.** The
   encrypted backup (`4mytravels-backup-YYYY-MM-DD.json`) goes straight to the

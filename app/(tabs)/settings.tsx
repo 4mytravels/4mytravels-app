@@ -8,6 +8,7 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,13 +22,28 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Card, SectionTitle, Button } from '../../src/components/ui';
-import { createBackup, restoreBackup } from '../../src/db/backup';
+import {
+  createBackup,
+  parseBackupEnvelope,
+  decryptBackup,
+  InvalidBackupFileError,
+  BackupPassphraseError,
+  MIN_PASSPHRASE_LENGTH,
+  type BackupEnvelope,
+} from '../../src/db/backup';
+import { shareBackup } from '../../src/services/shareBackup';
 import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
 import { saveTrip } from '../../src/db/tripRepo';
 import type { Expense } from '../../src/types';
 import { saveExpense, loadExpensesForList } from '../../src/db/expenseRepo';
 import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
 import { showStatus } from '../../src/utils/statusDialog';
+import {
+  disableBiometric,
+  isBiometricAvailable,
+  isBiometricEnrolled,
+} from '../../src/db/web/biometric';
+import { enrollBiometricForSession } from '../../src/db/web/biometricSession';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
@@ -63,6 +79,10 @@ export default function SettingsScreen() {
   const [mode, setMode] = useState<null | 'backup' | 'restore'>(null);
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
+  // Restore: the picked + validated file, kept across wrong-passphrase retries.
+  const [restoreFile, setRestoreFile] = useState<{ envelope: BackupEnvelope; name: string } | null>(null);
+  const [passphraseError, setPassphraseError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [nudge, setNudge] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -71,6 +91,32 @@ export default function SettingsScreen() {
   // (name from the export's trip_name, otherwise "import-trip1").
   const importAuto = importTargetTrip === AUTO_TRIP;
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
+  // Web only: biometric unlock (WebAuthn PRF).
+  const [bioAvailable, setBioAvailable] = useState(false);
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    setBioEnrolled(isBiometricEnrolled());
+    void isBiometricAvailable().then(setBioAvailable);
+  }, []);
+  const toggleBiometric = async () => {
+    if (bioEnrolled) {
+      disableBiometric();
+      setBioEnrolled(false);
+      return;
+    }
+    try {
+      await enrollBiometricForSession();
+      setBioEnrolled(true);
+    } catch (e) {
+      showStatus(
+        'Biometric unlock unavailable',
+        e instanceof Error && e.name === 'BiometricUnsupported'
+          ? e.message
+          : 'Setup was cancelled. You can try again.',
+      );
+    }
+  };
   const [currencyQuery, setCurrencyQuery] = useState('');
 
   useEffect(() => {
@@ -84,6 +130,8 @@ export default function SettingsScreen() {
   const close = () => {
     setMode(null);
     setPassphrase('');
+    setPassphraseError(null);
+    setRestoreFile(null);
     setBusy(false);
   };
 
@@ -189,44 +237,89 @@ export default function SettingsScreen() {
       return;
     }
     setBusy(true);
+    setBusyLabel('Reading your data…');
     try {
-      const envelope = await createBackup(passphrase);
+      // Phases yield to the event loop, so the spinner + label keep painting.
+      const envelope = await createBackup(passphrase, undefined, {
+        onPhase: (phase) => {
+          if (phase === 'serialize') setBusyLabel('Deriving encryption key…');
+          else if (phase === 'kdf') setBusyLabel('Encrypting…');
+          else if (phase === 'encrypt') setBusyLabel('Preparing file…');
+        },
+      });
       await markBackupDone(); // reset the reminder clock (§2.2 backup reminders)
-      const file = new File(Paths.cache, '4mytravels-backup.json');
-      await file.write(envelope);
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save encrypted backup' });
+      // Share sheet, never a persistent file: temp copy is deleted after the
+      // sheet closes (shared or cancelled). Web without file-share → download.
+      const outcome = await shareBackup(envelope);
       close();
+      if (outcome === 'downloaded') {
+        showStatus('Backup downloaded', 'Your browser cannot share files, so the encrypted backup was downloaded instead.');
+      }
     } catch (e) {
       showStatus('Backup failed', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   };
 
-  const doRestore = async () => {
-    if (passphrase.length < 8) {
-      showStatus('Passphrase too short', 'Enter the passphrase used when the backup was created.');
-      return;
-    }
-    setBusy(true);
+  // Restore order: choose file → validate (no passphrase) → passphrase → restore.
+  // Step 1+2: pick and structurally validate the file. An invalid file is
+  // reported here and the passphrase sheet never opens.
+  const startRestore = async () => {
     try {
       const doc = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: false });
       const picked = doc.canceled ? null : doc.assets?.[0];
-      if (!picked || typeof picked.uri !== 'string') {
-        setBusy(false);
-        return;
-      }
+      if (!picked || typeof picked.uri !== 'string') return; // cancelled
       // Same cross-platform read as the CSV import (web: asset.file; a blob:
       // URL is not fetchable under COEP — see src/utils/readPickedDocument.ts).
-      const envelope = await readPickedDocumentText(picked);
-      const { trips, expenses } = await restoreBackup(envelope, passphrase);
+      const text = await readPickedDocumentText(picked);
+      const envelope = parseBackupEnvelope(text);
+      openRestoreFor(envelope, picked.name ?? 'backup file');
+    } catch (e) {
+      showStatus(
+        e instanceof InvalidBackupFileError ? 'Not a valid backup' : 'Could not read file',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  };
+
+  // Entry point once the file is known (also the hook for a future
+  // "open with"/share-intent handler: it only needs the envelope).
+  const openRestoreFor = (envelope: BackupEnvelope, fileName: string) => {
+    setRestoreFile({ envelope, name: fileName });
+    setPassphrase('');
+    setPassphraseError(null);
+    setMode('restore');
+  };
+
+  // Step 3+4: decrypt with the passphrase. Wrong passphrase → inline error,
+  // file selection kept so the user can retry.
+  const doRestore = async () => {
+    if (!restoreFile) return;
+    if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+      setPassphraseError(`Passphrase is at least ${MIN_PASSPHRASE_LENGTH} characters.`);
+      return;
+    }
+    setBusy(true);
+    setPassphraseError(null);
+    try {
+      // Async Argon2id: yields every ~10 ms so the spinner keeps animating.
+      const { trips, expenses } = await decryptBackup(restoreFile.envelope, passphrase);
+      setPassphrase(''); // never keep the passphrase after use
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);
       setTrips(trips);
-      showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
       close();
+      showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
     } catch (e) {
-      showStatus('Restore failed', e instanceof Error ? e.message : String(e));
+      setPassphrase('');
+      if (e instanceof BackupPassphraseError) {
+        setPassphraseError('Wrong passphrase. Try again, or cancel.');
+      } else {
+        close();
+        showStatus('Restore failed', e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -248,6 +341,26 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 106 }}
         showsVerticalScrollIndicator={false}
       >
+        {Platform.OS === 'web' && bioAvailable && (
+          <View style={styles.section}>
+            <SectionTitle title="Security" />
+            <Card>
+              <Text style={styles.note}>
+                Unlock with fingerprint or face instead of typing your passphrase. The passphrase
+                stays your recovery key for new devices or a reset browser.
+              </Text>
+              <View style={styles.actions}>
+                <Button
+                  label={bioEnrolled ? 'Disable biometric unlock' : 'Enable biometric unlock'}
+                  icon="finger-print-outline"
+                  variant={bioEnrolled ? 'ghost' : 'primary'}
+                  onPress={toggleBiometric}
+                />
+              </View>
+            </Card>
+          </View>
+        )}
+
         <View style={styles.section}>
           <SectionTitle title="Data" />
           <Card>
@@ -262,7 +375,7 @@ export default function SettingsScreen() {
             <View style={styles.actions}>
               <Button label="Create backup" icon="cloud-upload-outline" onPress={() => setMode('backup')} />
               <View style={{ height: spacing.md }} />
-              <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={() => setMode('restore')} />
+              <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={startRestore} />
             </View>
           </Card>
         </View>
@@ -407,25 +520,36 @@ export default function SettingsScreen() {
             <Text style={styles.note}>
               {mode === 'backup'
                 ? 'Choose a passphrase (min 8 chars). It encrypts the backup and is never stored.'
-                : 'Enter the passphrase used when this backup was created.'}
+                : `File: ${restoreFile?.name ?? ''}\nEnter the passphrase used when this backup was created.`}
             </Text>
             <TextInput
               style={styles.input}
               value={passphrase}
-              onChangeText={setPassphrase}
+              onChangeText={(t) => {
+                setPassphrase(t);
+                if (passphraseError) setPassphraseError(null);
+              }}
+              onSubmitEditing={mode === 'backup' ? doBackup : doRestore}
               placeholder="Passphrase"
               placeholderTextColor={colors.mutedForeground}
               secureTextEntry
               autoCapitalize="none"
             />
+            {mode === 'restore' && passphraseError ? (
+              <Text style={[styles.note, { color: colors.destructive, marginTop: spacing.sm }]}>{passphraseError}</Text>
+            ) : null}
             {busy ? (
-              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing.xl }} />
+              <View style={{ marginTop: spacing.xl, alignItems: 'center', gap: spacing.sm }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                {busyLabel ? <Text style={styles.note}>{busyLabel}</Text> : null}
+              </View>
             ) : (
-              <View style={{ marginTop: spacing.xl }}>
+              <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
                 <Button
-                  label={mode === 'backup' ? 'Create & share' : 'Choose file & restore'}
+                  label={mode === 'backup' ? 'Create & share' : 'Restore'}
                   onPress={mode === 'backup' ? doBackup : doRestore}
                 />
+                {mode === 'restore' ? <Button label="Cancel" variant="ghost" onPress={close} /> : null}
               </View>
             )}
           </View>

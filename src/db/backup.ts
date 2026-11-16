@@ -4,106 +4,66 @@
 // the PWA):
 //   - Key derived from the user's passphrase via Argon2id (same model as the
 //     planned PWA live DB key — §2.2). The device key (Keystore) is NEVER used
-//     here, so the backup is portable across devices.
+//     here, so the backup is portable across devices. Parameters: see
+//     ARGON2_PARAMS in ./backupFormat.ts (64 MiB, t=3, p=1 — not lowered).
 //   - Payload encrypted with XChaCha20-Poly1305 (nonce + auth tag).
-//   - Format: { v, kdf, salt, nonce, ciphertext } — a single self-describing
-//     JSON envelope. The schema version + app version live in the plaintext
-//     manifest inside the ciphertext so restore can validate compatibility.
+//   - Format: { v, kdf, salt, nonce, enc, ciphertext } — a single
+//     self-describing JSON envelope. The schema version + app version live in
+//     the plaintext manifest inside the ciphertext so restore can validate
+//     compatibility. v2 = base64 binary fields + base64 ciphertext; v1 files
+//     still restore (see FORMAT VERSIONS in ./backupFormat.ts).
+//   - The pure format code (build / validate / decrypt) lives in
+//     ./backupFormat.ts so it is unit-testable without the storage layer.
 //
 // NOTE: the scope mentions a zip container; a single encrypted JSON envelope is
 // used instead to avoid a native zip dependency while keeping the same security
 // and portability properties. Can be wrapped in zip later without API change.
 
-import { argon2id } from '@noble/hashes/argon2.js';
-import { randomBytes, bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
-import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { loadTrips } from './tripRepo';
 import { loadExpenses } from './expenseRepo';
 import { getStorageAdapter } from './index';
-import type { Trip, Expense } from '../types/index';
+import type { StorageAdapter } from './types';
+import {
+  buildBackupEnvelope,
+  parseBackupEnvelope,
+  decryptBackup,
+  type BackupProgress,
+  type RestoreResult,
+} from './backupFormat';
 
-export const BACKUP_FORMAT_VERSION = 1;
-const ARGON2 = {
-  t: 3, // iterations
-  m: 64 * 1024, // 64 MB memory
-  p: 1, // parallelism
-  dkLen: 32, // 256-bit key
-  version: 0x13, // Argon2id
-} as const;
+export {
+  BACKUP_FORMAT_VERSION,
+  ARGON2_PARAMS,
+  MIN_PASSPHRASE_LENGTH,
+  parseBackupEnvelope,
+  decryptBackup,
+  InvalidBackupFileError,
+  BackupPassphraseError,
+  type BackupEnvelope,
+  type BackupPhase,
+  type BackupProgress,
+  type RestoreResult,
+} from './backupFormat';
 
-interface BackupEnvelope {
-  v: number;
-  kdf: 'argon2id';
-  salt: string; // hex
-  nonce: string; // hex
-  ciphertext: string; // hex
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+// Two queries in total (trips, expenses incl. receipt BLOBs) — no per-row N+1.
+export async function createBackup(
+  passphrase: string,
+  db: StorageAdapter = getStorageAdapter(),
+  progress: BackupProgress = {},
+): Promise<string> {
+  const t0 = now();
+  const [trips, expenses] = await Promise.all([loadTrips(db), loadExpenses(undefined, db)]);
+  progress.onPhase?.('collect', now() - t0);
+  return buildBackupEnvelope(
+    { appVersion: '1.0.0', exportedAt: new Date().toISOString(), trips, expenses },
+    passphrase,
+    progress,
+  );
 }
 
-function deriveKey(passphrase: string, salt: Uint8Array): Uint8Array {
-  return argon2id(utf8ToBytes(passphrase), salt, ARGON2);
-}
-
-export async function createBackup(passphrase: string): Promise<string> {
-  const trips = await loadTrips(getStorageAdapter());
-  const expenses = await loadExpenses(undefined, getStorageAdapter());
-  const manifest = {
-    schemaVersion: BACKUP_FORMAT_VERSION,
-    appVersion: '1.0.0',
-    exportedAt: new Date().toISOString(),
-    trips,
-    expenses,
-  };
-  const salt = randomBytes(16);
-  const nonce = randomBytes(24); // XChaCha20 nonce is 24 bytes
-  const key = deriveKey(passphrase, salt);
-  const cipher = xchacha20poly1305(key, nonce);
-  const plaintext = utf8ToBytes(JSON.stringify(manifest));
-  const ciphertext = cipher.encrypt(plaintext);
-  const envelope: BackupEnvelope = {
-    v: BACKUP_FORMAT_VERSION,
-    kdf: 'argon2id',
-    salt: bytesToHex(salt),
-    nonce: bytesToHex(nonce),
-    ciphertext: bytesToHex(ciphertext),
-  };
-  return JSON.stringify(envelope);
-}
-
-export interface RestoreResult {
-  trips: Trip[];
-  expenses: Expense[];
-}
-
+/** One-shot validate + decrypt (for callers that already have both inputs). */
 export async function restoreBackup(envelopeJson: string, passphrase: string): Promise<RestoreResult> {
-  if (!passphrase || passphrase.length < 8) throw new Error('Passphrase too short (min 8 chars)');
-  let env: BackupEnvelope;
-  try {
-    env = JSON.parse(envelopeJson) as BackupEnvelope;
-  } catch {
-    throw new Error('Invalid backup file: not valid JSON');
-  }
-  if (env.kdf !== 'argon2id') throw new Error('Unsupported backup format');
-  const salt = hexToBytes(env.salt);
-  const nonce = hexToBytes(env.nonce);
-  const key = deriveKey(passphrase, salt);
-  const cipher = xchacha20poly1305(key, nonce);
-  let plaintext: Uint8Array;
-  try {
-    plaintext = cipher.decrypt(hexToBytes(env.ciphertext));
-  } catch {
-    throw new Error('Decryption failed — wrong passphrase or corrupted backup');
-  }
-  let manifest: { schemaVersion?: number; trips?: Trip[]; expenses?: Expense[] };
-  try {
-    manifest = JSON.parse(new TextDecoder().decode(plaintext));
-  } catch {
-    throw new Error('Decryption failed — wrong passphrase or corrupted backup');
-  }
-  if (manifest.schemaVersion !== BACKUP_FORMAT_VERSION) {
-    throw new Error(`Unsupported backup schema v${manifest.schemaVersion}`);
-  }
-  // Validate shape before returning
-  const trips = Array.isArray(manifest.trips) ? manifest.trips : [];
-  const expenses = Array.isArray(manifest.expenses) ? manifest.expenses : [];
-  return { trips, expenses };
+  return decryptBackup(parseBackupEnvelope(envelopeJson), passphrase);
 }

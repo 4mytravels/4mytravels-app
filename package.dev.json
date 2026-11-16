@@ -58,7 +58,8 @@
     "test:filter": "node scripts/test-trip-filter.mjs",
     "test:receipts": "node scripts/test-expense-receipts.mjs",
     "test:stats": "node scripts/test-stats-utils.mjs",
-    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats"
+    "test:scroll": "node scripts/test-scroll-target.mjs",
+    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:scroll"
   },
   "private": true
 }

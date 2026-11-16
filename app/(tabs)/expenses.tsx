@@ -26,6 +26,7 @@ import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { computeTripStats } from '../../src/utils/tripStats';
+import { scrollTargetSection } from '../../src/utils/scrollTarget';
 import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
@@ -119,6 +120,16 @@ export default function ExpensesScreen() {
   // Skip one focus event after an incremental delete/save to avoid a full
   // re-fetch.
   const skipNextFocusRef = useRef(false);
+  const scrollPendingRef = useRef(false);
+  const [loadTick, setLoadTick] = useState(0);
+  // Arm the scroll-to-today on every REAL focus (stable callback, so this only
+  // runs on tab open/return — not on each re-render like the loader below).
+  // It fires once the focus load has rendered (effect next to `listRef`).
+  useFocusEffect(
+    useCallback(() => {
+      scrollPendingRef.current = true;
+    }, []),
+  );
   useFocusEffect(() => {
     if (skipNextFocusRef.current) {
       skipNextFocusRef.current = false;
@@ -127,7 +138,10 @@ export default function ExpensesScreen() {
     let alive = true;
     (async () => {
       const list = await loadExpensesForList();
-      if (alive) setExpenses(list);
+      if (alive) {
+        setExpenses(list);
+        if (scrollPendingRef.current) setLoadTick((n) => n + 1);
+      }
     })();
     return () => {
       alive = false;
@@ -200,19 +214,55 @@ export default function ExpensesScreen() {
 
   // Safety net: SectionList requires onScrollToIndexFailed when scrollToLocation
   // is called without getItemLayout (dynamic section heights).
-  const onScrollToIndexFailed = useCallback(() => {
-    // Silently swallow — Today section is likely already visible or near top
-  }, []);
+  // A target section that is not rendered yet (virtualization) fails: jump by
+  // the average row height so it mounts, then retry the exact location once.
+  const onScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      (listRef.current?.getScrollResponder() as any)?.scrollTo?.({
+        y: info.averageItemLength * info.index,
+        animated: false,
+      });
+      setTimeout(() => {
+        const target = autoTargetRef.current;
+        if (target < 0) return;
+        try {
+          listRef.current?.scrollToLocation({ sectionIndex: target, itemIndex: 0, viewOffset: 0, animated: false });
+        } catch {
+          /* target vanished (filter change) — nothing to do */
+        }
+      }, 50);
+    },
+    [],
+  );
 
-  // Auto-scroll to Today on open/focus. Only needed when Today is NOT the first
-  // section (sections are newest-first, so Today is usually index 0 = visible).
+  // Auto-scroll to Today (or the nearest day) on open AND on every return to
+  // the tab. The tab navigator keeps this screen mounted, so the list keeps its
+  // old offset; the scroll is armed in useFocusEffect and runs after the focus
+  // load has rendered and the trip filter has been seeded.
+  // Regression (65879c0): the effect was keyed on `todayIndex` only and bailed
+  // out on `todayIndex <= 0`, so it never ran when Today was the first section
+  // (the normal case), never re-ran on refocus, and did nothing without Today.
+  const autoTargetIndex = useMemo(
+    () => scrollTargetSection(sections.map((s) => s.day), todayStr),
+    [sections, todayStr],
+  );
+  const autoTargetRef = useRef(-1);
+  autoTargetRef.current = autoTargetIndex;
   useEffect(() => {
-    if (todayIndex <= 0) return; // Already at top or no Today section
-    const timer = setTimeout(() => {
-      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [todayIndex]);
+    if (!scrollPendingRef.current || loadTick === 0) return;
+    if (!didSeedFilter.current && trips.length > 0) return; // filter not seeded yet
+    if (autoTargetIndex < 0) return; // empty list: stay armed for the next load
+    const raf = requestAnimationFrame(() => {
+      scrollPendingRef.current = false; // consumed only when it actually ran
+      listRef.current?.scrollToLocation({
+        sectionIndex: autoTargetIndex,
+        itemIndex: 0,
+        viewOffset: 0,
+        animated: false,
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [loadTick, autoTargetIndex, tripFilter, trips.length]);
 
   // Daily average / budget: only meaningful for ONE trip (a budget is per trip),
   // using the SAME shared helper the Trips tab and trip detail use, so the

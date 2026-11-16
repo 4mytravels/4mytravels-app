@@ -16,6 +16,8 @@ import {
   markPassphraseCreated,
 } from '../src/components/WebUnlockGate';
 import { getStorageAdapter } from '../src/db';
+import { disableBiometric } from '../src/db/web/biometric';
+import { BiometricEnrollPrompt } from '../src/components/BiometricEnrollPrompt';
 
 // PWA service worker registration (web only, static builds only). Deferred
 // past first paint; skipped on localhost (Metro dev server serves different
@@ -48,16 +50,21 @@ export default function RootLayout() {
     isWeb ? null : '', // native: no passphrase needed — '' means "proceed"
   );
 
-  const { ready, error } = useStorageInit(passphrase);
+  const [keyHex, setKeyHex] = useState<string | null>(null);
+
+  const { ready, error } = useStorageInit(passphrase, keyHex);
   const wrongKey = isWeb && error === 'wrong-key';
 
   // A rejected passphrase resets the gate for a retry.
   useEffect(() => {
     if (wrongKey) {
       resetWebStorage();
+      // A stale biometric-wrapped key (db re-created / wiped) must not loop.
+      if (keyHex) disableBiometric();
       setPassphrase(null);
+      setKeyHex(null);
     }
-  }, [wrongKey]);
+  }, [wrongKey, keyHex]);
 
   // Keep the rate cache fresh whenever the app comes to the foreground, so the
   // expense form almost always has a cached rate and never blocks on the live
@@ -88,13 +95,14 @@ export default function RootLayout() {
   usePwaBootstrap(ready);
 
   // Web unlock gate: until a passphrase is supplied, storage cannot init.
-  if (isWeb && passphrase === null) {
+  if (isWeb && passphrase === null && keyHex === null) {
     return (
       <WebUnlockGate
         onUnlock={(pw) => {
           if (!hasStoredPassphraseFlag()) markPassphraseCreated();
           setPassphrase(pw);
         }}
+        onUnlockKey={(hex) => setKeyHex(hex)}
       />
     );
   }
@@ -138,6 +146,8 @@ export default function RootLayout() {
           stashed; mounted only once storage is unlocked, because it writes to
           the encrypted database. No-op on native. */}
       <SharedImportHost />
+      {/* Web: one-time offer to enable biometric unlock after (first) unlock. */}
+      <BiometricEnrollPrompt />
       {/* Web notices (storage health + install nudge) render per screen, in the
           flow under the header — see src/components/WebNotices.tsx. */}
     </View>

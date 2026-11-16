@@ -93,7 +93,7 @@ export function resetWebStorage(): void {
   void a.close?.();
 }
 
-export function useStorageInit(passphrase: string | null = null) {
+export function useStorageInit(passphrase: string | null = null, keyHex: string | null = null) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTrips = useTripStore((s) => s.setTrips);
@@ -102,12 +102,12 @@ export function useStorageInit(passphrase: string | null = null) {
     let mounted = true;
     // Web: wait for the unlock gate to supply a passphrase. Native passes ''
     // (no passphrase needed — Keystore device key).
-    if (Platform.OS === 'web' && (passphrase === null || passphrase === '')) return;
+    if (Platform.OS === 'web' && !passphrase && !keyHex) return;
     (async () => {
       try {
         const db = getStorageAdapter();
         await db.init(
-          Platform.OS === 'web' ? { passphrase: passphrase ?? undefined } : {},
+          Platform.OS === 'web' ? { passphrase: passphrase ?? undefined, keyHex: keyHex ?? undefined } : {},
         );
         const trips = await loadTrips(db);
         if (mounted) {
@@ -149,7 +149,7 @@ export function useStorageInit(passphrase: string | null = null) {
     return () => {
       mounted = false;
     };
-  }, [setTrips, passphrase]);
+  }, [setTrips, passphrase, keyHex]);
 
   return { ready, error };
 }

@@ -28,7 +28,6 @@ export function FloatingNav() {
   if (shouldHide) return null;
 
   const isActive = (path: string) => {
-    if (path === '/home') return pathname === '/' || pathname === '/home' || pathname.startsWith('/home/');
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 

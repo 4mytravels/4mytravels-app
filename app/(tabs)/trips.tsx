@@ -97,7 +97,7 @@ export default function TripsScreen() {
         <View style={styles.empty}>
           <Ionicons name="airplane-outline" size={48} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>No trips yet</Text>
-          <Text style={styles.emptyBody}>Create your first trip to start tracking spends.</Text>
+          <Text style={styles.emptyBody}>Create your first trip to start tracking expenses.</Text>
           <View style={{ marginTop: spacing.xl, width: '70%' }}>
             <Button label="New trip" icon="add" onPress={() => router.push('/trips/new')} />
           </View>

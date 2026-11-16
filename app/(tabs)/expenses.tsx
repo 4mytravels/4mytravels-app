@@ -348,7 +348,7 @@ export default function ExpensesScreen() {
               value={`${formatMoney(dailyAverage, homeCurrency)} / ${formatMoney(singleTrip.dailyBudget, homeCurrency)}`}
             />
           )}
-          <StatBox label="Total spend" value={formatMoney(totalHome, homeCurrency)} />
+          <StatBox label="Total spent" value={formatMoney(totalHome, homeCurrency)} />
         </View>
       )}
 

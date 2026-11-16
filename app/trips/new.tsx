@@ -496,14 +496,11 @@ export default function NewTripScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <Button label={saving ? 'Saving…' : isEdit ? 'Update trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
+          <Button label={saving ? 'Saving…' : isEdit ? 'Save trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
           {errorMsg ? (
             <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: radius.lg }}>
               <Text style={{ color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>{errorMsg}</Text>
             </View>
-          ) : null}
-          {phase ? (
-            <Text style={{ marginTop: spacing.sm, color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans }}>Status: {phase}…</Text>
           ) : null}
         </View>
       </View>

@@ -19,12 +19,12 @@ import { formatMoney, formatMoneyWhole } from '../utils/currency';
 import { bytesToDataUri, tripCoverStageSize } from '../utils/image';
 
 // Scrim colour = the app background; only the opacity changes over the photo.
-const SCRIM = '#0A0A1A';
+const SCRIM = colors.background;
 
 const BADGE: Record<TripStatus, { label: string; fg: string; bg: string }> = {
-  active: { label: 'ACTIVE', fg: '#5EEAD4', bg: 'rgba(13,148,136,0.32)' },
-  upcoming: { label: 'UPCOMING', fg: '#BFDBFE', bg: 'rgba(59,130,246,0.28)' },
-  past: { label: 'PAST', fg: 'rgba(226,232,240,0.72)', bg: 'rgba(148,163,184,0.22)' },
+  active: { label: 'ACTIVE', fg: colors.teal300, bg: colors.teal32 },
+  upcoming: { label: 'UPCOMING', fg: colors.blue200, bg: colors.blue28 },
+  past: { label: 'PAST', fg: colors.foreground72, bg: colors.slate22 },
 };
 
 export function TripCard({
@@ -220,9 +220,9 @@ function CardScrim() {
         </LinearGradient>
         {/* Surface for a trip without a photo yet — brand gradient. */}
         <LinearGradient id="tripNoPhoto" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#1B1E46" />
-          <Stop offset="0.55" stopColor="#2A2560" />
-          <Stop offset="1" stopColor="#141432" />
+          <Stop offset="0" stopColor={colors.noPhoto1} />
+          <Stop offset="0.55" stopColor={colors.noPhoto2} />
+          <Stop offset="1" stopColor={colors.card} />
         </LinearGradient>
       </Defs>
       <Rect x="0" y="0" width="100" height="45" fill="url(#tripScrimTop)" />
@@ -244,7 +244,7 @@ function PhotoFallback() {
         <Rect x="0" y="0" width="100" height="100" fill="url(#tripNoPhoto)" />
       </Svg>
       <View style={styles.photoFallbackMark} pointerEvents="none">
-        <Ionicons name="airplane-outline" size={40} color="rgba(226,232,240,0.28)" />
+        <Ionicons name="airplane-outline" size={40} color={colors.foreground28} />
       </View>
     </>
   );
@@ -304,8 +304,8 @@ const styles = StyleSheet.create({
   // Brightening lift: a low white veil over the photo (under the scrim), so the
   // native Android JPEG — darker than the web canvas re-encode — matches the
   // PWA. 6% keeps it subtle; text contrast is unaffected (scrim sits on top).
-  brighten: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,0.06)' },
-  pastVeil: { backgroundColor: 'rgba(10,10,26,0.46)' },
+  brighten: { ...StyleSheet.absoluteFill, backgroundColor: colors.surfaceMedium },
+  pastVeil: { backgroundColor: colors.pastVeil },
   photoFallbackMark: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   cardTop: {
     position: 'absolute',
@@ -328,11 +328,11 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: colors.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  managePressed: { backgroundColor: 'rgba(255,255,255,0.20)' },
+  managePressed: { backgroundColor: colors.white20 },
   cardBottom: {
     position: 'absolute',
     left: spacing.xl,
@@ -340,24 +340,24 @@ const styles = StyleSheet.create({
     bottom: spacing.lg,
   },
   // SAME type as the home-screen journey title (fontSize.xl / 700 / heading).
-  tripName: { fontFamily: fontFamily.heading, fontSize: fontSize.xl, fontWeight: '700', color: '#FFFFFF', ...onImageTextShadow },
+  tripName: { fontFamily: fontFamily.heading, fontSize: fontSize.xl, fontWeight: '700', color: colors.white, ...onImageTextShadow },
   dates: {
     ...onImageTextShadow,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.base,
     fontWeight: '500',
-    color: 'rgba(226,232,240,0.72)',
+    color: colors.foreground72,
     marginTop: 3,
     marginBottom: spacing.md,
   },
-  track: { height: 4, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'hidden' },
+  track: { height: 4, borderRadius: radius.full, backgroundColor: colors.border, overflow: 'hidden' },
   // Verdict + day counter, on the photo (the image is their background).
   verdictRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
   verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3, ...onImageTextShadow },
   // Without a verdict there is only the day counter: fill the row and keep it
   // right-aligned, where it sat next to the verdict.
   verdictDaySolo: { flex: 1, textAlign: 'right' },
-  verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: 'rgba(226,232,240,0.82)', ...onImageTextShadow },
+  verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: colors.foreground82, ...onImageTextShadow },
   // Flat surface under the photo: the two figures, no image behind them.
   footer: {
     paddingHorizontal: spacing.lg,

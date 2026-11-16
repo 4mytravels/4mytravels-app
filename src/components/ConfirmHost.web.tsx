@@ -61,7 +61,7 @@ export function ConfirmHost() {
             style={({ pressed }) => [styles.action, styles.actionDanger, pressed && styles.actionPressed]}
             onPress={() => answer(true)}
           >
-            <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+            <Ionicons name="trash-outline" size={16} color={colors.white} />
             <Text style={styles.actionTextDanger}>{request.confirmLabel}</Text>
           </Pressable>
         </View>
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing['2xl'],
   } as unknown as ViewStyle,
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,5,15,0.72)' },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.scrimStrong },
   dialog: {
     // Fixed width, not a percentage: react-native-web resolves `width: '100%'`
     // against a shrink-to-fit parent, so a percentage would collapse here.
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionTextDanger: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.md,
     fontWeight: '600',

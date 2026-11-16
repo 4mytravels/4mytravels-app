@@ -446,7 +446,7 @@ export function ExpenseForm({
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
-                placeholderTextColor="rgba(255,255,255,0.35)"
+                placeholderTextColor={colors.white35}
               />
               <Pressable style={styles.currencyButton} onPress={() => setShowCurrencies(true)}>
                 <Text style={styles.currencyText}>
@@ -753,7 +753,7 @@ export function ExpenseForm({
         <Pressable style={styles.viewerBackdrop} onPress={() => setReceiptViewerOpen(false)}>
           <Image source={{ uri: receiptPreview ?? undefined }} style={styles.viewerImage} resizeMode="contain" />
           <View style={styles.viewerClose}>
-            <Ionicons name="close" size={24} color="#fff" />
+            <Ionicons name="close" size={24} color={colors.white} />
           </View>
         </Pressable>
       </SheetPortal>
@@ -791,7 +791,7 @@ export function ExpenseForm({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.backdropSoft },
   sheet: {
     backgroundColor: colors.background,
     borderTopLeftRadius: radius['3xl'],
@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.white20,
     alignSelf: 'center',
     marginBottom: spacing.lg,
   },
@@ -831,7 +831,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
   currencyButton: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
@@ -901,7 +901,7 @@ const styles = StyleSheet.create({
   noteInput: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -915,7 +915,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingLeft: spacing.xl,
   },
@@ -923,7 +923,7 @@ const styles = StyleSheet.create({
   timeInput: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -956,11 +956,11 @@ const styles = StyleSheet.create({
   receiptAddText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   receiptHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm },
   overrideNote: { color: colors.success, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.md },
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   webPickerOverlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'flex-end',
   },
   webPickerSheet: {
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -1003,8 +1003,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
-  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' },
+  viewerBackdrop: { flex: 1, backgroundColor: colors.backdropStrong, alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: '100%', height: '90%' },
-  viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white15, alignItems: 'center', justifyContent: 'center' },
   splitHint: { color: colors.mutedForeground, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans },
 });

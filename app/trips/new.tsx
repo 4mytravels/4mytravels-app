@@ -459,17 +459,23 @@ export default function NewTripScreen() {
                   resizeMode="cover"
                 />
                 <View style={styles.coverActions}>
-                  <Pressable style={[styles.coverBtn, styles.coverBtnGrow]} onPress={() => { void pickCover(); }}>
-                    <Ionicons name="swap-horizontal-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.coverBtnText}>Change photo</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.coverBtn, styles.coverBtnGrow, { backgroundColor: colors.destructive }]}
+                  {/* M3: the shared Button (was two hand-rolled pills). */}
+                  <Button
+                    style={styles.coverBtnGrow}
+                    label="Change photo"
+                    icon="swap-horizontal-outline"
+                    variant="secondary"
+                    size="md"
+                    onPress={() => { void pickCover(); }}
+                  />
+                  <Button
+                    style={styles.coverBtnGrow}
+                    label="Remove"
+                    icon="trash-outline"
+                    variant="destructive"
+                    size="md"
                     onPress={() => { setCoverBytes(null); setCoverPreview(null); setCoverRemoved(true); }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.coverBtnText}>Remove</Text>
-                  </Pressable>
+                  />
                 </View>
               </View>
             ) : (
@@ -485,7 +491,7 @@ export default function NewTripScreen() {
         <View style={styles.footer}>
           <Button label={saving ? 'Saving…' : isEdit ? 'Save trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
           {errorMsg ? (
-            <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: radius.lg }}>
+            <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.red12, borderRadius: radius.lg }}>
               <Text style={{ color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>{errorMsg}</Text>
             </View>
           ) : null}
@@ -527,7 +533,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     marginTop: 0,
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: spacing.lg },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.white20, alignSelf: 'center', marginBottom: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
   closeButton: { padding: spacing.xs },
@@ -547,7 +553,7 @@ const styles = StyleSheet.create({
   },
   footer: { marginTop: spacing.sm },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius['3xl'],
@@ -579,18 +585,7 @@ const styles = StyleSheet.create({
   // Buttons sit UNDER the full-width preview now (they no longer squeeze
   // beside a small square), sharing the row equally.
   coverActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
-  coverBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.full,
-    backgroundColor: colors.primarySolid,
-  },
   coverBtnGrow: { flex: 1 },
-  coverBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.xs },
   coverAdd: {
     flexDirection: 'row',
     alignItems: 'center',

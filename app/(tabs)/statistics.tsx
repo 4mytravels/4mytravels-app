@@ -19,7 +19,7 @@ import { File, Paths } from 'expo-file-system';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { expensesToCsv } from '../../src/services/csv';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, donutPalette } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -35,14 +35,7 @@ import { expenseDay } from '../../src/utils/periods';
 // Donut: top N categories + "Others".
 const MAX_SLICES = 5;
 
-const DONUT_COLORS = [
-  '#6366F1', // periwinkle blue
-  '#EF4444', // coral red
-  '#10B981', // mint green
-  '#F59E0B', // soft orange
-  '#8B5CF6', // lavender purple
-  '#6B7280', // gray — Others
-];
+const DONUT_COLORS = donutPalette;
 
 // Category icons come from the ONE map (src/utils/categoryIcons.ts) — the form,
 // this donut and the filter sheets must agree on a category's icon.
@@ -157,7 +150,7 @@ function DonutChart({
               <Ionicons
                 name={categoryIcon(s.category)}
                 size={10}
-                color="#fff"
+                color={colors.white}
                 style={{ marginRight: 2 }}
               />
               <Text maxFontSizeMultiplier={1.3} style={styles.sliceLabelText} numberOfLines={1}>
@@ -836,7 +829,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   // Trip filter sheet
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius['3xl'],
@@ -891,13 +884,13 @@ const styles = StyleSheet.create({
   sliceLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: colors.black45,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
   sliceLabelText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 11,
     fontWeight: '600',
     fontFamily: fontFamily.sans,
@@ -993,7 +986,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     backgroundColor: colors.card,
     borderRadius: radius.xl,
-    shadowColor: '#000',
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 3,
@@ -1036,7 +1029,7 @@ const styles = StyleSheet.create({
   barValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   barTrack: {
     height: 10,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.surfaceStrong,
     borderRadius: 5,
     overflow: 'hidden',
   },

@@ -95,7 +95,7 @@ function ExpenseRowImpl({
       ]}
       onPress={() => onPress(expense)}
     >
-      <IconCircle icon={categoryIcon(expense.category)} size={40} color="#FFFFFF" />
+      <IconCircle icon={categoryIcon(expense.category)} size={40} color={colors.white} />
       <View style={styles.details}>
         <Text style={styles.rowTitle} numberOfLines={1}>
           {expense.notes || expense.category}

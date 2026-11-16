@@ -5,6 +5,7 @@
 // sqlite3mc WASM engine and does NOT allow JS eval).
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
+import { colors } from '../src/theme/theme';
 
 export const unstable_settings = {
   // Anchor the rendered HTML at the root so all routes share this shell.
@@ -34,7 +35,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta httpEquiv="Content-Security-Policy" content={CSP} />
-        <meta name="theme-color" content="#0A0A1A" />
+        <meta name="theme-color" content={colors.background} />
         {/* Q12: the UI is dark-only; stop the browser from offering light form controls/scrollbars. */}
         <meta name="color-scheme" content="dark" />
         <meta name="description" content="Privacy-first travel expense tracker. Encrypted local storage, no account, no tracking." />
@@ -47,9 +48,9 @@ export default function Root({ children }: PropsWithChildren) {
         {/* M2: a visible keyboard-focus ring on web (react-native-web strips
             the default outline). :focus-visible only — a mouse/touch click
             does not draw it. CSP allows inline styles (style-src). */}
-        <style>{`:focus-visible{outline:2px solid #A5B4FC;outline-offset:2px;border-radius:inherit}`}</style>
+        <style>{`:focus-visible{outline:2px solid ${colors.primaryText};outline-offset:2px;border-radius:inherit}`}</style>
       </head>
-      <body style={{ backgroundColor: '#0A0A1A' }}>
+      <body style={{ backgroundColor: colors.background }}>
         {children}
         <ScrollViewStyleReset />
       </body>

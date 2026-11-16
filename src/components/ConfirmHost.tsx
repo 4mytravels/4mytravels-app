@@ -53,7 +53,7 @@ export function ConfirmHost() {
               style={({ pressed }) => [styles.action, styles.actionDanger, pressed && styles.actionPressed]}
               onPress={() => answer(true)}
             >
-              <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+              <Ionicons name="trash-outline" size={16} color={colors.white} />
               <Text style={styles.actionTextDanger}>{request.confirmLabel}</Text>
             </Pressable>
           </View>
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing['2xl'],
-    backgroundColor: 'rgba(5,5,15,0.72)',
+    backgroundColor: colors.scrimStrong,
   },
   dialog: {
     width: '100%',
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionTextDanger: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.md,
     fontWeight: '600',

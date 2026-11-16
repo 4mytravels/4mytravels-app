@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(5,5,15,0.72)',
+    backgroundColor: colors.scrimStrong,
   },
   dialog: {
     // Fixed width, not a percentage: react-native-web resolves `width: '100%'`

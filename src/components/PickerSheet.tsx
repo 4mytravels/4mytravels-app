@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.backdrop,
   },
   sheet: {
     position: 'absolute',
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondary,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },

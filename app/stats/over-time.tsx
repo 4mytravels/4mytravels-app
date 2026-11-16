@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
+  chipActive: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   chipText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   chipTextActive: { color: colors.primaryText, fontWeight: '700' },
   periodNav: {
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  filterButtonOn: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
+  filterButtonOn: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   filterButtonText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   filterButtonTextOn: { color: colors.primaryText, fontWeight: '700' },
   emptyText: {
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   topLabel: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '600' },
   barTrack: {
     height: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.surfaceStrong,
     borderRadius: 4,
     overflow: 'hidden',
     marginTop: 6,

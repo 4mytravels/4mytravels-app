@@ -109,15 +109,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   wrapFallback: {
-    backgroundColor: '#2A2214', // amber @16% over the background, as a solid
-    borderColor: 'rgba(251,191,36,0.30)',
+    backgroundColor: colors.amberNoticeSurface, // amber @16% over the background, as a solid
+    borderColor: colors.amberNoticeBorder,
   },
   wrapVolatile: {
-    backgroundColor: '#2C1A1C', // red @18% over the background, as a solid
-    borderColor: 'rgba(248,113,113,0.35)',
+    backgroundColor: colors.redNoticeSurface, // red @18% over the background, as a solid
+    borderColor: colors.redNoticeBorder,
   },
   body: { flex: 1, gap: 4 },
-  label: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
+  label: { color: colors.white, fontSize: 13, fontWeight: '600' },
   detail: { color: colors.mutedForeground, fontSize: 12, lineHeight: 17 },
   close: { color: colors.mutedForeground, fontSize: 14 },
 });

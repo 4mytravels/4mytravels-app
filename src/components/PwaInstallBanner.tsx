@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginHorizontal: spacing.xl,
     marginBottom: spacing.lg,
-    backgroundColor: '#1A1B41', // solid: #6366F1 @18% over the #0A0A1A background
+    backgroundColor: colors.primaryNoticeSurface, // solid: #6366F1 @18% over the #0A0A1A background
     borderColor: colors.primaryBorder,
     ...cardShadow,
   },

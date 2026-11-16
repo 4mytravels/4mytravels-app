@@ -96,7 +96,54 @@ export const colors = {
   onImageMuted: 'rgba(255,255,255,0.80)',
   imageGradientTop: 'rgba(0,0,0,0)',
   imageGradientBottom: 'rgba(0,0,0,0.72)',
+
+  // M3: every literal that used to live in a screen/component, as a token with
+  // its EXACT old value (migration = zero visual change). New code picks from
+  // the semantic tokens above; these exist so no hex/rgba remains outside
+  // src/theme/ (enforced by the no-restricted-syntax lint rule).
+  white: '#FFFFFF',
+  black: '#000000',
+  backdrop: 'rgba(0,0,0,0.6)',
+  backdropSoft: 'rgba(0,0,0,0.5)',
+  backdropStrong: 'rgba(0,0,0,0.95)',
+  scrimStrong: 'rgba(5,5,15,0.72)',
+  black45: 'rgba(0,0,0,0.45)',
+  white15: 'rgba(255,255,255,0.15)',
+  white35: 'rgba(255,255,255,0.35)',
+  foreground28: 'rgba(226,232,240,0.28)',
+  white20: 'rgba(255,255,255,0.20)',
+  white22: 'rgba(255,255,255,0.22)',
+  white28: 'rgba(255,255,255,0.28)',
+  foreground72: 'rgba(226,232,240,0.72)',
+  foreground82: 'rgba(226,232,240,0.82)',
+  slate22: 'rgba(148,163,184,0.22)',
+  pastVeil: 'rgba(10,10,26,0.46)',
+  red400: '#F87171',
+  red12: 'rgba(239,68,68,0.12)',
+  amberNoticeSurface: '#2A2214', // amber @16% over background, as a solid
+  amberNoticeBorder: 'rgba(251,191,36,0.30)',
+  redNoticeSurface: '#2C1A1C', // red @18% over background, as a solid
+  redNoticeBorder: 'rgba(248,113,113,0.35)',
+  primaryNoticeSurface: '#1A1B41', // #6366F1 @18% over background, as a solid
+  amber10: 'rgba(251,191,36,0.10)',
+  blue28: 'rgba(59,130,246,0.28)',
+  blue200: '#BFDBFE',
+  teal32: 'rgba(13,148,136,0.32)',
+  teal300: '#5EEAD4',
+  amber500: '#F59E0B',
+  noPhoto1: '#1B1E46',
+  noPhoto2: '#2A2560',
 } as const;
+
+// Statistics donut: top 5 categories + "Others" (moved out of the screen, M3).
+export const donutPalette = [
+  '#6366F1', // periwinkle blue
+  '#EF4444', // coral red
+  '#10B981', // mint green
+  '#F59E0B', // soft orange
+  '#8B5CF6', // lavender purple
+  '#6B7280', // gray — Others
+] as const;
 
 export const radius = {
   sm: 12,

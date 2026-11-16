@@ -100,10 +100,7 @@ export default function TripsScreen() {
           <>
             <View style={styles.titleRow}>
               <Text style={styles.screenTitle}>Trips</Text>
-              <Pressable style={styles.newButton} onPress={() => router.push('/trips/new')}>
-                <Ionicons name="add" size={18} color={colors.primaryForeground} />
-                <Text style={styles.newButtonText}>New trip</Text>
-              </Pressable>
+              <Button label="New trip" icon="add" size="sm" onPress={() => router.push('/trips/new')} />
             </View>
             <ScrollView
               horizontal
@@ -179,17 +176,15 @@ const styles = StyleSheet.create({
   cardWrap: { marginBottom: spacing.xl },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
-  newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primarySolid, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },
-  newButtonText: { color: colors.primaryForeground, fontWeight: '600', fontFamily: fontFamily.sans },
   tabsScroll: { marginBottom: spacing.lg },
   tabs: { gap: spacing.sm, paddingRight: spacing.lg },
   tab: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: colors.surfaceMedium,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: colors.border,
     position: 'relative',
   },
   tabText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '500', fontFamily: fontFamily.sans },

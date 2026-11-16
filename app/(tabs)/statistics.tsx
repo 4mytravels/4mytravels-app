@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -449,9 +449,13 @@ export default function StatisticsScreen() {
     };
   }, []);
 
-  useFocusEffect(() => {
-    loadData();
-  });
+  // useCallback is required: an inline callback is a new function each render,
+  // so useFocusEffect re-ran it after every setState → endless query loop (Q1).
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);

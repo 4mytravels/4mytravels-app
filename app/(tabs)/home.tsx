@@ -42,29 +42,33 @@ export default function HomeScreen() {
   const skipNextFocusRef = useRef(false);
 
   // Reload on every focus so new expenses appear without an app restart.
-  useFocusEffect(() => {
-    if (skipNextFocusRef.current) {
-      skipNextFocusRef.current = false;
-      return;
-    }
-    let alive = true;
-    (async () => {
-      try {
-        // Metadata only: this screen renders no receipt photos, and loading the
-        // BLOBs on every focus was the single most expensive query in the app.
-        const list = await loadExpensesForList();
-        if (alive) {
-          setExpenses(list);
-          setLoading(false);
-        }
-      } catch {
-        if (alive) setLoading(false);
+  // useCallback is required: an inline callback re-runs after every render,
+  // and setExpenses() re-renders → endless query loop (Q1).
+  useFocusEffect(
+    useCallback(() => {
+      if (skipNextFocusRef.current) {
+        skipNextFocusRef.current = false;
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  });
+      let alive = true;
+      (async () => {
+        try {
+          // Metadata only: this screen renders no receipt photos, and loading the
+          // BLOBs on every focus was the single most expensive query in the app.
+          const list = await loadExpensesForList();
+          if (alive) {
+            setExpenses(list);
+            setLoading(false);
+          }
+        } catch {
+          if (alive) setLoading(false);
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
 
   const trips = useTripStore((s) => s.trips);
   // Home-wide display currency = the global default home currency from Settings
@@ -104,8 +108,9 @@ export default function HomeScreen() {
   );
   const todayEntries = todaySection?.data ?? [];
   const todaysExpenses = todayEntries.map((entry) => entry.expense);
-  const todayTotal = useMemo(() => {
-    return todayEntries.reduce((sum, entry) => {
+  // Not memoised: todayEntries and toDisplay are new each render, so a memo
+  // never hit, and its old [todayEntries] deps hid stale rates (Q1 lint).
+  const todayTotal = todayEntries.reduce((sum, entry) => {
       const e = entry.expense;
       // Day-part in the EXPENSE currency: for splits it's the per-day share
       // (splitShare is in trip-home currency, so divide back by rateToHome),
@@ -118,7 +123,6 @@ export default function HomeScreen() {
       const dayPartHome = entry.splitShare ?? toHomeCurrency(e);
       return sum + (converted != null ? converted : dayPartHome);
     }, 0);
-  }, [todayEntries]);
 
   // Unique countries: only from active or past trips (not upcoming).
   const countrySet = new Set<string>();

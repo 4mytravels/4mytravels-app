@@ -273,7 +273,7 @@ export function ExpenseForm({
     return () => {
       cancelled = true;
     };
-  }, [currency, date, homeCurrency, manualOverride]);
+  }, [currency, date, homeCurrency, manualOverride, isEdit]);
 
   const amountNum = parseFloat(amount) || 0;
   const homeAmount = rate != null ? amountNum * rate : null;

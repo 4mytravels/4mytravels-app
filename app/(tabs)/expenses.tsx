@@ -130,23 +130,27 @@ export default function ExpensesScreen() {
       scrollPendingRef.current = true;
     }, []),
   );
-  useFocusEffect(() => {
-    if (skipNextFocusRef.current) {
-      skipNextFocusRef.current = false;
-      return;
-    }
-    let alive = true;
-    (async () => {
-      const list = await loadExpensesForList();
-      if (alive) {
-        setExpenses(list);
-        if (scrollPendingRef.current) setLoadTick((n) => n + 1);
+  // useCallback is required: an inline callback re-runs after every render,
+  // and setExpenses() re-renders → endless query loop (Q1).
+  useFocusEffect(
+    useCallback(() => {
+      if (skipNextFocusRef.current) {
+        skipNextFocusRef.current = false;
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  });
+      let alive = true;
+      (async () => {
+        const list = await loadExpensesForList();
+        if (alive) {
+          setExpenses(list);
+          if (scrollPendingRef.current) setLoadTick((n) => n + 1);
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
 
   const filteredExpenses = useMemo(
     () => filterExpensesByTrips(expenses, activeTripIds),

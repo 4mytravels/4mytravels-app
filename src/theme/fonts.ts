@@ -28,8 +28,9 @@ export function useAppFonts() {
     Manrope: MANROPE,
     Sora: SORA,
   });
+  const loaded = result[0];
   useEffect(() => {
-    if (result[0]) registerVariableWeights();
-  }, [result[0]]);
+    if (loaded) registerVariableWeights();
+  }, [loaded]);
   return result;
 }

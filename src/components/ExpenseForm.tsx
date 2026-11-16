@@ -41,7 +41,7 @@ import {
 } from '../types';
 import { allocateSplit } from '../utils/pace';
 import { localDateTimeISO, localNoon, localTimeHM } from '../utils/days';
-import { CategoryChip, Button } from './ui';
+import { CategoryChip, Button, IconButton } from './ui';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
@@ -111,6 +111,18 @@ export function ExpenseForm({
   // evenly across [date … endDate] in budget statistics (§2.2 allocateSplit).
   const [endDate, setEndDate] = useState(initialExpense?.multiDaySplit?.splitEnd ?? '');
   const [splitOpen, setSplitOpen] = useState(false);
+  // M8: progressive disclosure. Trip, amount/currency, category and Save are
+  // always visible; payment, note, country, receipt, date and split sit behind
+  // "More details". Editing opens it when any of those fields carries data.
+  const [detailsOpen, setDetailsOpen] = useState(
+    () =>
+      !!initialExpense &&
+      (!!initialExpense.notes ||
+        !!initialExpense.receiptPhoto ||
+        !!initialExpense.multiDaySplit ||
+        !!initialExpense.country ||
+        initialExpense.paymentMethod !== 'card'),
+  );
   // Native date pickers (calendar icon buttons). 'date' = start date,
   // 'end' = multi-day split end date.
   // The picker's initial Date is pinned in STATE at open time: passing a fresh
@@ -455,6 +467,13 @@ export function ExpenseForm({
                 </Text>
                 <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
               </Pressable>
+              {/* M8: receipt shortcut — open form → 📷 → pick = 3 taps. */}
+              <IconButton
+                icon={receiptPreview ? 'checkmark-circle' : 'camera-outline'}
+                label={receiptPreview ? 'Receipt attached — replace' : 'Add receipt photo'}
+                color={receiptPreview ? colors.success : undefined}
+                onPress={() => { void pickReceipt(); }}
+              />
             </View>
             {/* Currency selection. PickerSheet keeps the backdrop and the sheet
                 as SIBLINGS, so a tap on the search field can never bubble into
@@ -532,6 +551,23 @@ export function ExpenseForm({
             </View>
           </View>
 
+          {/* M8: everything below is optional detail. */}
+          <Pressable
+            style={styles.detailsToggle}
+            onPress={() => setDetailsOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: detailsOpen }}
+          >
+            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Fewer details' : 'More details'}</Text>
+            <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
+            {!detailsOpen && (
+              <Text style={styles.detailsSummary} numberOfLines={1}>
+                {[paymentMethod === 'card' ? 'Card' : 'Cash', country || null, date, time].filter(Boolean).join(' · ')}
+              </Text>
+            )}
+          </Pressable>
+
+          {detailsOpen ? (<>
           {/* Payment method */}
           <View style={styles.section}>
             <Text style={styles.label}>Payment</Text>
@@ -706,6 +742,7 @@ export function ExpenseForm({
               </Pressable>
             )}
           </View>
+          </>) : null}
         </ScrollView>
 
         <View style={styles.footer}>
@@ -823,6 +860,21 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md },
   label: { fontSize: fontSize.md, color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans, marginBottom: spacing.sm },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  detailsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    marginBottom: spacing.md,
+  },
+  detailsToggleText: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  detailsSummary: {
+    flex: 1,
+    textAlign: 'right',
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.sans,
+  },
   amountInput: {
     flex: 1,
     // Web: react-native-web renders this as <input>, a flex item with

@@ -5,7 +5,7 @@
     "version": "1.1.2",
     "orientation": "portrait",
     "scheme": "fourmytravels",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,

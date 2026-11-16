@@ -35,6 +35,8 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta httpEquiv="Content-Security-Policy" content={CSP} />
         <meta name="theme-color" content="#0A0A1A" />
+        {/* Q12: the UI is dark-only; stop the browser from offering light form controls/scrollbars. */}
+        <meta name="color-scheme" content="dark" />
         <meta name="description" content="Privacy-first travel expense tracker. Encrypted local storage, no account, no tracking." />
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />

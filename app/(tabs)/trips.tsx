@@ -45,19 +45,26 @@ export default function TripsScreen() {
   // ON FOCUS, not only when the trip list changes: logging an expense on the
   // Expenses tab left every card showing the old figures until the app was
   // restarted. Same pattern as home/expenses/statistics.
+  // Q3: ONE query for all trips, grouped in JS — was one query per trip (N+1).
+  // The global list is created_at DESC, so each group keeps that order.
+  const fetchExpensesByTrip = useCallback(async () => {
+    const all = await loadExpensesForList();
+    const map: Record<string, Expense[]> = {};
+    for (const t of trips) map[t.id] = [];
+    for (const e of all) (map[e.tripId] ??= []).push(e);
+    return map;
+  }, [trips]);
+
   const loadTripExpenses = useCallback(() => {
     let alive = true;
     (async () => {
-      const map: Record<string, Expense[]> = {};
-      for (const t of trips) {
-        map[t.id] = await loadExpensesForList(t.id);
-      }
+      const map = await fetchExpensesByTrip();
       if (alive) setExpensesByTrip(map);
     })();
     return () => {
       alive = false;
     };
-  }, [trips]);
+  }, [fetchExpensesByTrip]);
 
   useFocusEffect(loadTripExpenses);
 
@@ -100,11 +107,7 @@ export default function TripsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    const map: Record<string, Expense[]> = {};
-    for (const t of trips) {
-      map[t.id] = await loadExpensesForList(t.id);
-    }
-    setExpensesByTrip(map);
+    setExpensesByTrip(await fetchExpensesByTrip());
     setRefreshing(false);
   };
 

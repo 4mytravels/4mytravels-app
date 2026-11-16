@@ -74,6 +74,28 @@ export const colors = {
   // blacks
   black20: 'rgba(0,0,0,0.20)',
   black48: 'rgba(0,0,0,0.48)',
+
+  // Q11 status set (Tailwind *-400 text on dark; *15 = tinted surface, *Border = outline)
+  warning: '#FBBF24',
+  warning15: 'rgba(251,191,36,0.15)',
+  warningBorder: 'rgba(251,191,36,0.40)',
+  danger: '#FB7185',
+  danger15: 'rgba(251,113,133,0.15)',
+  dangerBorder: 'rgba(251,113,133,0.40)',
+  info: '#60A5FA',
+  info15: 'rgba(96,165,250,0.15)',
+  infoBorder: 'rgba(96,165,250,0.40)',
+  teal: '#2DD4BF',
+  teal15: 'rgba(45,212,191,0.15)',
+  tealBorder: 'rgba(45,212,191,0.40)',
+  successBorder: 'rgba(53,211,153,0.40)',
+
+  // Q11 overlays: modal backdrop, and text/icons placed on a cover photo
+  scrim: 'rgba(5,5,15,0.64)',
+  onImage: '#FFFFFF',
+  onImageMuted: 'rgba(255,255,255,0.80)',
+  imageGradientTop: 'rgba(0,0,0,0)',
+  imageGradientBottom: 'rgba(0,0,0,0.72)',
 } as const;
 
 export const radius = {
@@ -113,6 +135,29 @@ export const fontSize = {
   '4xl': 28,
   '5xl': 32,
 } as const;
+
+// Q11 target type scale (11/12/14/16/20/24/28/34). Definitions only: screens
+// still use `fontSize` above and move over during M2/M3 (`<Text variant>`).
+export const typeScale = {
+  caption: 11,
+  label: 12,
+  body: 14,
+  bodyLg: 16,
+  title: 20,
+  titleLg: 24,
+  display: 28,
+  displayLg: 34,
+} as const;
+
+// Q11 icon sizes; touch targets stay >= 44 regardless of glyph size (M2 IconButton).
+export const iconSize = {
+  sm: 16,
+  md: 20,
+  lg: 24,
+  xl: 32,
+} as const;
+
+export const touchTarget = 44;
 
 // Shadow tokens (refined design)
 export const fabShadow = {

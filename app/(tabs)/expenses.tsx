@@ -328,7 +328,7 @@ export default function ExpensesScreen() {
             onPress={() => setPickerOpen(true)}
             accessibilityLabel="Filter by trip"
           >
-            <Ionicons name="airplane-outline" size={26} color={colors.primary} />
+            <Ionicons name="airplane-outline" size={26} color={colors.primaryText} />
             {activeTripIds.length > 0 && (
               <View style={styles.filterBadge}>
                 <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
@@ -388,7 +388,7 @@ export default function ExpensesScreen() {
                   </Pressable>
                 )}
                 <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }}>
-                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.sm }}>Cancel</Text>
+                  <Text style={{ color: colors.primaryText, fontWeight: '700', fontSize: fontSize.sm }}>Cancel</Text>
                 </Pressable>
               </View>
             )}
@@ -459,13 +459,13 @@ export default function ExpensesScreen() {
                 <Text
                   style={[
                     styles.pickerRowText,
-                    activeTripIds.length === 0 && { color: colors.primary, fontWeight: '700' },
+                    activeTripIds.length === 0 && { color: colors.primaryText, fontWeight: '700' },
                   ]}
                 >
                   All trips
                 </Text>
                 {activeTripIds.length === 0 && (
-                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                  <Ionicons name="checkmark" size={18} color={colors.primaryText} />
                 )}
               </Pressable>
               {trips.map((t) => {
@@ -477,10 +477,10 @@ export default function ExpensesScreen() {
                       size={18}
                       color={on ? colors.primary : colors.mutedForeground}
                     />
-                    <Text style={[styles.pickerRowText, on && { color: colors.primary, fontWeight: '700' }]}>
+                    <Text style={[styles.pickerRowText, on && { color: colors.primaryText, fontWeight: '700' }]}>
                       {t.name}
                     </Text>
-                    {on && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    {on && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
                   </Pressable>
                 );
               })}
@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
@@ -606,7 +606,7 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     paddingHorizontal: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -663,7 +663,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
     ...fabShadow,
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,

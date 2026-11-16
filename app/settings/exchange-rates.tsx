@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   },
   rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
   rateSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
-  overrideActive: { color: colors.primary, fontWeight: '700' },
+  overrideActive: { color: colors.primaryText, fontWeight: '700' },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rateInput: {
     backgroundColor: colors.secondary,
@@ -211,14 +211,14 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   rateBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   rateBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   rateBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm },
-  rateBtnTextGhost: { color: colors.primary },
+  rateBtnTextGhost: { color: colors.primaryText },
   clearBtn: { padding: spacing.xs },
   footerNote: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, lineHeight: 20, marginTop: spacing.lg },
 });

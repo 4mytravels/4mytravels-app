@@ -149,10 +149,10 @@ export function PickerRow({
       {icon && (
         <Ionicons name={icon} size={18} color={active ? colors.primary : colors.mutedForeground} />
       )}
-      <Text style={[styles.rowText, active && { color: colors.primary, fontWeight: '700' }]} numberOfLines={1}>
+      <Text style={[styles.rowText, active && { color: colors.primaryText, fontWeight: '700' }]} numberOfLines={1}>
         {label}
       </Text>
-      {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+      {active && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
     </Pressable>
   );
 }
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: fontFamily.heading,
   },
-  done: { color: colors.primary, fontWeight: '700', fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  done: { color: colors.primaryText, fontWeight: '700', fontSize: fontSize.md, fontFamily: fontFamily.sans },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',

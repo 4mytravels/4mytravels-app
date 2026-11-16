@@ -109,7 +109,7 @@ export function Button({
           backgroundColor: disabled
             ? colors.surfaceStrong
             : isPrimary
-              ? colors.primary
+              ? colors.primarySolid
               : 'transparent',
           borderWidth: isPrimary ? 0 : 1,
           borderColor: disabled ? colors.border : colors.border,

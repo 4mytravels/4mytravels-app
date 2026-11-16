@@ -12,6 +12,12 @@ export const colors = {
 
   primary: '#6366F1', // oklch(0.585 0.204 277.117) — the periwinkle accent
   primaryForeground: '#FFFFFF',
+  // Q9 contrast: `primary` is 4.47:1 under white text and 4.0:1 as text on a
+  // card — both just below WCAG AA. Use primarySolid for filled controls with
+  // white labels (button, FAB, active nav: 6.3:1) and primaryText for accent
+  // text/icons on dark surfaces (9.0:1). `primary` stays for bars/borders.
+  primarySolid: '#4F46E5', // indigo-600
+  primaryText: '#A5B4FC', // indigo-300
   secondary: '#18203A', // oklch(0.250 0.050 270.000)
   secondaryForeground: '#E2E8F0',
 
@@ -36,11 +42,12 @@ export const colors = {
   globeGlow: 'rgba(99,102,241,0.25)',
 
   // chart palette (statistics)
-  chart1: '#1447E6',
-  chart2: '#00BC7D',
-  chart3: '#FE9A00',
-  chart4: '#AD46FF',
-  chart5: '#FF2056',
+  // Q9: Tailwind *-400 — every series ≥ 6:1 on `card` (chart1 was 2.6:1).
+  chart1: '#818CF8', // indigo-400
+  chart2: '#34D399', // emerald-400
+  chart3: '#FBBF24', // amber-400
+  chart4: '#C084FC', // purple-400
+  chart5: '#FB7185', // rose-400
 
   // surface opacities (refined design — white overlays for depth)
   surfaceSoft: 'rgba(255,255,255,0.04)',

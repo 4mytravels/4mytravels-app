@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   body: { color: colors.mutedForeground, fontSize: 13, lineHeight: 18 },
   error: { color: '#F87171', fontSize: 13 },
   row: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
-  btn: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 18 },
+  btn: { backgroundColor: colors.primarySolid, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 18 },
   btnText: { color: colors.primaryForeground, fontWeight: '600' },
   ghost: { backgroundColor: 'transparent' },
   ghostText: { color: colors.mutedForeground, fontWeight: '600' },

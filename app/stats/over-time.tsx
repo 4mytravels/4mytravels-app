@@ -127,7 +127,7 @@ export default function OverTimeScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Pressable style={styles.filterButton} onPress={() => setTripPickerOpen(true)}>
-          <Ionicons name="airplane-outline" size={15} color={colors.primary} />
+          <Ionicons name="airplane-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, activeTripIds.length > 0 && styles.filterButtonTextOn]}>
             {tripLabelTx}
           </Text>
@@ -137,7 +137,7 @@ export default function OverTimeScreen() {
           style={[styles.filterButton, countryFilter != null && styles.filterButtonOn]}
           onPress={() => setCountryPickerOpen(true)}
         >
-          <Ionicons name="earth-outline" size={15} color={colors.primary} />
+          <Ionicons name="earth-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, countryFilter != null && styles.filterButtonTextOn]}>
             {countryFilter ? countryName(countryFilter) : 'All countries'}
           </Text>
@@ -147,7 +147,7 @@ export default function OverTimeScreen() {
           style={[styles.filterButton, categoryFilter.length > 0 && styles.filterButtonOn]}
           onPress={() => setCategoryPickerOpen(true)}
         >
-          <Ionicons name="pricetag-outline" size={15} color={colors.primary} />
+          <Ionicons name="pricetag-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, categoryFilter.length > 0 && styles.filterButtonTextOn]}>
             {categoryChipLabel}
           </Text>
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
   chipText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
+  chipTextActive: { color: colors.primaryText, fontWeight: '700' },
   periodNav: {
     flexDirection: 'row',
     height: 36,
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   periodItemActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   periodText: {
     fontSize: fontSize.xs,
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
   },
   filterButtonOn: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
   filterButtonText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  filterButtonTextOn: { color: colors.primary, fontWeight: '700' },
+  filterButtonTextOn: { color: colors.primaryText, fontWeight: '700' },
   emptyText: {
     color: colors.mutedForeground,
     fontSize: fontSize.md,

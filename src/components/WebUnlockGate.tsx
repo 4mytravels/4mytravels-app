@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   button: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -392,9 +392,9 @@ const styles = StyleSheet.create({
   chipText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: colors.mutedForeground },
-  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxOn: { backgroundColor: colors.primarySolid, borderColor: colors.primary },
   checkLabel: { color: '#FFFFFF', fontSize: 14 },
-  link: { color: colors.primary, fontSize: 13, textAlign: 'center' },
+  link: { color: colors.primaryText, fontSize: 13, textAlign: 'center' },
   hint: {
     color: colors.mutedForeground,
     fontSize: 12,

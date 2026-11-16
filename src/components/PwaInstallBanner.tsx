@@ -182,7 +182,7 @@ export function PwaInstallBanner() {
 
   return (
     <View style={styles.wrap}>
-      <Ionicons name="phone-portrait-outline" size={20} color={colors.primary} style={styles.icon} />
+      <Ionicons name="phone-portrait-outline" size={20} color={colors.primaryText} style={styles.icon} />
       <View style={styles.body}>
         <Text style={styles.label}>Add 4MyTravels to your home screen</Text>
         <Text style={styles.detail}>
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   ctaText: { color: colors.primaryForeground, fontSize: 12, fontWeight: '700', fontFamily: fontFamily.sans },
   close: { color: colors.mutedForeground, fontSize: 14 },

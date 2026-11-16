@@ -164,12 +164,12 @@ export default function CountriesScreen() {
       {preset === 'custom' && (
         <View style={styles.customRange}>
           <Pressable style={styles.rangeButton} onPress={() => setShowFrom(true)}>
-            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Ionicons name="calendar-outline" size={16} color={colors.primaryText} />
             <Text style={styles.rangeButtonText}>{customFrom || 'From'}</Text>
           </Pressable>
           <Text style={styles.rangeDash}>–</Text>
           <Pressable style={styles.rangeButton} onPress={() => setShowTo(true)}>
-            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Ionicons name="calendar-outline" size={16} color={colors.primaryText} />
             <Text style={styles.rangeButtonText}>{customTo || 'To'}</Text>
           </Pressable>
         </View>
@@ -201,7 +201,7 @@ export default function CountriesScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Pressable style={styles.filterButton} onPress={() => setTripPickerOpen(true)}>
-          <Ionicons name="airplane-outline" size={15} color={colors.primary} />
+          <Ionicons name="airplane-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, activeTripIds.length > 0 && styles.filterButtonTextOn]}>
             {tripChipLabel}
           </Text>
@@ -211,14 +211,14 @@ export default function CountriesScreen() {
           style={[styles.filterButton, categoryFilter.length > 0 && styles.filterButtonOn]}
           onPress={() => setCategoryPickerOpen(true)}
         >
-          <Ionicons name="pricetag-outline" size={15} color={colors.primary} />
+          <Ionicons name="pricetag-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, categoryFilter.length > 0 && styles.filterButtonTextOn]}>
             {categoryChipLabel}
           </Text>
           <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
         </Pressable>
         <Pressable style={styles.filterButton} onPress={() => setSortPickerOpen(true)}>
-          <Ionicons name="swap-vertical-outline" size={15} color={colors.primary} />
+          <Ionicons name="swap-vertical-outline" size={15} color={colors.primaryText} />
           <Text style={styles.filterButtonText}>{sortChipLabel}</Text>
           <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
         </Pressable>
@@ -228,7 +228,7 @@ export default function CountriesScreen() {
           Same information that used to be a bare line under the title, now a
           card with the active period spelled out. */}
       <View style={styles.summaryCard}>
-        <Ionicons name="globe-outline" size={26} color={colors.primary} />
+        <Ionicons name="globe-outline" size={26} color={colors.primaryText} />
         <View style={styles.summaryTextWrap}>
           <Text style={styles.summaryMain}>
             {rows.length} {rows.length === 1 ? 'country' : 'countries'} • {formatMoney(total, 'EUR')} total
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
   chipText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
+  chipTextActive: { color: colors.primaryText, fontWeight: '700' },
   customRange: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   rangeInput: {
     flex: 1,
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
   },
   filterButtonOn: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
   filterButtonText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  filterButtonTextOn: { color: colors.primary, fontWeight: '700' },
+  filterButtonTextOn: { color: colors.primaryText, fontWeight: '700' },
   emptyText: {
     color: colors.mutedForeground,
     fontSize: fontSize.md,

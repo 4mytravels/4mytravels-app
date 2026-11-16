@@ -351,7 +351,7 @@ function SplitPaymentBar({
     <View style={styles.splitBarContainer}>
       <View style={styles.splitBarLabels}>
         <Text style={styles.splitBarLabelLeft}>
-          <Ionicons name="card-outline" size={14} color={colors.primary} /> Card
+          <Ionicons name="card-outline" size={14} color={colors.primaryText} /> Card
         </Text>
         <Text style={styles.splitBarLabelRight}>
           Cash <Ionicons name="cash-outline" size={14} color={colors.success} />
@@ -560,7 +560,7 @@ export default function StatisticsScreen() {
           onPress={() => setPickerOpen(true)}
           accessibilityLabel="Filter by trip"
         >
-          <Ionicons name="airplane-outline" size={26} color={colors.primary} />
+          <Ionicons name="airplane-outline" size={26} color={colors.primaryText} />
           {activeTripIds.length > 0 && (
             <View style={styles.filterBadge}>
               <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
@@ -648,7 +648,7 @@ export default function StatisticsScreen() {
           )}
           <Pressable style={styles.seeAll} onPress={() => router.push('/stats/countries')}>
             <Text style={styles.seeAllText}>View all</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
           </Pressable>
         </Section>
 
@@ -667,7 +667,7 @@ export default function StatisticsScreen() {
               toont zijn link altijd). */}
           <Pressable style={styles.seeAll} onPress={() => router.push('/stats/over-time')}>
             <Text style={styles.seeAllText}>View all</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
           </Pressable>
         </Section>
 
@@ -705,13 +705,13 @@ export default function StatisticsScreen() {
                 <Text
                   style={[
                     styles.pickerRowText,
-                    activeTripIds.length === 0 && { color: colors.primary, fontWeight: '700' },
+                    activeTripIds.length === 0 && { color: colors.primaryText, fontWeight: '700' },
                   ]}
                 >
                   All trips
                 </Text>
                 {activeTripIds.length === 0 && (
-                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+                  <Ionicons name="checkmark" size={18} color={colors.primaryText} />
                 )}
               </Pressable>
               {trips.map((t) => {
@@ -723,10 +723,10 @@ export default function StatisticsScreen() {
                       size={18}
                       color={on ? colors.primary : colors.mutedForeground}
                     />
-                    <Text style={[styles.pickerRowText, on && { color: colors.primary, fontWeight: '700' }]}>
+                    <Text style={[styles.pickerRowText, on && { color: colors.primaryText, fontWeight: '700' }]}>
                       {t.name}
                     </Text>
-                    {on && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    {on && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
                   </Pressable>
                 );
               })}
@@ -807,7 +807,7 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     paddingHorizontal: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1070,7 +1070,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   seeAllText: {
-    color: colors.primary,
+    color: colors.primaryText,
     fontSize: fontSize.sm,
     fontWeight: '700',
     fontFamily: fontFamily.sans,

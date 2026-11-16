@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   coverBtnGrow: { flex: 1 },
   coverBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.xs },

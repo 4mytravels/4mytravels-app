@@ -110,7 +110,7 @@ export default function RootLayout() {
   if (!fontsLoaded || !ready) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primaryText} />
         {error && <View />}
       </View>
     );

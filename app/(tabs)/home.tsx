@@ -238,7 +238,7 @@ export default function HomeScreen() {
         </View>
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
+          <ActivityIndicator color={colors.primaryText} style={{ marginTop: spacing.xl }} />
         ) : todayEntries.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No expenses logged today.</Text>
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
     ...fabShadow,

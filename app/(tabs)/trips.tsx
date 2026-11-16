@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   cardWrap: { marginBottom: spacing.xl },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
-  newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },
+  newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primarySolid, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },
   newButtonText: { color: colors.primaryForeground, fontWeight: '600', fontFamily: fontFamily.sans },
   tabsScroll: { marginBottom: spacing.lg },
   tabs: { gap: spacing.sm, paddingRight: spacing.lg },
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
   },
   tabText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '500', fontFamily: fontFamily.sans },
   tabActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderColor: colors.primary,
   },
     // Manage sheet

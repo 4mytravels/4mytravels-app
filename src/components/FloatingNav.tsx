@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   navItemActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   navItemPressed: {
     transform: [{ scale: 0.94 }],

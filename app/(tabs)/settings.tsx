@@ -444,19 +444,19 @@ export default function SettingsScreen() {
             </View>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(WEBSITE_URL))}>
               <Text style={styles.aboutLink}>Website</Text>
-              <Ionicons name="globe-outline" size={16} color={colors.primary} />
+              <Ionicons name="globe-outline" size={16} color={colors.primaryText} />
             </Pressable>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(SOURCE_CODE_URL))}>
               <Text style={styles.aboutLink}>Source code (GitHub)</Text>
-              <Ionicons name="open-outline" size={16} color={colors.primary} />
+              <Ionicons name="open-outline" size={16} color={colors.primaryText} />
             </Pressable>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(ISSUES_URL))}>
               <Text style={styles.aboutLink}>Report an issue</Text>
-              <Ionicons name="bug-outline" size={16} color={colors.primary} />
+              <Ionicons name="bug-outline" size={16} color={colors.primaryText} />
             </Pressable>
             <Pressable style={[styles.aboutRow, { marginBottom: 0 }]} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(PRIVACY_URL))}>
               <Text style={styles.aboutLink}>Privacy statement</Text>
-              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryText} />
             </Pressable>
           </Card>
         </View>
@@ -472,7 +472,7 @@ export default function SettingsScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
               <Text style={styles.pickerTitle}>Default home currency</Text>
               <Pressable onPress={() => setCurrencyPickerOpen(false)}>
-                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
+                <Text style={{ color: colors.primaryText, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
               </Pressable>
             </View>
             <TextInput
@@ -496,10 +496,10 @@ export default function SettingsScreen() {
                     style={[styles.pickerRow, active && styles.pickerRowActive]}
                     onPress={() => { void setDefaultHomeCurrency(c.code); setCurrencyPickerOpen(false); setCurrencyQuery(''); }}
                   >
-                    <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
+                    <Text style={[styles.pickerRowText, active && { color: colors.primaryText, fontWeight: '700' }]}>
                       {c.flag} {c.code} — {c.name}
                     </Text>
-                    {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    {active && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
                   </Pressable>
                 );
               })}
@@ -540,7 +540,7 @@ export default function SettingsScreen() {
             ) : null}
             {busy ? (
               <View style={{ marginTop: spacing.xl, alignItems: 'center', gap: spacing.sm }}>
-                <ActivityIndicator size="large" color={colors.primary} />
+                <ActivityIndicator size="large" color={colors.primaryText} />
                 {busyLabel ? <Text style={styles.note}>{busyLabel}</Text> : null}
               </View>
             ) : (
@@ -563,7 +563,7 @@ export default function SettingsScreen() {
             <ScrollView style={{ maxHeight: 420 }}>
               {trips.map((t) => (
                 <Pressable key={t.id} style={styles.pickerRow} onPress={() => exportSingleTrip(t.id)}>
-                  <Ionicons name="airplane-outline" size={18} color={colors.primary} />
+                  <Ionicons name="airplane-outline" size={18} color={colors.primaryText} />
                   <Text style={styles.pickerRowText}>{t.name}</Text>
                   <Ionicons name="download-outline" size={18} color={colors.mutedForeground} />
                 </Pressable>
@@ -600,7 +600,7 @@ export default function SettingsScreen() {
                 color={importAuto ? colors.primary : colors.mutedForeground}
               />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.pickerRowText, importAuto && { color: colors.primary, fontWeight: '700' }]}>
+                <Text style={[styles.pickerRowText, importAuto && { color: colors.primaryText, fontWeight: '700' }]}>
                   New trip from file dates
                 </Text>
                 <Text style={{ color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>
@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
   },
   aboutLabel: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   aboutValue: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '700', fontFamily: fontFamily.sans },
-  aboutLink: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  aboutLink: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
   pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,
@@ -724,7 +724,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   rateBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,

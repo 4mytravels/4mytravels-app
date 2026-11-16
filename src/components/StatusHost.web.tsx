@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.full,
     paddingVertical: spacing.md,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   actionPressed: { opacity: 0.8 },
   actionText: {

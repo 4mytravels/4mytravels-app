@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, G, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -17,9 +17,8 @@ import { AppLogo } from '../../src/components/AppLogo';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { expensesToCsv } from '../../src/services/csv';
-import type { Expense } from '../../src/types';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
@@ -410,10 +409,9 @@ export default function StatisticsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  // Q8: spinner until the first load, then ONE empty card instead of three
-  // empty sections.
-  const [loaded, setLoaded] = useState(false);
+  // M1 shared store; Q8: spinner until the first load, then ONE empty card
+  // instead of three empty sections.
+  const { expenses, loaded } = useExpenses();
   const [refreshing, setRefreshing] = useState(false);
   // Trip filter: empty = every trip. Otherwise only the selected trips count
   // towards the charts (1, several, or all — user request).
@@ -448,26 +446,10 @@ export default function StatisticsScreen() {
   const toggleTrip = (id: string) =>
     setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const loadData = useMemo(() => {
-    return async () => {
-      // Metadata only — the charts never draw a receipt photo.
-      const list = await loadExpensesForList();
-      setExpenses(list);
-      setLoaded(true);
-    };
-  }, []);
-
-  // useCallback is required: an inline callback is a new function each render,
-  // so useFocusEffect re-ran it after every setState → endless query loop (Q1).
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData]),
-  );
-
+  // M1: the shared store loads once; pull-to-refresh re-reads storage.
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await useExpenseStore.getState().reload();
     setRefreshing(false);
   };
 

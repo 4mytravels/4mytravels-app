@@ -15,7 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { loadExpensesForList, loadExpense } from '../../src/db/expenseRepo';
+import { loadExpense } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
@@ -63,10 +64,7 @@ export default function ExpensesScreen() {
   // state is empty and the one-shot effect below fills it.
   const [tripFilter, setTripFilter] = useState<string[]>([]);
   const didSeedFilter = useRef(false);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  // Q8: false until the first focus load landed — the list shows a spinner,
-  // not "No expenses yet.", during a cold start.
-  const [loaded, setLoaded] = useState(false);
+  const { expenses, loaded } = useExpenses();
   const [catFilter, setCatFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -117,43 +115,17 @@ export default function ExpensesScreen() {
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
   }, [activeTripIds, trips]);
 
-  // ONE load of every expense, filtered in JS. Deliberately NOT re-queried per
-  // filter toggle: toggling a trip is instant, and the query is metadata-only
-  // (no receipt BLOBs) so it stays cheap even with thousands of rows.
-  //
-  // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch.
-  const skipNextFocusRef = useRef(false);
+  // ONE shared list of every expense (M1 store), filtered in JS. Loaded once;
+  // save/delete update it in place, so a tab switch costs no query.
   const scrollPendingRef = useRef(false);
   const [loadTick, setLoadTick] = useState(0);
   // Arm the scroll-to-today on every REAL focus (stable callback, so this only
-  // runs on tab open/return — not on each re-render like the loader below).
-  // It fires once the focus load has rendered (effect next to `listRef`).
+  // runs on tab open/return). The scroll effect below re-runs when the list
+  // arrives (autoTargetIndex changes), so a cold start still lands on Today.
   useFocusEffect(
     useCallback(() => {
       scrollPendingRef.current = true;
-    }, []),
-  );
-  // useCallback is required: an inline callback re-runs after every render,
-  // and setExpenses() re-renders → endless query loop (Q1).
-  useFocusEffect(
-    useCallback(() => {
-      if (skipNextFocusRef.current) {
-        skipNextFocusRef.current = false;
-        return;
-      }
-      let alive = true;
-      (async () => {
-        const list = await loadExpensesForList();
-        if (alive) {
-          setExpenses(list);
-          setLoaded(true);
-          if (scrollPendingRef.current) setLoadTick((n) => n + 1);
-        }
-      })();
-      return () => {
-        alive = false;
-      };
+      setLoadTick((n) => n + 1);
     }, []),
   );
 
@@ -288,12 +260,10 @@ export default function ExpensesScreen() {
   const showTodayJump = hasTodaySection && !isAtToday;
 
   const handleSave = async (expense: Expense) => {
-    const { saveExpense } = await import('../../src/db/expenseRepo');
-    await saveExpense(expense);
+    // M1: insert-or-replace in the shared store (an edit used to be prepended
+    // a second time until the next reload).
+    await useExpenseStore.getState().save(expense);
     setFormOpen(false);
-    skipNextFocusRef.current = true;
-    // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
-    setExpenses((prev) => [expense, ...prev]);
   };
 
 
@@ -513,18 +483,10 @@ export default function ExpensesScreen() {
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={handleSave}
             onDelete={async (expense) => {
-              const t0 = Date.now();
               try {
-                console.log(`[delete] START id=${expense.id}`);
-                const { deleteExpense } = await import('../../src/db/expenseRepo');
-                console.log(`[delete] import took ${Date.now() - t0}ms`);
-                await deleteExpense(expense.id);
-                console.log(`[delete] DB delete took ${Date.now() - t0}ms`);
+                await useExpenseStore.getState().remove(expense.id);
                 setFormOpen(false);
                 setEditingExpense(null);
-                skipNextFocusRef.current = true;
-                setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
-                console.log(`[delete] UI update took ${Date.now() - t0}ms`);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
                 showStatus('Delete failed', msg);

@@ -1,18 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { TripCard } from '../../src/components/TripCard';
 import { TripActionsMenu } from '../../src/components/TripActionsMenu';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
+import { groupExpensesByTrip } from '../../src/utils/expenseList';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
-import type { Trip, TripStatus, Expense } from '../../src/types';
+import type { Trip, TripStatus } from '../../src/types';
 
 const FILTERS: Array<'All' | TripStatus> = ['All', 'active', 'upcoming', 'past'];
 
@@ -28,7 +29,13 @@ export default function TripsScreen() {
   // Full expense lists (not just sums) so the card can use the SAME
   // computeTripStats as the trip detail screen — otherwise daily avg /
   // over-budget / day counter drift apart between the two screens.
-  const [expensesByTrip, setExpensesByTrip] = useState<Record<string, Expense[]>>({});
+  // M1: derived from the shared store (one load for the app, kept current by
+  // save/delete everywhere) — was a fresh query on every focus.
+  const { expenses: allExpenses } = useExpenses();
+  const expensesByTrip = useMemo(
+    () => groupExpensesByTrip(allExpenses, trips.map((t) => t.id)),
+    [allExpenses, trips],
+  );
   // MUST be declared before the early return below (rules of hooks): the
   // empty-trips branch renders fewer hooks, which crashed React ("Rendered
   // more hooks than during the previous render") the moment the first trip
@@ -38,34 +45,6 @@ export default function TripsScreen() {
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
-
-  // Load expenses per trip for the cards' stats (shared computeTripStats).
-  //
-  // ON FOCUS, not only when the trip list changes: logging an expense on the
-  // Expenses tab left every card showing the old figures until the app was
-  // restarted. Same pattern as home/expenses/statistics.
-  // Q3: ONE query for all trips, grouped in JS — was one query per trip (N+1).
-  // The global list is created_at DESC, so each group keeps that order.
-  const fetchExpensesByTrip = useCallback(async () => {
-    const all = await loadExpensesForList();
-    const map: Record<string, Expense[]> = {};
-    for (const t of trips) map[t.id] = [];
-    for (const e of all) (map[e.tripId] ??= []).push(e);
-    return map;
-  }, [trips]);
-
-  const loadTripExpenses = useCallback(() => {
-    let alive = true;
-    (async () => {
-      const map = await fetchExpensesByTrip();
-      if (alive) setExpensesByTrip(map);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [fetchExpensesByTrip]);
-
-  useFocusEffect(loadTripExpenses);
 
   const visible = trips.filter((t) => filter === 'All' || deriveTripStatus(t) === filter);
 
@@ -102,7 +81,7 @@ export default function TripsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    setExpensesByTrip(await fetchExpensesByTrip());
+    await useExpenseStore.getState().reload();
     setRefreshing(false);
   };
 

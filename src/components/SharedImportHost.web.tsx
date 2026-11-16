@@ -15,6 +15,7 @@ import {
   takeSharedFile,
 } from '../services/sharedFile';
 import { importExpensesFromCsv } from '../services/csvImport';
+import { useExpenseStore } from '../store/expenseStore';
 import { showStatus } from '../utils/statusDialog';
 
 export function SharedImportHost() {
@@ -51,6 +52,8 @@ export function SharedImportHost() {
           shared.text,
           { targetTripId: null }, // share = auto: create the trip from the file
         );
+        // M1: bulk write → re-read the shared expense list once.
+        await useExpenseStore.getState().reload();
         showStatus(
           'Import complete',
           `${count} expense(s) imported into "${tripName}"${skippedNote}.`,

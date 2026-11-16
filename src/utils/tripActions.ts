@@ -6,6 +6,7 @@ import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import type { Trip } from '../types';
 import { useTripStore } from '../store/tripStore';
+import { useExpenseStore } from '../store/expenseStore';
 import { loadExpensesForList } from '../db/expenseRepo';
 import { expensesToCsv } from '../services/csv';
 import { processPhoto } from './image';
@@ -81,6 +82,8 @@ export async function deleteTripWithConfirm(trip: Trip): Promise<boolean> {
   useTripStore.getState().removeTrip(trip.id);
   try {
     await deleteTrip(trip.id);
+    // M1: the trip's rows leave the shared expense list too.
+    useExpenseStore.getState().removeTrip(trip.id);
     return true;
   } catch (e) {
     showStatus('Delete failed', e instanceof Error ? e.message : String(e));

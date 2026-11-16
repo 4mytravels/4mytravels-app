@@ -36,6 +36,7 @@ import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../..
 import { saveTrip } from '../../src/db/tripRepo';
 import type { Expense } from '../../src/types';
 import { saveExpense, loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenseStore } from '../../src/store/expenseStore';
 import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
 import { showStatus } from '../../src/utils/statusDialog';
 import {
@@ -218,6 +219,8 @@ export default function SettingsScreen() {
       const { count, tripName, skippedNote } = await importExpensesFromCsv(text, {
         targetTripId: target,
       });
+      // M1: bulk write → re-read the shared expense list once.
+      await useExpenseStore.getState().reload();
       showStatus(
         'Import complete',
         `${count} expense(s) imported into "${tripName}"${skippedNote}.`,
@@ -310,6 +313,8 @@ export default function SettingsScreen() {
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);
       setTrips(trips);
+      // M1: bulk write → re-read the shared expense list once.
+      await useExpenseStore.getState().reload();
       close();
       showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
     } catch (e) {

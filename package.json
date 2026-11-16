@@ -57,7 +57,8 @@
     "test:receipts": "node scripts/test-expense-receipts.mjs",
     "test:stats": "node scripts/test-stats-utils.mjs",
     "test:scroll": "node scripts/test-scroll-target.mjs",
-    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:scroll"
+    "test:store": "node scripts/test-expense-store.mjs",
+    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:scroll && npm run test:store"
   },
   "private": true
 }

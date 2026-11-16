@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenses } from '../../src/store/expenseStore';
 import { groupByTime, timeTotal, periodLabelLong, type TimePeriod } from '../../src/utils/timeStats';
 import { pruneTripIds } from '../../src/utils/tripFilter';
 import { categoryIcon } from '../../src/utils/categoryIcons';
@@ -13,7 +13,6 @@ import { countryName } from '../../src/data/countries';
 import { colors, fontFamily, fontSize, radius, spacing, navShadow } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { TimeChart } from '../../src/components/TimeChart';
-import type { Expense } from '../../src/types';
 
 const PERIOD_LABEL: Record<TimePeriod, string> = { month: 'Month', quarter: 'Quarter', year: 'Year' };
 const PERIODS: TimePeriod[] = ['month', 'quarter', 'year'];
@@ -23,7 +22,7 @@ export default function OverTimeScreen() {
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const { expenses } = useExpenses(); // M1 shared store
   const [period, setPeriod] = useState<TimePeriod>('month');
   const [tripFilter, setTripFilter] = useState<string[]>([]);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
@@ -32,12 +31,6 @@ export default function OverTimeScreen() {
   const [tripPickerOpen, setTripPickerOpen] = useState(false);
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
-
-  useFocusEffect(useCallback(() => {
-    let alive = true;
-    loadExpensesForList().then((list) => { if (alive) setExpenses(list); });
-    return () => { alive = false; };
-  }, []));
 
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
   const rows = useMemo(

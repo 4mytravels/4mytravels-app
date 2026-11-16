@@ -1,11 +1,13 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { View, Text, Pressable, StyleSheet, SectionList } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList, loadExpense, saveExpense, deleteExpense } from '../../src/db/expenseRepo';
+import { loadExpense } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
+import { expensesOfTrip } from '../../src/utils/expenseList';
 import type { Expense } from '../../src/types';
 import { groupByDaySplitAware } from '../../src/utils/days';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
@@ -22,31 +24,17 @@ import { WebNotices } from '../../src/components/WebNotices';
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const trip = useTripStore((s) => s.trips.find((t) => t.id === id));
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  // M1: this trip's rows from the shared store — no own query on every
+  // focus, and add/edit/delete show up on every screen at once.
+  const { expenses: allExpenses } = useExpenses();
+  const expenses = useMemo(
+    () => (id ? expensesOfTrip(allExpenses, id) : []),
+    [allExpenses, id],
+  );
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const insets = useSafeAreaInsets();
-
-  // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
-  const skipNextFocusRef = useRef(false);
-  const load = async () => {
-    if (skipNextFocusRef.current) {
-      skipNextFocusRef.current = false;
-      return;
-    }
-    if (!id) return;
-    // Metadata only (no receipt BLOBs): the list renders no photo, and this
-    // screen refetches on every focus. The photo is fetched per-expense when the
-    // edit form is opened (see openExpenseForEdit).
-    setExpenses(await loadExpensesForList(id));
-  };
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   // ALL hooks are declared before the first early return. `if (!trip) return …`
   // used to sit between `useEffect` and `useMemo` (verified: 5 hooks before,
@@ -95,12 +83,9 @@ export default function TripDetailScreen() {
   }
 
   const handleSave = async (expense: Expense) => {
-    await saveExpense(expense);
+    await useExpenseStore.getState().save(expense);
     setExpenseOpen(false);
     setEditingExpense(null);
-    skipNextFocusRef.current = true;
-    // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
-    setExpenses((prev) => [expense, ...prev]);
   };
 
   return (
@@ -205,12 +190,9 @@ export default function TripDetailScreen() {
           onSave={handleSave}
           onDelete={async (expense) => {
             try {
-              await deleteExpense(expense.id);
+              await useExpenseStore.getState().remove(expense.id);
               setExpenseOpen(false);
               setEditingExpense(null);
-              skipNextFocusRef.current = true;
-              // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
-              setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
               showStatus('Delete failed', msg);

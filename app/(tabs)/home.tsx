@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 import { showStatus } from '../../src/utils/statusDialog';
 import { Ionicons } from '@expo/vector-icons';
 import { AppLogo } from '../../src/components/AppLogo';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
 import { Pill, Button } from '../../src/components/ui';
@@ -20,7 +20,8 @@ import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
 import { WebNotices } from '../../src/components/WebNotices';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { loadExpense } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache } from '../../src/services/rateCache';
@@ -33,50 +34,31 @@ import { inclusiveDays } from '../../src/utils/pace';
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
+  // M1: the shared expense store — loaded once, updated in place on
+  // save/delete, so a tab switch costs no query and edits show everywhere.
+  const { expenses, loaded } = useExpenses();
+  const loading = !loaded;
   const [formOpen, setFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [menuTrip, setMenuTrip] = useState<Trip | null>(null);
 
-  // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
-  const skipNextFocusRef = useRef(false);
-
-  // Stable row callback so memo(ExpenseRow) can skip unchanged rows (Q6).
-  const openTodayExpense = useCallback((expense: Expense) => {
-    setEditingExpense(expense);
-    setFormOpen(true);
-  }, []);
-
-  // Reload on every focus so new expenses appear without an app restart.
-  // useCallback is required: an inline callback re-runs after every render,
-  // and setExpenses() re-renders → endless query loop (Q1).
-  useFocusEffect(
-    useCallback(() => {
-      if (skipNextFocusRef.current) {
-        skipNextFocusRef.current = false;
+  // The list is metadata-only (no receipt BLOB) and saveExpense writes the
+  // receipt verbatim, so the edit form MUST get the full row (pattern 43).
+  // Home used to hand the list row to the form, which wiped the receipt on
+  // the next save. Stable callback so memo(ExpenseRow) holds (Q6).
+  const openTodayExpense = useCallback(async (expense: Expense) => {
+    try {
+      const full = await loadExpense(expense.id);
+      if (!full) {
+        showStatus('Could not open expense', 'This expense could not be loaded.');
         return;
       }
-      let alive = true;
-      (async () => {
-        try {
-          // Metadata only: this screen renders no receipt photos, and loading the
-          // BLOBs on every focus was the single most expensive query in the app.
-          const list = await loadExpensesForList();
-          if (alive) {
-            setExpenses(list);
-            setLoading(false);
-          }
-        } catch {
-          if (alive) setLoading(false);
-        }
-      })();
-      return () => {
-        alive = false;
-      };
-    }, []),
-  );
+      setEditingExpense(full);
+      setFormOpen(true);
+    } catch (e) {
+      showStatus('Could not open expense', e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   const trips = useTripStore((s) => s.trips);
   const tripsHydrated = useTripStore((s) => s.hydrated);
@@ -332,23 +314,17 @@ export default function HomeScreen() {
             initialExpense={editingExpense ?? undefined}
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={async (expense) => {
-              const { saveExpense } = await import('../../src/db/expenseRepo');
-              await saveExpense(expense);
+              // M1: insert-or-replace in the shared store (an edit used to be
+              // prepended a second time).
+              await useExpenseStore.getState().save(expense);
               setFormOpen(false);
               setEditingExpense(null);
-              skipNextFocusRef.current = true;
-              // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
-              setExpenses((prev) => [expense, ...prev]);
             }}
             onDelete={async (expense) => {
               try {
-                const { deleteExpense } = await import('../../src/db/expenseRepo');
-                await deleteExpense(expense.id);
+                await useExpenseStore.getState().remove(expense.id);
                 setFormOpen(false);
                 setEditingExpense(null);
-                skipNextFocusRef.current = true;
-                // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
-                setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
                 showStatus('Delete failed', msg);

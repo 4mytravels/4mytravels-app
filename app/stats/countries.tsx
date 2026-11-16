@@ -1,12 +1,12 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenses } from '../../src/store/expenseStore';
 import { groupByCountry, searchCountries, sortCountries, summarizeStats, type CountrySort } from '../../src/utils/countryStats';
 import { getPeriodRange, periodLabel, type PeriodPreset } from '../../src/utils/periods';
 import { pruneTripIds } from '../../src/utils/tripFilter';
@@ -14,7 +14,6 @@ import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
 import { colors, fontFamily, fontSize, radius, spacing } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
-import type { Expense } from '../../src/types';
 
 const PRESETS: PeriodPreset[] = ['all', 'ytd', 'last12', 'custom'];
 // Sort options live in a sheet behind ONE chip ("Highest spend ▾") — the mock's
@@ -39,7 +38,7 @@ export default function CountriesScreen() {
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const { expenses } = useExpenses(); // M1 shared store
   const [query, setQuery] = useState('');
   const [preset, setPreset] = useState<PeriodPreset>('all');
   const [customFrom, setCustomFrom] = useState('');
@@ -55,12 +54,6 @@ export default function CountriesScreen() {
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [sortPickerOpen, setSortPickerOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
-
-  useFocusEffect(useCallback(() => {
-    let alive = true;
-    loadExpensesForList().then((list) => { if (alive) setExpenses(list); });
-    return () => { alive = false; };
-  }, []));
 
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
   const range = useMemo(() => getPeriodRange(preset, customFrom, customTo), [preset, customFrom, customTo]);

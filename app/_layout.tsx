@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { colors } from '../src/theme/theme';
 import { FloatingNav } from '../src/components/FloatingNav';
+import { AppFrame } from '../src/components/AppFrame';
 import { ConfirmHost } from '../src/components/ConfirmHost';
 import { StatusHost } from '../src/components/StatusHost';
 import { SharedImportHost } from '../src/components/SharedImportHost';
@@ -142,7 +143,7 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <AppFrame nav={<FloatingNav />}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         {/* Trip detail renders its own dark header — hide the native (white) one. */}
@@ -157,7 +158,8 @@ export default function RootLayout() {
         />
         <Stack.Screen name="stats" options={{ headerShown: false }} />
       </Stack>
-      <FloatingNav />
+      {/* M11: FloatingNav is passed to AppFrame (nav prop) so it stays on the
+          560 px column; the Stack is centred at max-width. */}
       {/* ONE confirmation dialog for every destructive action, mounted above the
           navigator so it can never be clipped by a screen or a sheet. Web: a
           body portal at z-index 10000 (see ConfirmHost.web.tsx). */}
@@ -175,7 +177,7 @@ export default function RootLayout() {
       <BiometricEnrollPrompt />
       {/* Web notices (storage health + install nudge) render per screen, in the
           flow under the header — see src/components/WebNotices.tsx. */}
-    </View>
+    </AppFrame>
   );
 }
 

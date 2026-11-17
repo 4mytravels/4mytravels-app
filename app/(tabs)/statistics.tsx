@@ -7,6 +7,7 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +27,7 @@ import { TimeChart } from '../../src/components/TimeChart';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
 import { TripFilter } from '../../src/components/TripFilter';
+import { WIDE_BREAKPOINT } from '../../src/theme/layout';
 import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { groupByCountry } from '../../src/utils/countryStats';
@@ -402,6 +404,8 @@ function Empty({ text = 'No data.' }: { text?: string }) {
 export default function StatisticsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // M11: AppFrame widens this screen to WIDE_MAX_WIDTH from WIDE_BREAKPOINT.
+  const twoCol = useWindowDimensions().width >= WIDE_BREAKPOINT;
   const trips = useTripStore((s) => s.trips);
   // M1 shared store; Q8: spinner until the first load, then ONE empty card
   // instead of three empty sections.
@@ -575,6 +579,9 @@ export default function StatisticsScreen() {
             </Pressable>
           </View>
         ) : (<>
+        {/* M11: two columns from WIDE_BREAKPOINT — charts left, breakdowns right. */}
+        <View style={twoCol ? styles.cols : undefined}>
+        <View style={twoCol ? styles.col : undefined}>
         {/* Donut chart */}
         <View style={styles.donutSection}>
           <DonutChart
@@ -634,6 +641,8 @@ export default function StatisticsScreen() {
           })}
         </View>
 
+        </View>
+        <View style={twoCol ? styles.col : undefined}>
         {/* By country */}
         <Section title="By country">
           {topCountries.length === 0 ? (
@@ -678,6 +687,9 @@ export default function StatisticsScreen() {
           />
         </Section>
 
+        </View>
+        </View>
+
         {/* Export button */}
         <View style={styles.exportWrap}>
           <Button label="Export CSV" icon="document-text-outline" onPress={exportCsv} />
@@ -693,6 +705,8 @@ export default function StatisticsScreen() {
 }
 
 const styles = StyleSheet.create({
+  cols: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
+  col: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',

@@ -16,7 +16,6 @@
 // Metro's `.web` resolution keeps this file out of the native bundle.
 import { useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   answerConfirm,
   cancelPendingConfirm,
@@ -24,6 +23,7 @@ import {
   subscribeConfirm,
 } from '../utils/confirm';
 import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { Button } from './ui';
 
 // Declared locally: @types/react-dom is not installed in this project, and the
 // import must not reach the native bundle (web-only via Metro .web resolution).
@@ -51,19 +51,15 @@ export function ConfirmHost() {
         <Text style={styles.title}>{request.title}</Text>
         <Text style={styles.message}>{request.message}</Text>
         <View style={styles.actions}>
-          <Pressable
-            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-            onPress={() => answer(false)}
-          >
-            <Text style={styles.actionText}>{request.cancelLabel}</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.action, styles.actionDanger, pressed && styles.actionPressed]}
+          <Button label={request.cancelLabel} variant="ghost" size="md" style={{ flex: 1 }} onPress={() => answer(false)} />
+          <Button
+            label={request.confirmLabel}
+            icon="trash-outline"
+            variant="destructive"
+            size="md"
+            style={{ flex: 1 }}
             onPress={() => answer(true)}
-          >
-            <Ionicons name="trash-outline" size={16} color={colors.white} />
-            <Text style={styles.actionTextDanger}>{request.confirmLabel}</Text>
-          </Pressable>
+          />
         </View>
       </View>
     </View>,

@@ -2,7 +2,7 @@
 // passphrase is only needed for recovery. Dismissal is remembered; Settings
 // keeps a toggle. Renders nothing on native or when WebAuthn PRF is unavailable.
 import React, { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/theme';
 import {
   dismissBiometricPrompt,
@@ -11,6 +11,7 @@ import {
   wasBiometricDismissed,
 } from '../db/web/biometric';
 import { enrollBiometricForSession } from '../db/web/biometricSession';
+import { Button } from './ui';
 
 export function BiometricEnrollPrompt() {
   const [visible, setVisible] = useState(false);
@@ -56,12 +57,8 @@ export function BiometricEnrollPrompt() {
         </Text>
         {error && <Text style={styles.error}>{error}</Text>}
         <View style={styles.row}>
-          <Pressable style={[styles.btn, styles.ghost]} onPress={later} disabled={busy}>
-            <Text style={styles.ghostText}>Not now</Text>
-          </Pressable>
-          <Pressable style={[styles.btn, busy && { opacity: 0.5 }]} onPress={enable} disabled={busy}>
-            <Text style={styles.btnText}>Enable</Text>
-          </Pressable>
+          <Button label="Not now" variant="ghost" size="md" style={{ flex: 1 }} onPress={later} disabled={busy} />
+          <Button label="Enable" size="md" style={{ flex: 1 }} onPress={enable} loading={busy} />
         </View>
       </View>
     </View>

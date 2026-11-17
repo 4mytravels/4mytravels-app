@@ -12,6 +12,7 @@ import { useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { getCurrentStatus, dismissStatus, subscribeStatus } from '../utils/statusDialog';
 import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { Button } from './ui';
 
 // Declared locally: @types/react-dom is not installed in this project, and the
 // import must not reach the native bundle (web-only via Metro .web resolution).
@@ -35,12 +36,7 @@ export function StatusHost() {
       <View style={styles.dialog}>
         <Text style={styles.title}>{request.title}</Text>
         {request.message ? <Text style={styles.message}>{request.message}</Text> : null}
-        <Pressable
-          style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-          onPress={() => dismissStatus()}
-        >
-          <Text style={styles.actionText}>OK</Text>
-        </Pressable>
+        <Button label="OK" variant="secondary" size="md" onPress={() => dismissStatus()} />
       </View>
     </View>,
     document.body,

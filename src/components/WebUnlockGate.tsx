@@ -8,7 +8,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,6 +19,7 @@ import {
 import { colors } from '../theme/theme';
 import { generatePassphrase } from '../db/web/passphrase';
 import { isBiometricEnrolled, unlockWithBiometric } from '../db/web/biometric';
+import { Button } from './ui';
 
 const HAS_PASSPHRASE_KEY = '4mytravels.hasPassphrase';
 
@@ -245,13 +245,7 @@ export function WebUnlockGate({ onUnlock, onUnlockKey }: WebUnlockGateProps) {
         {!createMode && (
           <>
             {!isFirstUse && bioEnrolled && (
-              <Pressable
-                style={({ pressed }) => [styles.button, (busy || pressed) && styles.buttonDisabled]}
-                onPress={tryBiometric}
-                disabled={busy}
-              >
-                <Text style={styles.buttonText}>Unlock with biometrics</Text>
-              </Pressable>
+              <Button label="Unlock with biometrics" onPress={tryBiometric} disabled={busy} />
             )}
 
             <TextInput
@@ -281,22 +275,12 @@ export function WebUnlockGate({ onUnlock, onUnlockKey }: WebUnlockGateProps) {
 
             {error && <Text style={styles.error}>{error}</Text>}
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                (!canSubmit || pressed) && styles.buttonDisabled,
-              ]}
+            <Button
+              label={isFirstUse ? 'Create encrypted storage' : 'Unlock'}
               onPress={submit}
-              disabled={!canSubmit}
-            >
-              {busy ? (
-                <ActivityIndicator color={colors.primaryForeground} />
-              ) : (
-                <Text style={styles.buttonText}>
-                  {isFirstUse ? 'Create encrypted storage' : 'Unlock'}
-                </Text>
-              )}
-            </Pressable>
+              disabled={!canSubmit && !busy}
+              loading={busy}
+            />
 
             {isFirstUse && (
               <Pressable onPress={() => setOwnMode(false)}>

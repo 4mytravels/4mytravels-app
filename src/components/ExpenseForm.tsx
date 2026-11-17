@@ -633,17 +633,14 @@ export function ExpenseForm({
                   <Image source={{ uri: receiptPreview }} style={styles.receiptThumb} />
                 </Pressable>
                 <View style={styles.receiptActions}>
-                  <Pressable style={styles.receiptBtn} onPress={pickReceipt}>
-                    <Ionicons name="refresh-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.receiptBtnText}>Replace</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.receiptBtn, { backgroundColor: colors.destructive }]}
+                  <Button label="Replace" icon="refresh-outline" size="sm" variant="secondary" onPress={pickReceipt} />
+                  <Button
+                    label="Remove"
+                    icon="trash-outline"
+                    size="sm"
+                    variant="destructive"
                     onPress={() => { setReceiptBytes(null); setReceiptPreview(null); }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.receiptBtnText}>Remove</Text>
-                  </Pressable>
+                  />
                 </View>
               </View>
             ) : (

@@ -21,7 +21,7 @@ import { File, Paths } from 'expo-file-system';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Card, SectionTitle, Button } from '../../src/components/ui';
+import { Card, SectionTitle, Button, IconButton } from '../../src/components/ui';
 import {
   createBackup,
   parseBackupEnvelope,
@@ -516,9 +516,7 @@ export default function SettingsScreen() {
         <SafeAreaView style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{mode === 'backup' ? 'Create encrypted backup' : 'Restore from backup'}</Text>
-            <Pressable onPress={close} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color={colors.mutedForeground} />
-            </Pressable>
+            <IconButton icon="close" label="Close" variant="plain" size={24} color={colors.mutedForeground} onPress={close} />
           </View>
           <View style={styles.sheetBody}>
             <Text style={styles.note}>

@@ -62,9 +62,10 @@
     "test:stats": "node scripts/test-stats-utils.mjs",
     "test:scroll": "node scripts/test-scroll-target.mjs",
     "test:store": "node scripts/test-expense-store.mjs",
+    "test:edit": "node scripts/test-edit-paths.mjs",
     "test:backup": "node scripts/test-backup-restore.mjs && node scripts/test-backup-roundtrip.mjs && node scripts/test-backup-share.mjs",
     "bench:backup": "node scripts/test-backup-roundtrip.mjs --bench",
-    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:backup && npm run test:scroll && npm run test:store",
+    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:backup && npm run test:scroll && npm run test:store && npm run test:edit",
     "lint": "eslint app src"
   },
   "private": true

@@ -285,18 +285,7 @@ export default function ExpensesScreen() {
           search + trip-filter actions. */}
       <View style={styles.titleRow}>
         <View style={styles.titleTextWrap}>
-          {/* G1: "All expenses" is a sub-view of Trips (no own tab any more);
-              the chevron goes back to the Trips list. replace(), not back():
-              on web back() is a no-op when the page was opened directly. */}
-          <Pressable
-            onPress={() => router.replace('/trips')}
-            accessibilityRole="button"
-            accessibilityLabel="Back to trips"
-            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.foreground} />
-            <Text style={styles.screenTitle}>All expenses</Text>
-          </Pressable>
+          <Text style={styles.screenTitle}>Expenses</Text>
         </View>
         <View style={styles.titleActions}>
           {!searchOpen && (

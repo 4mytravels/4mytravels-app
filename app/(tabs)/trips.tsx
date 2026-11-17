@@ -119,16 +119,6 @@ export default function TripsScreen() {
                 );
               })}
             </ScrollView>
-            {/* G1: "All expenses" (the former Expenses tab) is a sub-view of Trips. */}
-            <Pressable
-              onPress={() => router.push('/expenses')}
-              style={styles.allExpenses}
-              accessibilityRole="button"
-            >
-              <Ionicons name="wallet-outline" size={18} color={colors.primaryText} />
-              <Text style={styles.allExpensesText}>All expenses</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
-            </Pressable>
           </>
         }
         renderItem={({ item }) => (

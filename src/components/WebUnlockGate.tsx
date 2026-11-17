@@ -111,7 +111,7 @@ export function WebUnlockGate({ onUnlock, onUnlockKey }: WebUnlockGateProps) {
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
-    if (mounted && isFirstUse && !generated) setGenerated(generatePassphrase());
+    if (mounted && isFirstUse && !generated) void generatePassphrase().then(setGenerated);
   }, [mounted, isFirstUse, generated]);
 
   // Unlock flow: biometric first when enrolled.
@@ -227,7 +227,7 @@ export function WebUnlockGate({ onUnlock, onUnlockKey }: WebUnlockGateProps) {
               <Pressable style={styles.chip} onPress={download}>
                 <Text style={styles.chipText}>Download</Text>
               </Pressable>
-              <Pressable style={styles.chip} onPress={() => { setGenerated(generatePassphrase()); setSaved(false); setNotice(null); }}>
+              <Pressable style={styles.chip} onPress={() => { void generatePassphrase().then(setGenerated); setSaved(false); setNotice(null); }}>
                 <Text style={styles.chipText}>New</Text>
               </Pressable>
             </View>

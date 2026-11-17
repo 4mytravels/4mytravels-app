@@ -43,7 +43,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      ["expo-router", { "asyncRoutes": { "web": "production", "default": false } }],
       "expo-secure-store",
       "expo-sharing"
     ],

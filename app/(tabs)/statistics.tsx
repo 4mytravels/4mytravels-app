@@ -16,17 +16,15 @@ import { AppLogo } from '../../src/components/AppLogo';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { colors, fontFamily, radius, fontSize, spacing, donutPalette, themedStyles } from '../../src/theme/theme';
-import { Pill } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
 import { TimeChart } from '../../src/components/TimeChart';
-import { formatMoney } from '../../src/utils/currency';
 import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
 import { TripFilter } from '../../src/components/TripFilter';
 import { WIDE_BREAKPOINT } from '../../src/theme/layout';
 import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { groupByTime } from '../../src/utils/timeStats';
-import { computeBreakdown, pickDisplayCurrency, quickFacts } from '../../src/utils/stats/breakdown';
+import { computeBreakdown, pickDisplayCurrency } from '../../src/utils/stats/breakdown';
 import { DonutChart } from '../../src/components/stats/DonutChart';
 import { CategoryLegend } from '../../src/components/stats/CategoryLegend';
 import { Bar, Empty, Section, SeeAll, SplitPaymentBar } from '../../src/components/stats/blocks';
@@ -58,7 +56,6 @@ export default function StatisticsScreen() {
     () => groupByTime(filteredExpenses, { period: 'month' }).slice(-12),
     [filteredExpenses],
   );
-  const facts = useMemo(() => quickFacts(filteredExpenses), [filteredExpenses]);
   // Q6: all breakdowns in one memo.
   const { catEntries, slices, total, maxCountry, topCountries, cardValue, cashValue } = useMemo(
     () => computeBreakdown(filteredExpenses, expenses, activeTripIds, donutPalette),
@@ -119,17 +116,6 @@ export default function StatisticsScreen() {
             <SeeAll label="Over time" onPress={() => router.push('/stats/over-time')} />
           </View>
         ) : (<>
-          {/* G1 (N8): the quick facts that used to sit on Home; each pill opens
-              the page that explains it. */}
-          <View style={styles.quickFacts}>
-            <Pressable onPress={() => router.push('/stats/countries')} accessibilityRole="button">
-              <Pill icon="location-outline" text={`${facts.countries} ${facts.countries === 1 ? 'country' : 'countries'}`} />
-            </Pressable>
-            <Pressable onPress={() => router.push('/stats/over-time')} accessibilityRole="button">
-              <Pill icon="calendar-outline" text={`${facts.days} ${facts.days === 1 ? 'day' : 'days'}`} />
-            </Pressable>
-            <Pill icon="wallet-outline" text={`${formatMoney(total, displayCurrency)} spent`} />
-          </View>
           {/* M11: two columns from WIDE_BREAKPOINT — charts left, breakdowns right. */}
           <View style={twoCol ? styles.cols : undefined}>
             <View style={twoCol ? styles.col : undefined}>
@@ -206,8 +192,6 @@ const styles = themedStyles(() => StyleSheet.create({
   titleTextWrap: { flex: 1 },
   scroll: { paddingHorizontal: spacing.xl, paddingBottom: 40 },
   donutSection: { alignItems: 'center', marginVertical: spacing.lg },
-  // G1: quick-fact pills (moved from Home); wraps on narrow screens.
-  quickFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.xl },
   emptyCard: {
     marginTop: spacing.xl,
     padding: spacing.xl,

@@ -33,7 +33,7 @@ import {
   MIN_PASSPHRASE_LENGTH,
   type BackupEnvelope,
 } from '../../src/db/backup';
-import { shareBackup } from '../../src/services/shareBackup';
+import { saveBackup } from '../../src/services/saveBackup';
 import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
 import { saveTrip } from '../../src/db/tripRepo';
 import type { Expense } from '../../src/types';
@@ -254,13 +254,18 @@ export default function SettingsScreen() {
           else if (phase === 'encrypt') setBusyLabel('Preparing file…');
         },
       });
+      // Saved to a user-picked location (folder picker / save dialog), never
+      // the share sheet. Cancel = quiet: no message, reminder clock untouched.
+      const outcome = await saveBackup(envelope);
+      if (outcome.kind === 'cancelled') return;
       await markBackupDone(); // reset the reminder clock (§2.2 backup reminders)
-      // Share sheet, never a persistent file: temp copy is deleted after the
-      // sheet closes (shared or cancelled). Web without file-share → download.
-      const outcome = await shareBackup(envelope);
       close();
-      if (outcome === 'downloaded') {
-        showStatus('Backup downloaded', 'Your browser cannot share files, so the encrypted backup was downloaded instead.');
+      if (outcome.kind === 'saved') {
+        showStatus('Backup saved', outcome.location
+          ? `Saved as ${outcome.name} in "${outcome.location}".`
+          : `Saved as ${outcome.name}.`);
+      } else {
+        showStatus('Backup downloaded', `Saved as ${outcome.name} in your browser's download folder.`);
       }
     } catch (e) {
       showStatus('Backup failed', e instanceof Error ? e.message : String(e));
@@ -566,7 +571,7 @@ export default function SettingsScreen() {
             ) : (
               <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
                 <Button
-                  label={mode === 'backup' ? 'Create & share' : 'Restore'}
+                  label={mode === 'backup' ? 'Create & save' : 'Restore'}
                   onPress={mode === 'backup' ? doBackup : doRestore}
                 />
                 {mode === 'restore' ? <Button label="Cancel" variant="ghost" onPress={close} /> : null}

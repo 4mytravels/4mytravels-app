@@ -24,7 +24,7 @@ const DateTimePicker: React.ComponentType<Record<string, unknown>> | null = (() 
     return null;
   }
 })();
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { randomUUID } from 'expo-crypto';
 import { WebDateButton } from '../../src/components/WebDateButton';
@@ -261,8 +261,17 @@ function CountryMultiPicker({
   );
 }
 
+// G1: /trips/new creates a trip; editing lives at /trip/[id]/edit. The old
+// deeplink /trips/new?editId=X redirects there, so bookmarks and older code
+// paths keep working.
 export default function NewTripScreen() {
   const { editId } = useLocalSearchParams<{ editId?: string }>();
+  if (editId) return <Redirect href={`/trip/${editId}/edit`} />;
+  return <TripEditor />;
+}
+
+/** Create (no editId) or edit a trip. Rendered by /trips/new and /trip/[id]/edit. */
+export function TripEditor({ editId }: { editId?: string }) {
   const existing = useTripStore((s) => (editId ? s.trips.find((t) => t.id === editId) : undefined));
   const addTrip = useTripStore((s) => s.addTrip);
   const updateTripStore = useTripStore((s) => s.updateTrip);

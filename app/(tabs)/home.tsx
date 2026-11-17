@@ -200,9 +200,6 @@ export default function HomeScreen() {
             <AppLogo size={36} />
             <Text style={styles.appTitle}>4 My Travels</Text>
           </View>
-          <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-          </Pressable>
         </View>
 
         {/* Web/PWA notices (storage health + install nudge) under the app title. */}
@@ -238,20 +235,8 @@ export default function HomeScreen() {
           <ActivityIndicator color={colors.primaryText} style={styles.tripCard} />
         )}
 
-        {/* Quick facts — elke pil opent het bijbehorende Stats-scherm:
-            countries → Countries-pagina, days → Over time-pagina, spent → de
-            Statistics-tab. */}
-        <View style={styles.quickFacts}>
-          <Pressable onPress={() => router.push('/stats/countries')}>
-            <Pill icon="location-outline" text={`${countries} countries`} />
-          </Pressable>
-          <Pressable onPress={() => router.push('/stats/over-time')}>
-            <Pill icon="calendar-outline" text={`${totalDays} ${totalDays === 1 ? 'day' : 'days'}`} />
-          </Pressable>
-          <Pressable onPress={() => router.push('/statistics')}>
-            <Pill icon="wallet-outline" text={`${formatMoneyWhole(totalSpent, displayCurrency)} spent`} />
-          </Pressable>
-        </View>
+        {/* G1 (N8): the quick-fact pills moved to Stats — Home is about the
+            current trip and today. */}
 
         {/* Expenses today */}
         <View style={styles.sectionHead}>
@@ -286,19 +271,19 @@ export default function HomeScreen() {
           button itself stays crisp). */}
       <NavFadeScrim />
 
-      {/* FAB — pinned above the floating nav */}
+      {/* FAB — pinned above the floating nav. G1: the FAB ALWAYS means "add
+          expense"; with no trip there is nothing to file it under, so it is
+          hidden (the empty-state card offers "Create your first trip"). */}
+      {targetTrip && (
       <Pressable
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
-        onPress={() => {
-          if (targetTrip) {
-            setFormOpen(true);
-          } else {
-            router.push('/trips/new');
-          }
-        }}
+        accessibilityRole="button"
+        accessibilityLabel="Add expense"
+        onPress={() => setFormOpen(true)}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
+      )}
 
       {/* Q17: same trip menu as Trips tab / trip detail (⋯ or long-press). */}
       <TripActionsMenu trip={menuTrip} onClose={() => setMenuTrip(null)} />

@@ -119,6 +119,16 @@ export default function TripsScreen() {
                 );
               })}
             </ScrollView>
+            {/* G1: "All expenses" (the former Expenses tab) is a sub-view of Trips. */}
+            <Pressable
+              onPress={() => router.push('/expenses')}
+              style={styles.allExpenses}
+              accessibilityRole="button"
+            >
+              <Ionicons name="wallet-outline" size={18} color={colors.primaryText} />
+              <Text style={styles.allExpensesText}>All expenses</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
+            </Pressable>
           </>
         }
         renderItem={({ item }) => (
@@ -144,16 +154,12 @@ export default function TripsScreen() {
 }
 
 function Header() {
-  const router = useRouter();
   return (
     <View style={styles.header}>
       <View style={[styles.logoRow, { gap: 12 }]}>
         <AppLogo size={36} />
         <Text style={styles.appTitle}>4 My Travels</Text>
       </View>
-      <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-        <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-      </Pressable>
     </View>
   );
 }
@@ -177,6 +183,16 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   tabsScroll: { marginBottom: spacing.lg },
+  allExpenses: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  allExpensesText: { color: colors.primaryText, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans },
   tabs: { gap: spacing.sm, paddingRight: spacing.lg },
   tab: {
     paddingVertical: spacing.sm,

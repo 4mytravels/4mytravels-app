@@ -14,13 +14,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Path, G, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { AppLogo } from '../../src/components/AppLogo';
-import * as Sharing from 'expo-sharing';
-import { File, Paths } from 'expo-file-system';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
-import { expensesToCsv } from '../../src/services/csv';
 import { colors, fontFamily, radius, fontSize, spacing, donutPalette } from '../../src/theme/theme';
-import { Button } from '../../src/components/ui';
+import { Button, Pill } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
 import { TimeChart } from '../../src/components/TimeChart';
@@ -30,7 +27,7 @@ import { TripFilter } from '../../src/components/TripFilter';
 import { WIDE_BREAKPOINT } from '../../src/theme/layout';
 import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
-import { groupByCountry } from '../../src/utils/countryStats';
+import { groupByCountry, summarizeStats } from '../../src/utils/countryStats';
 import { groupByTime } from '../../src/utils/timeStats';
 import { expenseDay } from '../../src/utils/periods';
 
@@ -439,6 +436,13 @@ export default function StatisticsScreen() {
     [filteredExpenses],
   );
 
+  // G1: quick facts (moved from Home). DISTINCT countries and DISTINCT local
+  // days with an expense, within the trip filter (summarizeStats, pattern 50).
+  const facts = useMemo(() => {
+    const countries = new Set(filteredExpenses.map((e) => e.country).filter(Boolean)).size;
+    return { countries, days: summarizeStats(filteredExpenses).days };
+  }, [filteredExpenses]);
+
   // M1: the shared store loads once; pull-to-refresh re-reads storage.
   const onRefresh = async () => {
     setRefreshing(true);
@@ -503,26 +507,6 @@ export default function StatisticsScreen() {
     return { catEntries, slices, total, countryEntries, maxCountry, topCountries, cardValue, cashValue };
   }, [filteredExpenses, expenses, activeTripIds]);
 
-  // Export CSV.
-  const tripNameById: Record<string, string> = {};
-  for (const t of trips) tripNameById[t.id] = t.name;
-
-  const exportCsv = async () => {
-    if (filteredExpenses.length === 0) return;
-    try {
-      // Exports what is on screen: the active trip filter applies here too.
-      const csv = expensesToCsv(filteredExpenses, tripNameById);
-      const file = new File(Paths.cache, '4mt-statistics.csv');
-      await file.write(csv);
-      await Sharing.shareAsync(file.uri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Export expenses',
-      });
-    } catch {
-      // ignore share cancellation
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -530,9 +514,6 @@ export default function StatisticsScreen() {
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
-        <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
       </View>
       <View style={styles.titleWrap}>
         <View style={styles.titleTextWrap}>
@@ -579,6 +560,17 @@ export default function StatisticsScreen() {
             </Pressable>
           </View>
         ) : (<>
+        {/* G1 (N8): the quick facts that used to sit on Home. Each pill opens
+            the page that explains it — no more guessing which pill goes where. */}
+        <View style={styles.quickFacts}>
+          <Pressable onPress={() => router.push('/stats/countries')} accessibilityRole="button">
+            <Pill icon="location-outline" text={`${facts.countries} ${facts.countries === 1 ? 'country' : 'countries'}`} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/stats/over-time')} accessibilityRole="button">
+            <Pill icon="calendar-outline" text={`${facts.days} ${facts.days === 1 ? 'day' : 'days'}`} />
+          </Pressable>
+          <Pill icon="wallet-outline" text={`${formatMoney(total, displayCurrency)} spent`} />
+        </View>
         {/* M11: two columns from WIDE_BREAKPOINT — charts left, breakdowns right. */}
         <View style={twoCol ? styles.cols : undefined}>
         <View style={twoCol ? styles.col : undefined}>
@@ -689,11 +681,8 @@ export default function StatisticsScreen() {
 
         </View>
         </View>
-
-        {/* Export button */}
-        <View style={styles.exportWrap}>
-          <Button label="Export CSV" icon="document-text-outline" onPress={exportCsv} />
-        </View>
+        {/* G1: no Export button here any more — export lives in Settings and
+            in the trip ⋯ menu only. */}
         </>)}
       </ScrollView>
 
@@ -1045,8 +1034,12 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   // Export
-  exportWrap: {
-    marginTop: spacing.xl,
+  // G1: quick-fact pills (moved from Home); wraps on narrow screens.
+  quickFacts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
   // "See all" link under a preview section.
   seeAll: {

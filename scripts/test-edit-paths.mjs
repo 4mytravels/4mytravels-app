@@ -5,7 +5,7 @@
 // receipt photo"). Static check — no DB, no native module.
 import { readFileSync } from 'node:fs';
 
-const screens = ['app/(tabs)/home.tsx', 'app/(tabs)/expenses.tsx', 'app/trip/[id].tsx'];
+const screens = ['app/(tabs)/home.tsx', 'app/(tabs)/expenses.tsx', 'app/trip/[id]/index.tsx'];
 let fails = 0;
 const ok = (cond, msg) => { if (cond) console.log('  ok  ' + msg); else { fails++; console.log('  FAIL ' + msg); } };
 

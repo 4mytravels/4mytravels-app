@@ -1,26 +1,26 @@
 import { useState, useMemo, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, SectionList } from 'react-native';
-import { showStatus } from '../../src/utils/statusDialog';
+import { View, Text, Pressable, StyleSheet, SectionList, TextInput } from 'react-native';
+import { showStatus } from '../../../src/utils/statusDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useTripStore } from '../../src/store/tripStore';
-import { loadExpense } from '../../src/db/expenseRepo';
-import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
-import { expensesOfTrip } from '../../src/utils/expenseList';
-import type { Expense } from '../../src/types';
-import { groupByDaySplitAware } from '../../src/utils/days';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { SectionTitle, Button, IconCircle } from '../../src/components/ui';
-import { TripCard } from '../../src/components/TripCard';
-import { TripActionsMenu } from '../../src/components/TripActionsMenu';
-import { ExpenseForm } from '../../src/components/ExpenseForm';
-import { ModalHost } from '../../src/components/ModalHost';
-import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { ExpenseRow } from '../../src/components/ExpenseRow';
-import { NavFadeScrim } from '../../src/components/FadeScrim';
-import { WebNotices } from '../../src/components/WebNotices';
-import { changeTripCover } from '../../src/utils/tripActions';
+import { useTripStore } from '../../../src/store/tripStore';
+import { loadExpense } from '../../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../../src/store/expenseStore';
+import { expensesOfTrip } from '../../../src/utils/expenseList';
+import type { Expense } from '../../../src/types';
+import { groupByDaySplitAware } from '../../../src/utils/days';
+import { colors, fontFamily, radius, fontSize, spacing } from '../../../src/theme/theme';
+import { SectionTitle, Button, IconCircle } from '../../../src/components/ui';
+import { TripCard } from '../../../src/components/TripCard';
+import { TripActionsMenu } from '../../../src/components/TripActionsMenu';
+import { ExpenseForm } from '../../../src/components/ExpenseForm';
+import { ModalHost } from '../../../src/components/ModalHost';
+import { formatMoney, toHomeCurrency } from '../../../src/utils/currency';
+import { ExpenseRow } from '../../../src/components/ExpenseRow';
+import { NavFadeScrim } from '../../../src/components/FadeScrim';
+import { WebNotices } from '../../../src/components/WebNotices';
+import { changeTripCover } from '../../../src/utils/tripActions';
 
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,6 +35,9 @@ export default function TripDetailScreen() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // G1: search moved here from the former Expenses tab (same fields).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const insets = useSafeAreaInsets();
 
   // ALL hooks are declared before the first early return. `if (!trip) return …`
@@ -45,9 +48,18 @@ export default function TripDetailScreen() {
   // #300 ("Rendered fewer hooks than expected"), which unmounts the whole
   // tree and leaves a blank screen. The rule: never let a conditional return
   // split the hook list.
+  const visibleExpenses = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q === '') return expenses;
+    return expenses.filter((e) =>
+      [e.notes, e.category, e.country, e.location]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [expenses, query]);
   const sections = useMemo(
-    () => (trip ? groupByDaySplitAware(expenses) : []),
-    [trip, expenses],
+    () => (trip ? groupByDaySplitAware(visibleExpenses) : []),
+    [trip, visibleExpenses],
   );
 
   // The list is loaded WITHOUT receipt BLOBs (see loadExpensesForList), and
@@ -97,6 +109,14 @@ export default function TripDetailScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.foreground} />
         </Pressable>
         <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerAction}
+            onPress={() => { if (searchOpen) { setQuery(''); setSearchOpen(false); } else { setSearchOpen(true); } }}
+            accessibilityRole="button"
+            accessibilityLabel={searchOpen ? 'Close search' : 'Search expenses'}
+          >
+            <Ionicons name={searchOpen ? 'close' : 'search-outline'} size={22} color={colors.foreground} />
+          </Pressable>
           {/* Q17: one ⋯ menu (Edit, Change photo, Export CSV, Delete) — the
               SAME menu a long-press on a TripCard opens. Delete is red, last,
               and confirmed (confirmDestructive works on the PWA too). */}
@@ -146,6 +166,25 @@ export default function TripDetailScreen() {
             <View style={styles.sectionHead}>
               <SectionTitle title={`Expenses (${expenses.length})`} />
             </View>
+            {searchOpen && (
+              <View style={styles.searchBar}>
+                <Ionicons name="search" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search notes, places, categories"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoFocus
+                />
+                {query !== '' && (
+                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityLabel="Clear search">
+                    <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                )}
+              </View>
+            )}
           </>
         }
         renderSectionHeader={({ section }) => (
@@ -230,6 +269,20 @@ const styles = StyleSheet.create({
   // old cover hero + date line + stat boxes.
   heroCard: { marginBottom: spacing.xl },
   sectionHead: { marginTop: spacing.sm },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: colors.surfaceSoft,
+  },
+  // minWidth 0: a flexed TextInput is an <input> on web and must be allowed to shrink (pattern 13a).
+  searchInput: { flex: 1, minWidth: 0, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, paddingVertical: 0 },
   placeholder: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.sm },
   dayHeader: {
     flexDirection: 'row',

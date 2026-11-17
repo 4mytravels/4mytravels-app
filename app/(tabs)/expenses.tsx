@@ -273,9 +273,7 @@ export default function ExpensesScreen() {
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
-        <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
+
       </View>
 
       {/* Web/PWA notices (storage health + install nudge) under the app title. */}
@@ -285,7 +283,18 @@ export default function ExpensesScreen() {
           search + trip-filter actions. */}
       <View style={styles.titleRow}>
         <View style={styles.titleTextWrap}>
-          <Text style={styles.screenTitle}>Expenses</Text>
+          {/* G1: "All expenses" is a sub-view of Trips (no own tab any more);
+              the chevron goes back to the Trips list. replace(), not back():
+              on web back() is a no-op when the page was opened directly. */}
+          <Pressable
+            onPress={() => router.replace('/trips')}
+            accessibilityRole="button"
+            accessibilityLabel="Back to trips"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.foreground} />
+            <Text style={styles.screenTitle}>All expenses</Text>
+          </Pressable>
         </View>
         <View style={styles.titleActions}>
           {!searchOpen && (
@@ -444,20 +453,19 @@ export default function ExpensesScreen() {
       )}
 
       {/* FAB — pinned above the floating nav. Files the expense under `formTrip`
-          (the single filtered trip, else the active/most-recent one). */}
+          (the single filtered trip, else the active/most-recent one). G1: the
+          FAB always means "add expense" — hidden when there is no trip (the
+          empty state offers "Create a trip"). */}
+      {formTrip && (
       <Pressable
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
-        onPress={() => {
-          if (!formTrip) {
-            // Q7: no dead-end message — go straight to creating the first trip.
-            router.push('/trips/new');
-            return;
-          }
-          setFormOpen(true);
-        }}
+        accessibilityRole="button"
+        accessibilityLabel="Add expense"
+        onPress={() => setFormOpen(true)}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
+      )}
     </View>
   );
 }

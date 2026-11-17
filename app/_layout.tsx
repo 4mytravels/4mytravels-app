@@ -147,7 +147,12 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         {/* Trip detail renders its own dark header — hide the native (white) one. */}
-        <Stack.Screen name="trip/[id]" options={{ title: 'Trip', headerShown: false }} />
+        <Stack.Screen name="trip/[id]/index" options={{ title: 'Trip', headerShown: false }} />
+        {/* G1: trip edit has its own route (was /trips/new?editId=…). */}
+        <Stack.Screen
+          name="trip/[id]/edit"
+          options={{ presentation: 'modal', title: 'Edit trip', headerShown: false }}
+        />
         <Stack.Screen
           name="trips/new"
           options={{ presentation: 'modal', title: 'New trip', headerShown: false }}

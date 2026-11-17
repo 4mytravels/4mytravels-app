@@ -52,7 +52,7 @@ export function TripActionsMenu({
             {trip.name}
           </Text>
           {item('create-outline', 'Edit trip', () => {
-            router.push({ pathname: '/trips/new', params: { editId: trip.id } });
+            router.push(`/trip/${trip.id}/edit`);
             // Close AFTER the push (on web the backdrop swallowed the tap otherwise).
             onClose();
           })}

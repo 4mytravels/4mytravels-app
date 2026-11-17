@@ -9,13 +9,18 @@ type NavItem = {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   activeIcon: keyof typeof Ionicons.glyphMap;
+  /** Other routes that belong to this tab (sub-views keep the tab lit). */
+  also?: string[];
 };
 
+// G1 IA: Home · Trips · Stats · Settings. The Expenses tab is gone — "All
+// expenses" is a sub-view of Trips (/expenses), so it lights Trips, as does a
+// trip detail (/trip/<id>). Settings is in the nav; the per-screen ⚙ is gone.
 const NAV_ITEMS: NavItem[] = [
   { name: '/home', label: 'Home', icon: 'home-outline', activeIcon: 'home' },
-  { name: '/trips', label: 'Trips', icon: 'airplane-outline', activeIcon: 'airplane' },
-  { name: '/expenses', label: 'Expenses', icon: 'wallet-outline', activeIcon: 'wallet' },
-  { name: '/statistics', label: 'Stats', icon: 'bar-chart-outline', activeIcon: 'bar-chart' },
+  { name: '/trips', label: 'Trips', icon: 'airplane-outline', activeIcon: 'airplane', also: ['/expenses', '/trip'] },
+  { name: '/statistics', label: 'Stats', icon: 'bar-chart-outline', activeIcon: 'bar-chart', also: ['/stats'] },
+  { name: '/settings', label: 'Settings', icon: 'settings-outline', activeIcon: 'settings' },
 ];
 
 export function FloatingNav() {
@@ -23,12 +28,13 @@ export function FloatingNav() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const HIDDEN_ROUTES = ['/trips/new'];
-  const shouldHide = HIDDEN_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
+  const shouldHide = pathname === '/trips/new' || pathname.startsWith('/trips/new/') || /^\/trip\/[^/]+\/edit$/.test(pathname);
   if (shouldHide) return null;
 
-  const isActive = (path: string) => {
-    return pathname === path || pathname.startsWith(`${path}/`);
+  const isActive = (item: NavItem) => {
+    return [item.name, ...(item.also ?? [])].some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    );
   };
 
   return (
@@ -41,7 +47,7 @@ export function FloatingNav() {
     >
       <View style={styles.nav}>
         {NAV_ITEMS.map((item) => {
-          const active = isActive(item.name);
+          const active = isActive(item);
           return (
             <Pressable
               key={item.name}

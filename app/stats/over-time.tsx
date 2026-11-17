@@ -7,6 +7,8 @@ import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses } from '../../src/store/expenseStore';
 import { groupByTime, timeTotal, periodLabelLong, type TimePeriod } from '../../src/utils/timeStats';
 import { pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
+import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
 import { countryName } from '../../src/data/countries';
@@ -24,11 +26,11 @@ export default function OverTimeScreen() {
 
   const { expenses } = useExpenses(); // M1 shared store
   const [period, setPeriod] = useState<TimePeriod>('month');
-  const [tripFilter, setTripFilter] = useState<string[]>([]);
+  // M10: shared with Statistics + the other Stats page.
+  const tripFilter = useTripFilterStore((st) => st.selected);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
 
-  const [tripPickerOpen, setTripPickerOpen] = useState(false);
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
 
@@ -67,8 +69,6 @@ export default function OverTimeScreen() {
     [expenses],
   );
 
-  const toggleTrip = (id: string) =>
-    setTripFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   // Multi-select: several categories = OR. An empty selection means ALL.
   const toggleCategory = (cat: string) =>
@@ -80,7 +80,6 @@ export default function OverTimeScreen() {
         ? categoryFilter[0]
         : `${categoryFilter.length} categories`;
 
-  const tripLabelTx = activeTripIds.length === 0 ? 'All trips' : `${activeTripIds.length} trips`;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -119,13 +118,12 @@ export default function OverTimeScreen() {
         contentContainerStyle={styles.chipRow}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable style={styles.filterButton} onPress={() => setTripPickerOpen(true)}>
-          <Ionicons name="airplane-outline" size={15} color={colors.primaryText} />
-          <Text style={[styles.filterButtonText, activeTripIds.length > 0 && styles.filterButtonTextOn]}>
-            {tripLabelTx}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
-        </Pressable>
+        <TripFilter
+          trips={trips}
+          selected={activeTripIds}
+          onToggle={useTripFilterStore.getState().toggle}
+          onClear={useTripFilterStore.getState().clear}
+        />
         <Pressable
           style={[styles.filterButton, countryFilter != null && styles.filterButtonOn]}
           onPress={() => setCountryPickerOpen(true)}
@@ -196,23 +194,6 @@ export default function OverTimeScreen() {
 
       {/* Filter sheets WITHOUT a search bar — same build-up as the Statistics
           trip filter (title, icon+label rows, Done). */}
-      <PickerSheet
-        visible={tripPickerOpen}
-        onClose={() => setTripPickerOpen(false)}
-        title="Filter by trip"
-        maxListHeight={320}
-      >
-        <PickerRow icon="apps-outline" label="All trips" active={activeTripIds.length === 0} onPress={() => setTripFilter([])} />
-        {trips.map((t) => (
-          <PickerRow
-            key={t.id}
-            icon="airplane-outline"
-            label={t.name}
-            active={activeTripIds.includes(t.id)}
-            onPress={() => toggleTrip(t.id)}
-          />
-        ))}
-      </PickerSheet>
 
       <PickerSheet
         visible={countryPickerOpen}

@@ -6,7 +6,6 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  Modal,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -25,7 +24,9 @@ import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
 import { TimeChart } from '../../src/components/TimeChart';
 import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
+import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
+import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { groupByCountry } from '../../src/utils/countryStats';
 import { groupByTime } from '../../src/utils/timeStats';
@@ -406,10 +407,9 @@ export default function StatisticsScreen() {
   // instead of three empty sections.
   const { expenses, loaded } = useExpenses();
   const [refreshing, setRefreshing] = useState(false);
-  // Trip filter: empty = every trip. Otherwise only the selected trips count
-  // towards the charts (1, several, or all — user request).
-  const [tripFilter, setTripFilter] = useState<string[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // Trip filter: empty = every trip. M10: the selection is shared with the
+  // Countries and Over time pages (useTripFilterStore).
+  const tripFilter = useTripFilterStore((s) => s.selected);
 
   // Most-used trip home currency for display.
   const displayCurrency = useMemo(() => {
@@ -426,7 +426,6 @@ export default function StatisticsScreen() {
     () => filterExpensesByTrips(expenses, activeTripIds),
     [expenses, activeTripIds],
   );
-  const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
   // Het Over time-blok hieronder toont DEZELFDE grafiek als de Over time-pagina,
   // dus via dezelfde aggregatie (groupByTime) — maar als PREVIEW met alleen de
   // laatste 12 maanden (12 kolommen van ~23px i.p.v. 47 van ~6px). De volledige
@@ -435,9 +434,6 @@ export default function StatisticsScreen() {
     () => groupByTime(filteredExpenses, { period: 'month' }).slice(-12),
     [filteredExpenses],
   );
-
-  const toggleTrip = (id: string) =>
-    setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   // M1: the shared store loads once; pull-to-refresh re-reads storage.
   const onRefresh = async () => {
@@ -537,23 +533,14 @@ export default function StatisticsScreen() {
       <View style={styles.titleWrap}>
         <View style={styles.titleTextWrap}>
           <Text style={styles.screenTitle}>Stats</Text>
-          <Text style={styles.filterLabel} numberOfLines={1}>
-            {filterLabel}
-          </Text>
         </View>
-        {/* Same trip selector as the Expenses tab, but multi-select. */}
-        <Pressable
-          style={styles.iconButtonLarge}
-          onPress={() => setPickerOpen(true)}
-          accessibilityLabel="Filter by trip"
-        >
-          <Ionicons name="airplane-outline" size={26} color={colors.primaryText} />
-          {activeTripIds.length > 0 && (
-            <View style={styles.filterBadge}>
-              <Text maxFontSizeMultiplier={1.3} style={styles.filterBadgeText}>{activeTripIds.length}</Text>
-            </View>
-          )}
-        </Pressable>
+        {/* M10: the shared TripFilter (text label + filter icon). */}
+        <TripFilter
+          trips={trips}
+          selected={activeTripIds}
+          onToggle={useTripFilterStore.getState().toggle}
+          onClear={useTripFilterStore.getState().clear}
+        />
       </View>
 
       {/* Web/PWA notices (storage health + install nudge) under the screen title. */}
@@ -698,56 +685,6 @@ export default function StatisticsScreen() {
         </>)}
       </ScrollView>
 
-      {/* Trip filter sheet — tap to toggle, any number of trips (or none = all). */}
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
-          <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
-            <Text style={styles.pickerTitle}>Filter by trip</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              <Pressable
-                style={styles.pickerRow}
-                onPress={() => setTripFilter([])}
-              >
-                <Ionicons
-                  name="apps-outline"
-                  size={18}
-                  color={activeTripIds.length === 0 ? colors.primary : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.pickerRowText,
-                    activeTripIds.length === 0 && { color: colors.primaryText, fontWeight: '700' },
-                  ]}
-                >
-                  All trips
-                </Text>
-                {activeTripIds.length === 0 && (
-                  <Ionicons name="checkmark" size={18} color={colors.primaryText} />
-                )}
-              </Pressable>
-              {trips.map((t) => {
-                const on = activeTripIds.includes(t.id);
-                return (
-                  <Pressable key={t.id} style={styles.pickerRow} onPress={() => toggleTrip(t.id)}>
-                    <Ionicons
-                      name="airplane-outline"
-                      size={18}
-                      color={on ? colors.primary : colors.mutedForeground}
-                    />
-                    <Text style={[styles.pickerRowText, on && { color: colors.primaryText, fontWeight: '700' }]}>
-                      {t.name}
-                    </Text>
-                    {on && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.pickerDoneWrap}>
-              <Button label="Done" onPress={() => setPickerOpen(false)} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
 
       {/* Content fades out under the floating nav. */}
       <NavFadeScrim />

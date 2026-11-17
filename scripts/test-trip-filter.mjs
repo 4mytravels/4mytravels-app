@@ -11,7 +11,7 @@
 // Gebruik:  node scripts/test-trip-filter.mjs
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -47,7 +47,7 @@ try {
 
 // Single-file compile → tsc drops the src/utils prefix (no rootDir guess when
 // only one input file is given).
-const { filterExpensesByTrips, pruneTripIds, tripFilterLabel } =
+const { filterExpensesByTrips, pruneTripIds, tripFilterLabel, tripFilterShortLabel } =
   require(join(cache, 'tripFilter.js'));
 
 const trips = [
@@ -102,6 +102,39 @@ assert(tripFilterLabel([], trips) === 'All trips', 'label: All trips');
 assert(tripFilterLabel(['alps'], trips) === 'Alps 2026', 'label: één naam');
 assert(tripFilterLabel(['alps', 'bali'], trips) === 'Alps 2026 + Bali 2026', 'label: twee namen');
 assert(tripFilterLabel(['alps', 'bali', 'japan'], trips) === '3 trips', 'label: drie of meer → "3 trips"');
+
+// --- M10: chip label + shared store ----------------------------------------
+assert(tripFilterShortLabel([], trips) === 'All trips', 'chip: All trips');
+assert(tripFilterShortLabel(['japan'], trips) === 'Japan 2026', 'chip: één naam');
+assert(tripFilterShortLabel(['japan', 'alps'], trips) === 'Japan 2026 +1', 'chip: eerste gekozen naam + aantal');
+assert(tripFilterShortLabel(['bali', 'alps', 'japan'], trips) === 'Bali 2026 +2', 'chip: drie → "Bali 2026 +2"');
+
+const storeCache = mkdtempSync(join(tmpdir(), '4mt-filterstore-'));
+try {
+  symlinkSync(join(root, 'node_modules'), join(storeCache, 'node_modules'), 'dir');
+  execFileSync(tsc, [
+    '--ignoreConfig', '--module', 'commonjs', '--target', 'es2020', '--moduleResolution', 'node',
+    '--esModuleInterop', '--skipLibCheck', '--ignoreDeprecations', '6.0', '--outDir', storeCache,
+    'src/store/tripFilterStore.ts',
+  ], { cwd: root, stdio: 'pipe' });
+  const { useTripFilterStore } = require(join(storeCache, 'tripFilterStore.js'));
+  // Stats page A selects, page B (a different screen) reads the same state.
+  const pageA = useTripFilterStore.getState();
+  pageA.toggle('japan');
+  pageA.toggle('alps');
+  assert(JSON.stringify(useTripFilterStore.getState().selected) === '["japan","alps"]', 'store: selectie gedeeld tussen schermen');
+  useTripFilterStore.getState().toggle('japan');
+  assert(JSON.stringify(useTripFilterStore.getState().selected) === '["alps"]', 'store: toggle haalt weg');
+  useTripFilterStore.getState().clear();
+  assert(useTripFilterStore.getState().selected.length === 0, 'store: clear = All trips');
+} finally {
+  rmSync(storeCache, { recursive: true, force: true });
+}
+for (const f of ['app/(tabs)/statistics.tsx', 'app/stats/countries.tsx', 'app/stats/over-time.tsx']) {
+  const src = readFileSync(join(root, f), 'utf8');
+  assert(src.includes('useTripFilterStore((') && src.includes('<TripFilter') && !src.includes('setTripFilter'),
+    `${f}: gebruikt de gedeelde TripFilter + store`);
+}
 
 if (failed) {
   console.error(`\n${failed} test(s) gefaald`);

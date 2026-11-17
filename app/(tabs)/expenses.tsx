@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Modal,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
@@ -29,7 +28,8 @@ import { groupByDaySplitAware } from '../../src/utils/days';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { computeTripStats } from '../../src/utils/tripStats';
 import { scrollTargetSection } from '../../src/utils/scrollTarget';
-import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
+import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -68,7 +68,6 @@ export default function ExpensesScreen() {
   const [catFilter, setCatFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(params.add === '1');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
@@ -87,7 +86,6 @@ export default function ExpensesScreen() {
   // Ids that no longer match a trip are dropped (a trip deleted while the filter
   // was active must not blank the list). Empty still means ALL trips.
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
-  const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
 
   const toggleTrip = (id: string) =>
     setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -288,9 +286,6 @@ export default function ExpensesScreen() {
       <View style={styles.titleRow}>
         <View style={styles.titleTextWrap}>
           <Text style={styles.screenTitle}>Expenses</Text>
-          <Text style={styles.filterLabel} numberOfLines={1}>
-            {filterLabel}
-          </Text>
         </View>
         <View style={styles.titleActions}>
           {!searchOpen && (
@@ -298,18 +293,9 @@ export default function ExpensesScreen() {
               <Ionicons name="search-outline" size={28} color={colors.mutedForeground} />
             </Pressable>
           )}
-          <Pressable
-            style={styles.iconButtonLarge}
-            onPress={() => setPickerOpen(true)}
-            accessibilityLabel="Filter by trip"
-          >
-            <Ionicons name="airplane-outline" size={26} color={colors.primaryText} />
-            {activeTripIds.length > 0 && (
-              <View style={styles.filterBadge}>
-                <Text maxFontSizeMultiplier={1.3} style={styles.filterBadgeText}>{activeTripIds.length}</Text>
-              </View>
-            )}
-          </Pressable>
+          {/* M10: the shared TripFilter. Expenses keeps its OWN selection,
+              seeded with the current trip on open (pattern 45). */}
+          <TripFilter trips={trips} selected={activeTripIds} onToggle={toggleTrip} onClear={() => setTripFilter([])} />
         </View>
       </View>
 
@@ -422,54 +408,6 @@ export default function ExpensesScreen() {
           in app/_layout and paints on top). Flag: FADE_UNDER_NAV in FadeScrim. */}
       <NavFadeScrim />
 
-      {/* Trip filter sheet — tap to toggle, any number of trips (or none = all).
-          Same interaction as the Statistics tab. */}
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
-          <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
-            <Text style={styles.pickerTitle}>Filter by trip</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              <Pressable style={styles.pickerRow} onPress={() => setTripFilter([])}>
-                <Ionicons
-                  name="apps-outline"
-                  size={18}
-                  color={activeTripIds.length === 0 ? colors.primary : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.pickerRowText,
-                    activeTripIds.length === 0 && { color: colors.primaryText, fontWeight: '700' },
-                  ]}
-                >
-                  All trips
-                </Text>
-                {activeTripIds.length === 0 && (
-                  <Ionicons name="checkmark" size={18} color={colors.primaryText} />
-                )}
-              </Pressable>
-              {trips.map((t) => {
-                const on = activeTripIds.includes(t.id);
-                return (
-                  <Pressable key={t.id} style={styles.pickerRow} onPress={() => toggleTrip(t.id)}>
-                    <Ionicons
-                      name="airplane-outline"
-                      size={18}
-                      color={on ? colors.primary : colors.mutedForeground}
-                    />
-                    <Text style={[styles.pickerRowText, on && { color: colors.primaryText, fontWeight: '700' }]}>
-                      {t.name}
-                    </Text>
-                    {on && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.pickerDoneWrap}>
-              <Button label="Done" onPress={() => setPickerOpen(false)} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
 
       {/* Add/edit-expense sheet */}
       <ModalHost visible={formOpen} onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>

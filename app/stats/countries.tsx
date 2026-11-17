@@ -10,6 +10,8 @@ import { useExpenses } from '../../src/store/expenseStore';
 import { groupByCountry, searchCountries, sortCountries, summarizeStats, type CountrySort } from '../../src/utils/countryStats';
 import { getPeriodRange, periodLabel, type PeriodPreset } from '../../src/utils/periods';
 import { pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
+import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
 import { colors, fontFamily, fontSize, radius, spacing } from '../../src/theme/theme';
@@ -47,10 +49,10 @@ export default function CountriesScreen() {
   const [showTo, setShowTo] = useState(false);
   const [fromDate, setFromDate] = useState<Date | null>(null);
   const [toDate, setToDate] = useState<Date | null>(null);
-  const [tripFilter, setTripFilter] = useState<string[]>([]);
+  // M10: shared with Statistics + the other Stats page.
+  const tripFilter = useTripFilterStore((st) => st.selected);
   const [sort, setSort] = useState<CountrySort>('high');
 
-  const [tripPickerOpen, setTripPickerOpen] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [sortPickerOpen, setSortPickerOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
@@ -87,20 +89,12 @@ export default function CountriesScreen() {
     [expenses],
   );
 
-  const toggleTrip = (id: string) =>
-    setTripFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   // Multi-select: several categories = OR. An empty selection means ALL.
   const toggleCategory = (cat: string) =>
     setCategoryFilter((p) => (p.includes(cat) ? p.filter((x) => x !== cat) : [...p, cat]));
 
   // Chip labels in the mock's "Label: value" shape ("Trip: All", "Category: All").
-  const tripChipLabel =
-    activeTripIds.length === 0
-      ? 'Trip: All'
-      : activeTripIds.length === 1
-        ? `Trip: ${trips.find((t) => t.id === activeTripIds[0])?.name ?? '1 trip'}`
-        : `Trip: ${activeTripIds.length} trips`;
   const categoryChipLabel =
     categoryFilter.length === 0
       ? 'Category: All'
@@ -193,13 +187,12 @@ export default function CountriesScreen() {
         contentContainerStyle={styles.filterRow}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable style={styles.filterButton} onPress={() => setTripPickerOpen(true)}>
-          <Ionicons name="airplane-outline" size={15} color={colors.primaryText} />
-          <Text style={[styles.filterButtonText, activeTripIds.length > 0 && styles.filterButtonTextOn]}>
-            {tripChipLabel}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
-        </Pressable>
+        <TripFilter
+          trips={trips}
+          selected={activeTripIds}
+          onToggle={useTripFilterStore.getState().toggle}
+          onClear={useTripFilterStore.getState().clear}
+        />
         <Pressable
           style={[styles.filterButton, categoryFilter.length > 0 && styles.filterButtonOn]}
           onPress={() => setCategoryPickerOpen(true)}
@@ -260,23 +253,6 @@ export default function CountriesScreen() {
           There is deliberately NO country filter here — this screen already IS
           the country breakdown, so a "Filter by country" sheet only hides the
           other countries. It stays on Over time, where it does filter a series. */}
-      <PickerSheet
-        visible={tripPickerOpen}
-        onClose={() => setTripPickerOpen(false)}
-        title="Filter by trip"
-        maxListHeight={320}
-      >
-        <PickerRow icon="apps-outline" label="All trips" active={activeTripIds.length === 0} onPress={() => setTripFilter([])} />
-        {trips.map((t) => (
-          <PickerRow
-            key={t.id}
-            icon="airplane-outline"
-            label={t.name}
-            active={activeTripIds.includes(t.id)}
-            onPress={() => toggleTrip(t.id)}
-          />
-        ))}
-      </PickerSheet>
 
       <PickerSheet
         visible={categoryPickerOpen}

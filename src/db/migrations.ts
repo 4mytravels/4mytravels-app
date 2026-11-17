@@ -2,7 +2,7 @@
 // Runs against whatever StorageAdapter is active. Receipt/cover photos are stored
 // as BLOB columns so "all local data is encrypted" holds literally (§2.2).
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 // SQL executed in order at init. Idempotent via IF NOT EXISTS.
 // v1 = baseline tables (+ app_settings). v2 = trips.countries (JSON array of
@@ -40,6 +40,10 @@ export const MIGRATIONS: string[] = [
 
   `CREATE INDEX IF NOT EXISTS idx_expenses_trip ON expenses(trip_id)`,
   `CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category)`,
+  // v3 (Q5): every list query sorts by created_at; without these SQLite built
+  // a temp B-tree per load ("USE TEMP B-TREE FOR ORDER BY").
+  `CREATE INDEX IF NOT EXISTS idx_expenses_created ON expenses(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_expenses_trip_created ON expenses(trip_id, created_at DESC)`,
 
   `CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
@@ -51,6 +55,7 @@ export const MIGRATIONS: string[] = [
 // SQLite has no ADD COLUMN IF NOT EXISTS, so this runs guarded (see
 // ensureCountriesColumn) on every init instead of via MIGRATIONS.
 export const COUNTRIES_COLUMN_SQL = `ALTER TABLE trips ADD COLUMN countries TEXT`;
+export const COVER_THUMB_COLUMN_SQL = `ALTER TABLE trips ADD COLUMN cover_thumb BLOB`;
 
 export const SCHEMA_TABLE = `CREATE TABLE IF NOT EXISTS _schema (
   key TEXT PRIMARY KEY,
@@ -83,5 +88,13 @@ export async function runMigrations(
     await exec("SELECT countries FROM trips LIMIT 1");
   } catch {
     await exec(COUNTRIES_COLUMN_SQL);
+  }
+  // v4 (M4): trips.cover_thumb — a ~600px card thumbnail next to the full
+  // cover, so list screens never load the full BLOB. Filled lazily by
+  // backfillCoverThumbs() for covers stored before this column existed.
+  try {
+    await exec("SELECT cover_thumb FROM trips LIMIT 1");
+  } catch {
+    await exec(COVER_THUMB_COLUMN_SQL);
   }
 }

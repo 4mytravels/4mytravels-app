@@ -14,9 +14,9 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
 import { Card, SectionTitle } from '../../src/components/ui';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache, type RateCache } from '../../src/services/rateCache';
@@ -173,7 +173,7 @@ export default function CustomRatesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   },
   rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
   rateSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
-  overrideActive: { color: colors.primary, fontWeight: '700' },
+  overrideActive: { color: colors.primaryText, fontWeight: '700' },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rateInput: {
     backgroundColor: colors.secondary,
@@ -211,14 +211,14 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   rateBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   rateBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   rateBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm },
-  rateBtnTextGhost: { color: colors.primary },
+  rateBtnTextGhost: { color: colors.primaryText },
   clearBtn: { padding: spacing.xs },
   footerNote: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, lineHeight: 20, marginTop: spacing.lg },
-});
+}));

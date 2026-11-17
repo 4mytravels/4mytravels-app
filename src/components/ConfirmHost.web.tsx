@@ -16,14 +16,14 @@
 // Metro's `.web` resolution keeps this file out of the native bundle.
 import { useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import {
   answerConfirm,
   cancelPendingConfirm,
   getCurrentConfirm,
   subscribeConfirm,
 } from '../utils/confirm';
-import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../theme/theme';
+import { Button } from './ui';
 
 // Declared locally: @types/react-dom is not installed in this project, and the
 // import must not reach the native bundle (web-only via Metro .web resolution).
@@ -51,19 +51,15 @@ export function ConfirmHost() {
         <Text style={styles.title}>{request.title}</Text>
         <Text style={styles.message}>{request.message}</Text>
         <View style={styles.actions}>
-          <Pressable
-            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-            onPress={() => answer(false)}
-          >
-            <Text style={styles.actionText}>{request.cancelLabel}</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.action, styles.actionDanger, pressed && styles.actionPressed]}
+          <Button label={request.cancelLabel} variant="ghost" size="md" style={{ flex: 1 }} onPress={() => answer(false)} />
+          <Button
+            label={request.confirmLabel}
+            icon="trash-outline"
+            variant="destructive"
+            size="md"
+            style={{ flex: 1 }}
             onPress={() => answer(true)}
-          >
-            <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.actionTextDanger}>{request.confirmLabel}</Text>
-          </Pressable>
+          />
         </View>
       </View>
     </View>,
@@ -71,7 +67,7 @@ export function ConfirmHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     // RN's ViewStyle union has no 'fixed' (native has no such keyword); on web
     // react-native-web emits the value verbatim, which is what we need here.
@@ -88,7 +84,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing['2xl'],
   } as unknown as ViewStyle,
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5,5,15,0.72)' },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.scrimStrong },
   dialog: {
     // Fixed width, not a percentage: react-native-web resolves `width: '100%'`
     // against a shrink-to-fit parent, so a percentage would collapse here.
@@ -134,9 +130,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionTextDanger: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
-});
+}));

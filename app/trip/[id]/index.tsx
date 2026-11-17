@@ -1,50 +1,44 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, SectionList, Alert } from 'react-native';
+import { useState, useMemo, useCallback } from 'react';
+import { View, Text, Pressable, StyleSheet, SectionList, TextInput } from 'react-native';
+import { showStatus } from '../../../src/utils/statusDialog';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList, loadExpense, saveExpense, deleteExpense } from '../../src/db/expenseRepo';
-import type { Expense } from '../../src/types';
-import { groupByDaySplitAware } from '../../src/utils/days';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { SectionTitle, Button, IconCircle } from '../../src/components/ui';
-import { TripCard } from '../../src/components/TripCard';
-import { confirmDestructive } from '../../src/utils/confirm';
-import { ExpenseForm } from '../../src/components/ExpenseForm';
-import { ModalHost } from '../../src/components/ModalHost';
-import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { ExpenseRow } from '../../src/components/ExpenseRow';
-import { NavFadeScrim } from '../../src/components/FadeScrim';
-import { WebNotices } from '../../src/components/WebNotices';
+import { useTripStore } from '../../../src/store/tripStore';
+import { loadExpense } from '../../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../../src/store/expenseStore';
+import { expensesOfTrip } from '../../../src/utils/expenseList';
+import type { Expense } from '../../../src/types';
+import { groupByDaySplitAware } from '../../../src/utils/days';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../../src/theme/theme';
+import { SectionTitle, Button, IconCircle } from '../../../src/components/ui';
+import { TripCard } from '../../../src/components/TripCard';
+import { TripActionsMenu } from '../../../src/components/TripActionsMenu';
+import { ExpenseForm } from '../../../src/components/ExpenseForm';
+import { ModalHost } from '../../../src/components/ModalHost';
+import { formatMoney, toHomeCurrency } from '../../../src/utils/currency';
+import { ExpenseRow } from '../../../src/components/ExpenseRow';
+import { NavFadeScrim } from '../../../src/components/FadeScrim';
+import { WebNotices } from '../../../src/components/WebNotices';
+import { changeTripCover } from '../../../src/utils/tripActions';
 
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const trip = useTripStore((s) => s.trips.find((t) => t.id === id));
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  // M1: this trip's rows from the shared store — no own query on every
+  // focus, and add/edit/delete show up on every screen at once.
+  const { expenses: allExpenses } = useExpenses();
+  const expenses = useMemo(
+    () => (id ? expensesOfTrip(allExpenses, id) : []),
+    [allExpenses, id],
+  );
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // G1: search moved here from the former Expenses tab (same fields).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const insets = useSafeAreaInsets();
-
-  // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
-  const skipNextFocusRef = useRef(false);
-  const load = async () => {
-    if (skipNextFocusRef.current) {
-      skipNextFocusRef.current = false;
-      return;
-    }
-    if (!id) return;
-    // Metadata only (no receipt BLOBs): the list renders no photo, and this
-    // screen refetches on every focus. The photo is fetched per-expense when the
-    // edit form is opened (see openExpenseForEdit).
-    setExpenses(await loadExpensesForList(id));
-  };
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   // ALL hooks are declared before the first early return. `if (!trip) return …`
   // used to sit between `useEffect` and `useMemo` (verified: 5 hooks before,
@@ -54,9 +48,18 @@ export default function TripDetailScreen() {
   // #300 ("Rendered fewer hooks than expected"), which unmounts the whole
   // tree and leaves a blank screen. The rule: never let a conditional return
   // split the hook list.
+  const visibleExpenses = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q === '') return expenses;
+    return expenses.filter((e) =>
+      [e.notes, e.category, e.country, e.location]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [expenses, query]);
   const sections = useMemo(
-    () => (trip ? groupByDaySplitAware(expenses) : []),
-    [trip, expenses],
+    () => (trip ? groupByDaySplitAware(visibleExpenses) : []),
+    [trip, visibleExpenses],
   );
 
   // The list is loaded WITHOUT receipt BLOBs (see loadExpensesForList), and
@@ -65,19 +68,19 @@ export default function TripDetailScreen() {
   // one row (indexed by primary key) before opening the sheet. If that fails we
   // do NOT open the form: a receipt-less expense in the edit path is a
   // data-loss bug, not a degraded UI.
-  const openExpenseForEdit = async (expense: Expense) => {
+  const openExpenseForEdit = useCallback(async (expense: Expense) => {
     try {
       const full = await loadExpense(expense.id);
       if (!full) {
-        Alert.alert('Could not open expense', 'This expense could not be loaded.');
+        showStatus('Could not open expense', 'This expense could not be loaded.');
         return;
       }
       setEditingExpense(full);
       setExpenseOpen(true);
     } catch (e) {
-      Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
+      showStatus('Could not open expense', e instanceof Error ? e.message : String(e));
     }
-  };
+  }, []);
 
   if (!trip) {
     return (
@@ -93,12 +96,9 @@ export default function TripDetailScreen() {
   }
 
   const handleSave = async (expense: Expense) => {
-    await saveExpense(expense);
+    await useExpenseStore.getState().save(expense);
     setExpenseOpen(false);
     setEditingExpense(null);
-    skipNextFocusRef.current = true;
-    // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
-    setExpenses((prev) => [expense, ...prev]);
   };
 
   return (
@@ -111,36 +111,33 @@ export default function TripDetailScreen() {
         <View style={styles.headerActions}>
           <Pressable
             style={styles.headerAction}
-            onPress={() => router.push({ pathname: '/trips/new', params: { editId: trip.id } })}
+            onPress={() => { if (searchOpen) { setQuery(''); setSearchOpen(false); } else { setSearchOpen(true); } }}
+            accessibilityRole="button"
+            accessibilityLabel={searchOpen ? 'Close search' : 'Search expenses'}
           >
-            <Ionicons name="pencil-outline" size={24} color={colors.mutedForeground} />
+            <Ionicons name={searchOpen ? 'close' : 'search-outline'} size={22} color={colors.foreground} />
           </Pressable>
-          <Pressable style={styles.headerAction} onPress={() => {
-            // confirmDestructive, not Alert.alert: the latter is a no-op on the
-            // PWA, so the trash icon would silently do nothing (see src/utils/confirm.ts).
-            // The dialog is host-independent (ConfirmHost is mounted in the root
-            // layout), so this works from a screen that is about to unmount.
-            void (async () => {
-              const ok = await confirmDestructive({
-                title: 'Delete trip',
-                message: `Delete "${trip.name}" and all its expenses?`,
-              });
-              if (!ok) return;
-              const { deleteTrip: deleteTripDb } = await import('../../src/db/tripRepo');
-              const removeTripStore = useTripStore.getState().removeTrip;
-              removeTripStore(trip.id);
-              try {
-                await deleteTripDb(trip.id);
-                router.back();
-              } catch (e) {
-                Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
-              }
-            })();
-          }}>
-            <Ionicons name="trash-outline" size={24} color={colors.destructive} />
+          {/* Q17: one ⋯ menu (Edit, Change photo, Export CSV, Delete) — the
+              SAME menu a long-press on a TripCard opens. Delete is red, last,
+              and confirmed (confirmDestructive works on the PWA too). */}
+          <Pressable
+            style={styles.headerAction}
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Actions for ${trip.name}`}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color={colors.foreground} />
           </Pressable>
         </View>
       </View>
+
+      <TripActionsMenu
+        trip={menuOpen ? trip : null}
+        onClose={() => setMenuOpen(false)}
+        // replace, not back(): on web back() is a no-op when the screen was
+        // opened directly (pattern 41).
+        onDeleted={() => router.replace('/trips')}
+      />
 
       {/* Web/PWA notices (storage health + install nudge) under the screen header. */}
       <WebNotices />
@@ -156,12 +153,38 @@ export default function TripDetailScreen() {
             {/* SAME card as the Trips tab (src/components/TripCard.tsx) —
                 photo + name + dates + day bar + verdict, figures below it. */}
             <View style={styles.heroCard}>
-              <TripCard trip={trip} expenses={expenses} />
+              {/* M9: a tap on the cover opens the photo picker directly
+                  (2 taps instead of ⋯ → Change photo → picker). */}
+              <TripCard
+                trip={trip}
+                expenses={expenses}
+                onPress={() => { void changeTripCover(trip); }}
+                pressLabel="Change trip photo"
+              />
             </View>
 
             <View style={styles.sectionHead}>
               <SectionTitle title={`Expenses (${expenses.length})`} />
             </View>
+            {searchOpen && (
+              <View style={styles.searchBar}>
+                <Ionicons name="search" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search notes, places, categories"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoFocus
+                />
+                {query !== '' && (
+                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityLabel="Clear search">
+                    <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                )}
+              </View>
+            )}
           </>
         }
         renderSectionHeader={({ section }) => (
@@ -187,9 +210,7 @@ export default function TripDetailScreen() {
             homeCurrency={trip.homeCurrency}
             splitShare={item.splitShare}
             background={colors.primary12}
-            onPress={() => {
-              void openExpenseForEdit(item.expense);
-            }}
+            onPress={openExpenseForEdit}
           />
         )}
         ListEmptyComponent={
@@ -208,6 +229,7 @@ export default function TripDetailScreen() {
       <ModalHost visible={expenseOpen} onRequestClose={() => setExpenseOpen(false)}>
         <ExpenseForm
           tripId={trip.id}
+          tripName={trip.name}
           defaultCurrency={trip.defaultCurrency}
           homeCurrency={trip.homeCurrency}
           initialExpense={editingExpense ?? undefined}
@@ -215,15 +237,12 @@ export default function TripDetailScreen() {
           onSave={handleSave}
           onDelete={async (expense) => {
             try {
-              await deleteExpense(expense.id);
+              await useExpenseStore.getState().remove(expense.id);
               setExpenseOpen(false);
               setEditingExpense(null);
-              skipNextFocusRef.current = true;
-              // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
-              setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
-              Alert.alert('Delete failed', msg);
+              showStatus('Delete failed', msg);
             }
           }}
         />
@@ -232,7 +251,7 @@ export default function TripDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   // Back button on the left, the two actions on the right — no title: the trip
   // name lives on the card below (it was rendered twice before).
@@ -250,6 +269,20 @@ const styles = StyleSheet.create({
   // old cover hero + date line + stat boxes.
   heroCard: { marginBottom: spacing.xl },
   sectionHead: { marginTop: spacing.sm },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: colors.surfaceSoft,
+  },
+  // minWidth 0: a flexed TextInput is an <input> on web and must be allowed to shrink (pattern 13a).
+  searchInput: { flex: 1, minWidth: 0, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, paddingVertical: 0 },
   placeholder: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.sm },
   dayHeader: {
     flexDirection: 'row',
@@ -291,7 +324,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.primary,
@@ -315,4 +348,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-});
+}));

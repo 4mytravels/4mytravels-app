@@ -24,10 +24,10 @@
 
 import { PropsWithChildren, ReactNode, useEffect, useRef } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetPortal } from './SheetPortal';
 import { useKeyboardHeight } from '../utils/useKeyboardHeight';
-import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
 
 export function PickerSheet({
   visible,
@@ -149,22 +149,22 @@ export function PickerRow({
       {icon && (
         <Ionicons name={icon} size={18} color={active ? colors.primary : colors.mutedForeground} />
       )}
-      <Text style={[styles.rowText, active && { color: colors.primary, fontWeight: '700' }]} numberOfLines={1}>
+      <Text style={[styles.rowText, active && { color: colors.primaryText, fontWeight: '700' }]} numberOfLines={1}>
         {label}
       </Text>
-      {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+      {active && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.backdrop,
   },
   sheet: {
     position: 'absolute',
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: fontFamily.heading,
   },
-  done: { color: colors.primary, fontWeight: '700', fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  done: { color: colors.primaryText, fontWeight: '700', fontSize: fontSize.md, fontFamily: fontFamily.sans },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondary,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },
@@ -229,4 +229,4 @@ const styles = StyleSheet.create({
   },
   rowActive: {},
   rowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-});
+}));

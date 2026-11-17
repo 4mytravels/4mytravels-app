@@ -2,7 +2,7 @@
 // (dark theme, large amount input, currency pill, category grid, save button).
 // Builds a full Expense with a Frankfurter rate snapshot at entry time (§2.2).
 // Supports edit mode (initialExpense) and a manual rate override (acceptance §2.5).
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,10 @@ import {
   Platform,
   Image,
   Modal,
-  Alert,
   KeyboardAvoidingView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { confirmDestructive } from '../utils/confirm';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { processPhoto } from '../utils/image';
@@ -32,6 +32,7 @@ import {
   radius,
   fontSize,
   spacing,
+  themedStyles,
 } from '../theme/theme';
 import {
   EXPENSE_CATEGORIES,
@@ -41,7 +42,7 @@ import {
 } from '../types';
 import { allocateSplit } from '../utils/pace';
 import { localDateTimeISO, localNoon, localTimeHM } from '../utils/days';
-import { CategoryChip, Button } from './ui';
+import { CategoryChip, Button, IconButton } from './ui';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
@@ -74,6 +75,7 @@ export function ExpenseForm({
   defaultCurrency,
   homeCurrency,
   initialExpense,
+  tripName,
   onSave,
   onDelete,
   onClose,
@@ -82,6 +84,8 @@ export function ExpenseForm({
   defaultCurrency: string;
   homeCurrency: string; // ISO 4217, the trip's home currency
   initialExpense?: Expense;
+  /** Shown as a chip so the user sees which trip the expense is filed under (Q15). */
+  tripName?: string;
   onSave: (expense: Expense) => void;
   onDelete?: (expense: Expense) => void;
   onClose?: () => void;
@@ -108,6 +112,18 @@ export function ExpenseForm({
   // evenly across [date … endDate] in budget statistics (§2.2 allocateSplit).
   const [endDate, setEndDate] = useState(initialExpense?.multiDaySplit?.splitEnd ?? '');
   const [splitOpen, setSplitOpen] = useState(false);
+  // M8: progressive disclosure. Trip, amount/currency, category and Save are
+  // always visible; payment, note, country, receipt, date and split sit behind
+  // "More details". Editing opens it when any of those fields carries data.
+  const [detailsOpen, setDetailsOpen] = useState(
+    () =>
+      !!initialExpense &&
+      (!!initialExpense.notes ||
+        !!initialExpense.receiptPhoto ||
+        !!initialExpense.multiDaySplit ||
+        !!initialExpense.country ||
+        initialExpense.paymentMethod !== 'card'),
+  );
   // Native date pickers (calendar icon buttons). 'date' = start date,
   // 'end' = multi-day split end date.
   // The picker's initial Date is pinned in STATE at open time: passing a fresh
@@ -181,6 +197,35 @@ export function ExpenseForm({
     })();
     return () => { alive = false; };
   }, [tripId, initialExpense]);
+  // Q15: a new expense starts on the LAST category used (most logs repeat the
+  // previous one, e.g. coffee after coffee) instead of always 'Food'.
+  // Stored app-wide in app_settings; only applied while the user has not
+  // touched the grid yet.
+  const categoryTouchedRef = useRef(false);
+  useEffect(() => {
+    if (initialExpense) return;
+    let alive = true;
+    (async () => {
+      try {
+        const db = (await import('../db/index')).getStorageAdapter();
+        const rows = await db.query<{ value: string }>(
+          'SELECT value FROM app_settings WHERE key = ?',
+          ['last_category'],
+        );
+        const v = rows[0]?.value as ExpenseCategory | undefined;
+        if (alive && v && (EXPENSE_CATEGORIES as readonly string[]).includes(v) && !categoryTouchedRef.current) {
+          setCategory(v);
+        }
+      } catch {
+        // no remembered category
+      }
+    })();
+    return () => { alive = false; };
+  }, [initialExpense]);
+  const pickCategory = useCallback((c: ExpenseCategory) => {
+    categoryTouchedRef.current = true;
+    setCategory(c);
+  }, []);
   const [currencyQuery, setCurrencyQuery] = useState('');
   const [showCurrencies, setShowCurrencies] = useState(false);
   // Global manual FX overrides (Settings) — when one exists for this pair the
@@ -273,7 +318,7 @@ export function ExpenseForm({
     return () => {
       cancelled = true;
     };
-  }, [currency, date, homeCurrency, manualOverride]);
+  }, [currency, date, homeCurrency, manualOverride, isEdit]);
 
   const amountNum = parseFloat(amount) || 0;
   const homeAmount = rate != null ? amountNum * rate : null;
@@ -334,6 +379,15 @@ export function ExpenseForm({
       receiptPhoto: receiptBytes,
       multiDaySplit: split,
     };
+    // Q15: remember the category for the next new expense.
+    void (async () => {
+      try {
+        const db = (await import('../db/index')).getStorageAdapter();
+        await db.exec('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', ['last_category', category]);
+      } catch {
+        // non-fatal
+      }
+    })();
     // Remember the country per trip so the next expense starts pre-filled.
     if (country.trim()) {
       void (async () => {
@@ -375,6 +429,14 @@ export function ExpenseForm({
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{isEdit ? 'Edit expense' : 'Add expense'}</Text>
             <Text style={styles.subtitle}>Quickly log a travel spend.</Text>
+            {/* Q15: show which trip this expense is filed under — formTrip is
+                picked implicitly (filter or active trip) and was invisible. */}
+            {tripName ? (
+              <View style={styles.tripChip} accessibilityLabel={`Trip: ${tripName}`}>
+                <Ionicons name="airplane-outline" size={14} color={colors.primaryText} />
+                <Text style={styles.tripChipText} numberOfLines={1}>{tripName}</Text>
+              </View>
+            ) : null}
           </View>
           {onClose && (
             <Pressable style={styles.closeButton} onPress={onClose}>
@@ -397,7 +459,7 @@ export function ExpenseForm({
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
                 placeholder="0.00"
-                placeholderTextColor="rgba(255,255,255,0.35)"
+                placeholderTextColor={colors.white35}
               />
               <Pressable style={styles.currencyButton} onPress={() => setShowCurrencies(true)}>
                 <Text style={styles.currencyText}>
@@ -406,6 +468,13 @@ export function ExpenseForm({
                 </Text>
                 <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
               </Pressable>
+              {/* M8: receipt shortcut — open form → 📷 → pick = 3 taps. */}
+              <IconButton
+                icon={receiptPreview ? 'checkmark-circle' : 'camera-outline'}
+                label={receiptPreview ? 'Receipt attached — replace' : 'Add receipt photo'}
+                color={receiptPreview ? colors.success : undefined}
+                onPress={() => { void pickReceipt(); }}
+              />
             </View>
             {/* Currency selection. PickerSheet keeps the backdrop and the sheet
                 as SIBLINGS, so a tap on the search field can never bubble into
@@ -474,7 +543,7 @@ export function ExpenseForm({
                       key={cat}
                       category={cat}
                       selected={category === cat}
-                      onSelect={setCategory}
+                      onSelect={pickCategory}
                       stretch
                     />
                   ))}
@@ -483,6 +552,23 @@ export function ExpenseForm({
             </View>
           </View>
 
+          {/* M8: everything below is optional detail. */}
+          <Pressable
+            style={styles.detailsToggle}
+            onPress={() => setDetailsOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: detailsOpen }}
+          >
+            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Fewer details' : 'More details'}</Text>
+            <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
+            {!detailsOpen && (
+              <Text style={styles.detailsSummary} numberOfLines={1}>
+                {[paymentMethod === 'card' ? 'Card' : 'Cash', country || null, date, time].filter(Boolean).join(' · ')}
+              </Text>
+            )}
+          </Pressable>
+
+          {detailsOpen ? (<>
           {/* Payment method */}
           <View style={styles.section}>
             <Text style={styles.label}>Payment</Text>
@@ -548,17 +634,14 @@ export function ExpenseForm({
                   <Image source={{ uri: receiptPreview }} style={styles.receiptThumb} />
                 </Pressable>
                 <View style={styles.receiptActions}>
-                  <Pressable style={styles.receiptBtn} onPress={pickReceipt}>
-                    <Ionicons name="refresh-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.receiptBtnText}>Replace</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.receiptBtn, { backgroundColor: colors.destructive }]}
+                  <Button label="Replace" icon="refresh-outline" size="sm" variant="secondary" onPress={pickReceipt} />
+                  <Button
+                    label="Remove"
+                    icon="trash-outline"
+                    size="sm"
+                    variant="destructive"
                     onPress={() => { setReceiptBytes(null); setReceiptPreview(null); }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.receiptBtnText}>Remove</Text>
-                  </Pressable>
+                  />
                 </View>
               </View>
             ) : (
@@ -657,6 +740,7 @@ export function ExpenseForm({
               </Pressable>
             )}
           </View>
+          </>) : null}
         </ScrollView>
 
         <View style={styles.footer}>
@@ -667,19 +751,14 @@ export function ExpenseForm({
                 label="Delete expense"
                 icon="trash-outline"
                 variant="ghost"
-                onPress={() => {
-                  Alert.alert(
-                    'Delete expense',
-                    `${initialExpense.notes || initialExpense.category} — ${initialExpense.amount} ${initialExpense.currency}?`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: () => onDelete(initialExpense),
-                      },
-                    ],
-                  );
+                onPress={async () => {
+                  // Q7: Alert.alert with buttons is a no-op on web — Delete did
+                  // nothing on the PWA. confirmDestructive renders on both.
+                  const ok = await confirmDestructive({
+                    title: 'Delete expense',
+                    message: `${initialExpense.notes || initialExpense.category} — ${initialExpense.amount} ${initialExpense.currency}?`,
+                  });
+                  if (ok) onDelete(initialExpense);
                 }}
               />
             </View>
@@ -709,7 +788,7 @@ export function ExpenseForm({
         <Pressable style={styles.viewerBackdrop} onPress={() => setReceiptViewerOpen(false)}>
           <Image source={{ uri: receiptPreview ?? undefined }} style={styles.viewerImage} resizeMode="contain" />
           <View style={styles.viewerClose}>
-            <Ionicons name="close" size={24} color="#fff" />
+            <Ionicons name="close" size={24} color={colors.white} />
           </View>
         </Pressable>
       </SheetPortal>
@@ -745,9 +824,9 @@ export function ExpenseForm({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.backdropSoft },
   sheet: {
     backgroundColor: colors.background,
     borderTopLeftRadius: radius['3xl'],
@@ -764,19 +843,36 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.white20,
     alignSelf: 'center',
     marginBottom: spacing.lg,
   },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
   subtitle: { fontSize: fontSize.md, color: colors.mutedForeground, fontFamily: fontFamily.sans, marginTop: 2 },
+  tripChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.primary12, borderWidth: 1, borderColor: colors.primaryBorder, maxWidth: '100%' },
+  tripChipText: { fontSize: fontSize.sm, color: colors.primaryText, fontFamily: fontFamily.sans, fontWeight: '600', flexShrink: 1 },
   closeButton: { padding: spacing.xs },
   scroll: { paddingBottom: spacing.lg },
   section: { marginBottom: spacing.xl },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md },
   label: { fontSize: fontSize.md, color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans, marginBottom: spacing.sm },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  detailsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    marginBottom: spacing.md,
+  },
+  detailsToggleText: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  detailsSummary: {
+    flex: 1,
+    textAlign: 'right',
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontFamily: fontFamily.sans,
+  },
   amountInput: {
     flex: 1,
     // Web: react-native-web renders this as <input>, a flex item with
@@ -785,7 +881,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -797,7 +893,7 @@ const styles = StyleSheet.create({
   currencyButton: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
@@ -817,7 +913,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  currencyChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  currencyChipActive: { backgroundColor: colors.primarySolid, borderColor: colors.primary },
   currencyChipText: { color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans },
   rateRow: { marginTop: spacing.sm, minHeight: 20 },
   rateText: { color: colors.success, fontSize: fontSize.md, fontFamily: fontFamily.sans },
@@ -849,13 +945,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  payChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  payChipActive: { backgroundColor: colors.primarySolid, borderColor: colors.primary },
   payText: { color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans },
   payTextActive: { color: colors.primaryForeground, fontWeight: '700' },
   noteInput: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -869,7 +965,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingLeft: spacing.xl,
   },
@@ -877,7 +973,7 @@ const styles = StyleSheet.create({
   timeInput: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -904,17 +1000,17 @@ const styles = StyleSheet.create({
   receiptRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   receiptThumb: { width: 72, height: 72, borderRadius: radius.lg, backgroundColor: colors.secondary },
   receiptActions: { flexDirection: 'column', gap: spacing.sm },
-  receiptBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radius.full },
+  receiptBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primarySolid, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2, borderRadius: radius.full },
   receiptBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   receiptAdd: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg, paddingHorizontal: spacing.xl, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' },
   receiptAddText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   receiptHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm },
   overrideNote: { color: colors.success, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.md },
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   webPickerOverlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'flex-end',
   },
   webPickerSheet: {
@@ -946,7 +1042,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
@@ -957,8 +1053,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
-  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' },
+  viewerBackdrop: { flex: 1, backgroundColor: colors.backdropStrong, alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: '100%', height: '90%' },
-  viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white15, alignItems: 'center', justifyContent: 'center' },
   splitHint: { color: colors.mutedForeground, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans },
-});
+}));

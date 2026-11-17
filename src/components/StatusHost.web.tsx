@@ -11,7 +11,8 @@
 import { useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { getCurrentStatus, dismissStatus, subscribeStatus } from '../utils/statusDialog';
-import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../theme/theme';
+import { Button } from './ui';
 
 // Declared locally: @types/react-dom is not installed in this project, and the
 // import must not reach the native bundle (web-only via Metro .web resolution).
@@ -35,19 +36,14 @@ export function StatusHost() {
       <View style={styles.dialog}>
         <Text style={styles.title}>{request.title}</Text>
         {request.message ? <Text style={styles.message}>{request.message}</Text> : null}
-        <Pressable
-          style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-          onPress={() => dismissStatus()}
-        >
-          <Text style={styles.actionText}>OK</Text>
-        </Pressable>
+        <Button label="OK" variant="secondary" size="md" onPress={() => dismissStatus()} />
       </View>
     </View>,
     document.body,
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     // RN's ViewStyle union has no 'fixed' (native has no such keyword); on web
     // react-native-web emits the value verbatim, which is what we need.
@@ -67,7 +63,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(5,5,15,0.72)',
+    backgroundColor: colors.scrimStrong,
   },
   dialog: {
     // Fixed width, not a percentage: react-native-web resolves `width: '100%'`
@@ -99,7 +95,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.full,
     paddingVertical: spacing.md,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   actionPressed: { opacity: 0.8 },
   actionText: {
@@ -108,4 +104,4 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
   },
-});
+}));

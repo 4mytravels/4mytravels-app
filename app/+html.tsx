@@ -5,6 +5,7 @@
 // sqlite3mc WASM engine and does NOT allow JS eval).
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
+import { colors } from '../src/theme/theme';
 
 export const unstable_settings = {
   // Anchor the rendered HTML at the root so all routes share this shell.
@@ -34,7 +35,10 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta httpEquiv="Content-Security-Policy" content={CSP} />
-        <meta name="theme-color" content="#0A0A1A" />
+        <meta name="theme-color" content={colors.background} />
+        {/* Static default (dark, the pre-hydration look). G5: ThemeProvider rewrites
+            color-scheme, theme-color and the body background for the chosen theme. */}
+        <meta name="color-scheme" content="dark" />
         <meta name="description" content="Privacy-first travel expense tracker. Encrypted local storage, no account, no tracking." />
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
@@ -42,8 +46,12 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="4MyTravels" />
         <title>4MyTravels</title>
+        {/* M2: a visible keyboard-focus ring on web (react-native-web strips
+            the default outline). :focus-visible only — a mouse/touch click
+            does not draw it. CSP allows inline styles (style-src). */}
+        <style>{`:focus-visible{outline:2px solid ${colors.primaryText};outline-offset:2px;border-radius:inherit}`}</style>
       </head>
-      <body style={{ backgroundColor: '#0A0A1A' }}>
+      <body style={{ backgroundColor: colors.background }}>
         {children}
         <ScrollViewStyleReset />
       </body>

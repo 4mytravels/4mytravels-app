@@ -6,9 +6,8 @@
 //
 // Native platforms never render this (Keystore-backed device key instead).
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,12 +16,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, themedStyles } from '../theme/theme';
+import { generatePassphrase } from '../db/web/passphrase';
+import { isBiometricEnrolled, unlockWithBiometric } from '../db/web/biometric';
+import { Button } from './ui';
 
 const HAS_PASSPHRASE_KEY = '4mytravels.hasPassphrase';
 
 export interface WebUnlockGateProps {
   onUnlock: (passphrase: string) => void;
+  /** Biometric unlock hands over the already-derived database key. */
+  onUnlockKey?: (keyHex: string) => void;
 }
 
 export function hasStoredPassphraseFlag(): boolean {
@@ -41,7 +45,53 @@ export function markPassphraseCreated(): void {
   }
 }
 
-export function WebUnlockGate({ onUnlock }: WebUnlockGateProps) {
+// Raw DOM <form> with a username + new-password field: this is what makes
+// Proton Pass / Bitwarden / Google Passwords offer to SAVE the generated
+// passphrase on submit. react-native-web renders on react-dom, so plain DOM
+// elements are fine on web (this component is web-only).
+function PasswordManagerForm(props: {
+  passphrase: string;
+  reveal: boolean;
+  onSubmit: () => void;
+  disabled: boolean;
+  label: string;
+}) {
+  const h = React.createElement;
+  return h(
+    'form',
+    {
+      onSubmit: (e: { preventDefault(): void }) => {
+        e.preventDefault();
+        props.onSubmit();
+      },
+      style: { display: 'flex', flexDirection: 'column', gap: 14 },
+    },
+    h('input', {
+      type: 'text', name: 'username', autoComplete: 'username', value: '4MyTravels',
+      readOnly: true, tabIndex: -1, 'aria-hidden': true,
+      style: { position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' },
+    }),
+    h('input', {
+      type: props.reveal ? 'text' : 'password', name: 'password', autoComplete: 'new-password',
+      value: props.passphrase, readOnly: true, 'aria-label': 'Generated passphrase',
+      style: {
+        background: colors.surfaceMedium, border: `1px solid ${colors.borderStrong}`,
+        borderRadius: 10, color: colors.foreground, fontSize: 16, padding: '12px 14px',
+        fontFamily: 'ui-monospace, monospace', width: '100%', boxSizing: 'border-box',
+      },
+    }),
+    h('button', {
+      type: 'submit', disabled: props.disabled,
+      style: {
+        background: colors.primary, color: colors.primaryForeground, border: 'none',
+        borderRadius: 12, padding: '14px 0', fontSize: 16, fontWeight: 600,
+        opacity: props.disabled ? 0.5 : 1, cursor: props.disabled ? 'default' : 'pointer',
+      },
+    }, props.label),
+  );
+}
+
+export function WebUnlockGate({ onUnlock, onUnlockKey }: WebUnlockGateProps) {
   // Hydration safety (static export prerenders create-mode copy at build
   // time, when localStorage is empty): keep the FIRST client render identical
   // to the server HTML, then switch to unlock-mode after mount.
@@ -53,11 +103,46 @@ export function WebUnlockGate({ onUnlock }: WebUnlockGateProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Create flow: generated passphrase by default, own passphrase optional.
+  // Generated client-side only (after mount) so SSR HTML stays deterministic.
+  const [generated, setGenerated] = useState('');
+  const [ownMode, setOwnMode] = useState(false);
+  const [reveal, setReveal] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (mounted && isFirstUse && !generated) void generatePassphrase().then(setGenerated);
+  }, [mounted, isFirstUse, generated]);
+
+  // Unlock flow: biometric first when enrolled.
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  const bioTried = useRef(false);
+  const tryBiometric = useCallback(async () => {
+    setError(null);
+    const key = await unlockWithBiometric();
+    if (key && onUnlockKey) {
+      setBusy(true);
+      onUnlockKey(key);
+    } else {
+      setError('Biometric unlock failed or was cancelled — use your passphrase.');
+    }
+  }, [onUnlockKey]);
+  useEffect(() => {
+    if (!mounted || isFirstUse) return;
+    const enrolled = isBiometricEnrolled();
+    setBioEnrolled(enrolled);
+    if (enrolled && !bioTried.current) {
+      bioTried.current = true;
+      void tryBiometric();
+    }
+  }, [mounted, isFirstUse, tryBiometric]);
+
   const canSubmit = useMemo(() => {
     if (busy) return false;
+    if (isFirstUse && !ownMode) return generated.length > 0 && saved;
     if (isFirstUse) return passphrase.length >= 8 && passphrase === confirm;
     return passphrase.length > 0;
-  }, [busy, isFirstUse, passphrase, confirm]);
+  }, [busy, isFirstUse, ownMode, generated, saved, passphrase, confirm]);
 
   // Auto-focus the input on mount (automatic UX, per user preference).
   const inputRef = React.useRef<TextInput>(null);
@@ -72,8 +157,34 @@ export function WebUnlockGate({ onUnlock }: WebUnlockGateProps) {
     setBusy(true);
     // Derivation happens inside init(); the brief spinner here is an explicit
     // user action (not a form-open block), which the no-spinner rule allows.
-    onUnlock(passphrase);
-  }, [canSubmit, onUnlock, passphrase]);
+    onUnlock(isFirstUse && !ownMode ? generated : passphrase);
+  }, [canSubmit, onUnlock, isFirstUse, ownMode, generated, passphrase]);
+
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(generated);
+      setSaved(true);
+      setNotice('Copied. Clear your clipboard after pasting it into your password manager.');
+    } catch {
+      setNotice('Copy failed — select and copy it manually, or download the file.');
+    }
+  }, [generated]);
+
+  const download = useCallback(() => {
+    const text =
+      '4MyTravels recovery passphrase\n\n' + generated +
+      '\n\nKeep this file somewhere safe and private. Without it your data cannot be recovered.\n';
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '4mytravels-recovery-passphrase.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSaved(true);
+    setNotice('Downloaded. Store the file in your password manager or an encrypted vault.');
+  }, [generated]);
+
+  const createMode = isFirstUse && !ownMode;
 
   return (
     <KeyboardAvoidingView
@@ -84,60 +195,100 @@ export function WebUnlockGate({ onUnlock }: WebUnlockGateProps) {
         <Text style={styles.title}>4MyTravels</Text>
         <Text style={styles.subtitle}>
           {isFirstUse
-            ? 'Choose a passphrase to encrypt your data on this device.'
+            ? createMode
+              ? 'We generated a passphrase that encrypts your data on this device.'
+              : 'Choose a passphrase to encrypt your data on this device.'
             : 'Enter your passphrase to unlock your data.'}
         </Text>
 
         {isFirstUse && (
           <Text style={styles.warning}>
             Your passphrase is never sent anywhere and cannot be recovered. If
-            you lose it, your data is lost. Write it down somewhere safe.
+            you lose it, your data is lost. Save it in your password manager.
           </Text>
         )}
 
-        <TextInput
-          ref={inputRef}
-          style={styles.input}
-          placeholder={isFirstUse ? 'Passphrase (min. 8 characters)' : 'Passphrase'}
-          placeholderTextColor={colors.mutedForeground}
-          secureTextEntry
-          value={passphrase}
-          onChangeText={setPassphrase}
-          onSubmitEditing={isFirstUse ? undefined : submit}
-          editable={!busy}
-        />
-
-        {isFirstUse && (
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm passphrase"
-            placeholderTextColor={colors.mutedForeground}
-            secureTextEntry
-            value={confirm}
-            onChangeText={setConfirm}
-            onSubmitEditing={submit}
-            editable={!busy}
-          />
+        {createMode && (
+          <>
+            <PasswordManagerForm
+              passphrase={generated}
+              reveal={reveal}
+              onSubmit={submit}
+              disabled={!canSubmit}
+              label={busy ? 'Creating…' : 'Create encrypted storage'}
+            />
+            <View style={styles.row}>
+              <Pressable style={styles.chip} onPress={() => setReveal((r) => !r)}>
+                <Text style={styles.chipText}>{reveal ? 'Hide' : 'Show'}</Text>
+              </Pressable>
+              <Pressable style={styles.chip} onPress={copy}>
+                <Text style={styles.chipText}>Copy</Text>
+              </Pressable>
+              <Pressable style={styles.chip} onPress={download}>
+                <Text style={styles.chipText}>Download</Text>
+              </Pressable>
+              <Pressable style={styles.chip} onPress={() => { void generatePassphrase().then(setGenerated); setSaved(false); setNotice(null); }}>
+                <Text style={styles.chipText}>New</Text>
+              </Pressable>
+            </View>
+            <Pressable style={styles.checkRow} onPress={() => setSaved((v) => !v)}>
+              <View style={[styles.checkbox, saved && styles.checkboxOn]} />
+              <Text style={styles.checkLabel}>I have saved this passphrase</Text>
+            </Pressable>
+            {notice && <Text style={styles.hint}>{notice}</Text>}
+            <Pressable onPress={() => setOwnMode(true)}>
+              <Text style={styles.link}>Use my own passphrase instead</Text>
+            </Pressable>
+          </>
         )}
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {!createMode && (
+          <>
+            {!isFirstUse && bioEnrolled && (
+              <Button label="Unlock with biometrics" onPress={tryBiometric} disabled={busy} />
+            )}
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            (!canSubmit || pressed) && styles.buttonDisabled,
-          ]}
-          onPress={submit}
-          disabled={!canSubmit}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <Text style={styles.buttonText}>
-              {isFirstUse ? 'Create encrypted storage' : 'Unlock'}
-            </Text>
-          )}
-        </Pressable>
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              placeholder={isFirstUse ? 'Passphrase (min. 8 characters)' : 'Passphrase'}
+              placeholderTextColor={colors.mutedForeground}
+              secureTextEntry
+              value={passphrase}
+              onChangeText={setPassphrase}
+              onSubmitEditing={isFirstUse ? undefined : submit}
+              editable={!busy}
+            />
+
+            {isFirstUse && (
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm passphrase"
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                value={confirm}
+                onChangeText={setConfirm}
+                onSubmitEditing={submit}
+                editable={!busy}
+              />
+            )}
+
+            {error && <Text style={styles.error}>{error}</Text>}
+
+            <Button
+              label={isFirstUse ? 'Create encrypted storage' : 'Unlock'}
+              onPress={submit}
+              disabled={!canSubmit && !busy}
+              loading={busy}
+            />
+
+            {isFirstUse && (
+              <Pressable onPress={() => setOwnMode(false)}>
+                <Text style={styles.link}>Use a generated passphrase instead</Text>
+              </Pressable>
+            )}
+          </>
+        )}
 
         {!isFirstUse && (
           <Text style={styles.hint}>
@@ -150,7 +301,7 @@ export function WebUnlockGate({ onUnlock }: WebUnlockGateProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -169,7 +320,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   title: {
-    color: '#FFFFFF',
+    color: colors.foreground,
     fontSize: 24,
     fontWeight: '700',
     textAlign: 'center',
@@ -181,29 +332,29 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   warning: {
-    color: '#FBBF24',
+    color: colors.warning,
     fontSize: 12,
     lineHeight: 17,
-    backgroundColor: 'rgba(251,191,36,0.10)',
+    backgroundColor: colors.amber10,
     borderRadius: 8,
     padding: 10,
   },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: colors.surfaceMedium,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: 10,
-    color: '#FFFFFF',
+    color: colors.foreground,
     fontSize: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
   error: {
-    color: '#F87171',
+    color: colors.red400,
     fontSize: 13,
   },
   button: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -217,10 +368,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  chip: {
+    borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 999,
+    paddingVertical: 8, paddingHorizontal: 14,
+  },
+  chipText: { color: colors.foreground, fontSize: 13, fontWeight: '600' },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: colors.mutedForeground },
+  checkboxOn: { backgroundColor: colors.primarySolid, borderColor: colors.primary },
+  checkLabel: { color: colors.foreground, fontSize: 14 },
+  link: { color: colors.primaryText, fontSize: 13, textAlign: 'center' },
   hint: {
     color: colors.mutedForeground,
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 17,
   },
-});
+}));

@@ -8,10 +8,10 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { showStatus } from '../../src/utils/statusDialog';
+import Ionicons from '@expo/vector-icons/Ionicons';
 // Lazy + guarded: this package calls TurboModuleRegistry.getEnforcing() at
 // import time, which THROWS on dev-client builds that predate the dependency.
 // Resolving it lazily lets us fall back to manual date entry instead of
@@ -24,20 +24,20 @@ const DateTimePicker: React.ComponentType<Record<string, unknown>> | null = (() 
     return null;
   }
 })();
-import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { randomUUID } from 'expo-crypto';
 import { WebDateButton } from '../../src/components/WebDateButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
-import { saveTrip, updateTrip } from '../../src/db/tripRepo';
-import { processPhoto, TRIP_COVER_HEIGHT } from '../../src/utils/image';
+import { saveTrip, updateTrip, loadTripCover } from '../../src/db/tripRepo';
+import { tripCoverStageSize, makeCoverThumb } from '../../src/utils/image';
+import { pickTripCoverBytes } from '../../src/utils/tripActions';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Button } from '../../src/components/ui';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
+import { Button, IconButton } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
 
 // bytesToBase64 lives in src/utils/image.ts (shared with the expense form).
@@ -261,8 +261,17 @@ function CountryMultiPicker({
   );
 }
 
+// G1: /trips/new creates a trip; editing lives at /trip/[id]/edit. The old
+// deeplink /trips/new?editId=X redirects there, so bookmarks and older code
+// paths keep working.
 export default function NewTripScreen() {
   const { editId } = useLocalSearchParams<{ editId?: string }>();
+  if (editId) return <Redirect href={`/trip/${editId}/edit`} />;
+  return <TripEditor />;
+}
+
+/** Create (no editId) or edit a trip. Rendered by /trips/new and /trip/[id]/edit. */
+export function TripEditor({ editId }: { editId?: string }) {
   const existing = useTripStore((s) => (editId ? s.trips.find((t) => t.id === editId) : undefined));
   const addTrip = useTripStore((s) => s.addTrip);
   const updateTripStore = useTripStore((s) => s.updateTrip);
@@ -276,23 +285,26 @@ export default function NewTripScreen() {
   const [defaultCurrency, setDefaultCurrency] = useState(existing?.defaultCurrency ?? 'EUR');
   const [dailyBudget, setDailyBudget] = useState(existing ? String(existing.dailyBudget) : '');
   const [countries, setCountries] = useState<string[]>(existing?.countries ?? []);
-  const [coverPreview, setCoverPreview] = useState<string | null>(
-    // Edit mode: preview the existing photo so it survives a save without changes.
-    (() => {
-      const b = (existing as Trip & { coverBytes?: Uint8Array | null })?.coverBytes;
-      if (!b) return null;
-      let bin = '';
-      for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
-      return 'data:image/jpeg;base64,' + btoa(bin);
-    })(),
-  );
-  // Existing photo bytes — used when saving without picking a new photo so the
-  // DB write doesn't wipe the stored cover (INSERT OR REPLACE writes all cols).
-  const [existingCoverBytes] = useState<Uint8Array | null>(
-    (existing as Trip & { coverBytes?: Uint8Array | null })?.coverBytes ?? null,
-  );
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  // M4: the store only holds the card thumbnail, so the FULL cover is loaded
+  // once for the editor preview. Saving without a new pick passes `undefined`
+  // to updateTrip, which keeps the stored cover + thumbnail untouched.
+  const existingId = existing?.id;
+  useEffect(() => {
+    if (!existingId) return;
+    let alive = true;
+    void loadTripCover(existingId).then((b) => {
+      if (!alive || !b || b.length === 0) return;
+      // Only seed the preview when the user has not picked/removed meanwhile.
+      setCoverPreview((prev) => prev ?? 'data:image/jpeg;base64,' + bytesToBase64(b));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [existingId]);
   const [coverRemoved, setCoverRemoved] = useState(false);
   const [coverBytes, setCoverBytes] = useState<Uint8Array | null>(null);
+  const [coverThumb, setCoverThumb] = useState<Uint8Array | null>(null);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [phase, setPhase] = useState<string | null>(null);
@@ -303,6 +315,15 @@ export default function NewTripScreen() {
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const [homeTouched, setHomeTouched] = useState(false);
+  // M9: editing opens "More details" when any optional field carries data, and
+  // "Advanced" when this trip overrides the Settings home currency.
+  const [detailsOpen, setDetailsOpen] = useState(
+    !!existing &&
+      ((existing.countries?.length ?? 0) > 0 || existing.dailyBudget > 0 || !!(existing as { coverThumb?: unknown; coverBytes?: unknown }).coverThumb || !!(existing as { coverBytes?: unknown }).coverBytes || existing.defaultCurrency !== 'EUR'),
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(
+    !!existing && existing.homeCurrency !== (useSettingsStore.getState().defaultHomeCurrency || 'EUR'),
+  );
   useEffect(() => { void hydrateSettings(); }, [hydrateSettings]);
   useEffect(() => {
     if (!isEdit && !homeTouched && defaultHomeCurrency) setHomeCurrency(defaultHomeCurrency);
@@ -341,6 +362,9 @@ export default function NewTripScreen() {
 
       if (isEdit) {
         setPhase('updateTripStore');
+        // M4: undefined = cover untouched (keeps cover + thumb in the DB and
+        // the store); null = removed; bytes = replaced (with its thumbnail).
+        const coverArg = coverRemoved ? null : coverBytes ?? undefined;
         updateTripStore(trip.id, {
           name: trip.name,
           startDate: trip.startDate,
@@ -349,17 +373,18 @@ export default function NewTripScreen() {
           defaultCurrency: trip.defaultCurrency,
           dailyBudget: trip.dailyBudget,
           countries: trip.countries,
-          coverBytes: coverRemoved ? null : coverBytes ?? existingCoverBytes,
+          ...(coverArg === undefined
+            ? {}
+            : { coverThumb: coverArg ? (coverThumb ?? coverArg) : null, coverBytes: undefined }),
         });
         await step('updateTrip (DB write)', () =>
-          updateTrip(trip, coverRemoved ? null : coverBytes ?? existingCoverBytes),
+          updateTrip(trip, coverArg, undefined, coverThumb),
         );
       } else {
         setPhase('addTrip (store)');
-        // Include the cover bytes in the stored object so the photo shows
-        // immediately (the DB row also carries them via saveTrip below).
-        addTrip({ ...trip, coverBytes } as Trip & { coverBytes?: Uint8Array | null });
-        await step('saveTrip (DB write)', () => saveTrip(trip, coverBytes));
+        // Only the thumbnail goes into the store (M4); the DB row gets both.
+        addTrip({ ...trip, coverThumb: coverBytes ? (coverThumb ?? coverBytes) : null } as Trip);
+        await step('saveTrip (DB write)', () => saveTrip(trip, coverBytes, undefined, coverThumb));
       }
       setPhase('navigating back');
       // Web (static export): back() on a modal route can trigger a remount
@@ -377,31 +402,20 @@ export default function NewTripScreen() {
       const msg = (e instanceof Error ? e.message : String(e)) + `\n[phase: ${phase}]`;
       setErrorMsg(msg);
       setPhase(null);
-      Alert.alert('Could not save trip', msg);
+      showStatus('Could not save trip', msg);
     } finally {
       setSaving(false);
     }
   };
 
   const pickCover = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      base64: true,
-      quality: 0.7,
-      allowsEditing: true,
-      // Wide landscape crop to MATCH the trip card's full-width 224px stage.
-      // The old 4:3 crop framed a different shape than the card renders, so
-      // the in/out-zoom did not match what the user saw on the card.
-      aspect: [16, 9],
-    });
-    if (res.canceled || !res.assets[0]?.base64) return;
-    // Resize ≤2000px (aspect preserved) + ≤500KB + true EXIF/GPS strip (§2.2).
-    // Picker dimensions are passed so no extra decode pass is needed.
-    const bytes = await processPhoto(res.assets[0].base64, {
-      width: res.assets[0].width,
-      height: res.assets[0].height,
-    });
+    // Shared picker + processing (src/utils/tripActions.ts): the SAME 16:9
+    // crop and EXIF strip as "Change photo" in the trip ⋯ menu (Q17).
+    const bytes = await pickTripCoverBytes();
+    if (!bytes) return;
     setCoverBytes(bytes);
+    // M4: the card thumbnail is made once here, not on every card render.
+    setCoverThumb(await makeCoverThumb(bytes));
     setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
     // Choosing a photo ALWAYS cancels a previous "Remove" click. Without this,
     // remove-then-pick left coverRemoved=true and save() wrote cover_photo =
@@ -416,12 +430,14 @@ export default function NewTripScreen() {
         <View style={styles.handle} />
         <View style={styles.header}>
           <Text style={styles.title}>{isEdit ? 'Edit trip' : 'New trip'}</Text>
-          <Pressable
-            style={styles.closeButton}
+          <IconButton
+            icon="close"
+            label="Close"
+            variant="plain"
+            size={24}
+            color={colors.mutedForeground}
             onPress={() => (Platform.OS === 'web' ? router.replace('/trips') : router.back())}
-          >
-            <Ionicons name="close" size={24} color={colors.mutedForeground} />
-          </Pressable>
+          />
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -444,14 +460,34 @@ export default function NewTripScreen() {
               />
             </Field>
           </View>
-          <View style={styles.row}>
-            <Field label="Home currency" style={{ flex: 1, marginRight: spacing.md }}>
-              <CurrencyPicker value={homeCurrency} onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }} />
-            </Field>
-            <Field label="Default currency" style={{ flex: 1 }}>
-              <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
-            </Field>
-          </View>
+          {/* M9: step 1 is name + dates only. Everything else is optional and
+              sits behind "More details"; the home currency comes from
+              Settings and lives under "Advanced". */}
+          <Pressable
+            style={styles.detailsToggle}
+            onPress={() => setDetailsOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: detailsOpen }}
+          >
+            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Fewer details' : 'More details'}</Text>
+            <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
+            {!detailsOpen && (
+              <Text style={styles.detailsSummary} numberOfLines={1}>
+                {[
+                  defaultCurrency,
+                  countries.length ? `${countries.length} ${countries.length === 1 ? 'country' : 'countries'}` : null,
+                  parseFloat(dailyBudget) > 0 ? `${dailyBudget}/day` : 'No budget',
+                  coverPreview ? 'Photo' : null,
+                ].filter(Boolean).join(' · ')}
+              </Text>
+            )}
+          </Pressable>
+
+          {detailsOpen && (<>
+          <Field label="Local currency">
+            <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
+            <Text style={styles.coverHint}>Pre-filled when you add an expense.</Text>
+          </Field>
           <Field label="Countries visited">
             <CountryMultiPicker selected={countries} onChange={setCountries} />
           </Field>
@@ -464,25 +500,31 @@ export default function NewTripScreen() {
             {coverPreview ? (
               <View style={styles.coverPreviewBlock}>
                 {/* SAME format as the trip card stage (src/components/TripCard.tsx):
-                    full width × TRIP_COVER_HEIGHT, cover-fit, same corner radius.
-                    A single width constant keeps the two in lockstep. */}
+                    16:9 via the shared tripCoverStageSize (Q13), cover-fit,
+                    same corner radius — WYSIWYG with the card. */}
                 <Image
                   source={{ uri: coverPreview }}
                   style={styles.coverStage}
                   resizeMode="cover"
                 />
                 <View style={styles.coverActions}>
-                  <Pressable style={[styles.coverBtn, styles.coverBtnGrow]} onPress={() => { void pickCover(); }}>
-                    <Ionicons name="swap-horizontal-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.coverBtnText}>Change photo</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.coverBtn, styles.coverBtnGrow, { backgroundColor: colors.destructive }]}
+                  {/* M3: the shared Button (was two hand-rolled pills). */}
+                  <Button
+                    style={styles.coverBtnGrow}
+                    label="Change photo"
+                    icon="swap-horizontal-outline"
+                    variant="secondary"
+                    size="md"
+                    onPress={() => { void pickCover(); }}
+                  />
+                  <Button
+                    style={styles.coverBtnGrow}
+                    label="Remove"
+                    icon="trash-outline"
+                    variant="destructive"
+                    size="md"
                     onPress={() => { setCoverBytes(null); setCoverPreview(null); setCoverRemoved(true); }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={colors.primaryForeground} />
-                    <Text style={styles.coverBtnText}>Remove</Text>
-                  </Pressable>
+                  />
                 </View>
               </View>
             ) : (
@@ -493,17 +535,36 @@ export default function NewTripScreen() {
             )}
             <Text style={styles.coverHint}>Stored encrypted locally. GPS/EXIF location is never saved.</Text>
           </Field>
+
+          <Pressable
+            style={styles.detailsToggle}
+            onPress={() => setAdvancedOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: advancedOpen }}
+          >
+            <Text style={styles.detailsToggleText}>Advanced</Text>
+            <Ionicons name={advancedOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
+            {!advancedOpen && (
+              <Text style={styles.detailsSummary} numberOfLines={1}>Home currency {homeCurrency}</Text>
+            )}
+          </Pressable>
+          {advancedOpen && (
+            <Field label="Home currency">
+              <CurrencyPicker value={homeCurrency} onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }} />
+              <Text style={styles.coverHint}>
+                Totals for this trip are converted to this currency. The default comes from Settings ({defaultHomeCurrency || 'EUR'}).
+              </Text>
+            </Field>
+          )}
+          </>)}
         </ScrollView>
 
         <View style={styles.footer}>
-          <Button label={saving ? 'Saving…' : isEdit ? 'Update trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
+          <Button label={saving ? 'Saving…' : isEdit ? 'Save trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
           {errorMsg ? (
-            <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: radius.lg }}>
+            <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.red12, borderRadius: radius.lg }}>
               <Text style={{ color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>{errorMsg}</Text>
             </View>
-          ) : null}
-          {phase ? (
-            <Text style={{ marginTop: spacing.sm, color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans }}>Status: {phase}…</Text>
           ) : null}
         </View>
       </View>
@@ -529,7 +590,7 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   sheet: {
     backgroundColor: colors.background,
@@ -543,10 +604,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     marginTop: 0,
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: spacing.lg },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.white20, alignSelf: 'center', marginBottom: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
-  closeButton: { padding: spacing.xs },
+  detailsToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44, marginBottom: spacing.md },
+  detailsToggleText: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  detailsSummary: { flex: 1, textAlign: 'right', color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   scroll: { paddingBottom: spacing.lg },
   row: { flexDirection: 'row' },
   label: { fontSize: fontSize.md, color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans, marginBottom: spacing.sm },
@@ -563,7 +626,7 @@ const styles = StyleSheet.create({
   },
   footer: { marginTop: spacing.sm },
   pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius['3xl'],
@@ -582,12 +645,11 @@ const styles = StyleSheet.create({
   pickerRowActive: {},
   pickerRowText: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   coverPreviewBlock: { marginTop: spacing.xs },
-  // Trip cover preview — EXACTLY the trip card stage: full width ×
-  // TRIP_COVER_HEIGHT (shared constant, src/utils/image.ts), cover-fit, the
-  // card's radius['3xl'] corner. The old 132×100 thumb was a different shape.
+  // Trip cover preview — EXACTLY the trip card stage: the shared 16:9
+  // tripCoverStageSize (src/utils/image.ts, Q13), cover-fit, the card's
+  // radius['3xl'] corner. The old 132×100 thumb was a different shape.
   coverStage: {
-    width: '100%',
-    height: TRIP_COVER_HEIGHT,
+    ...tripCoverStageSize,
     borderRadius: radius['3xl'],
     backgroundColor: colors.secondary,
     borderWidth: 1,
@@ -596,18 +658,7 @@ const styles = StyleSheet.create({
   // Buttons sit UNDER the full-width preview now (they no longer squeeze
   // beside a small square), sharing the row equally.
   coverActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
-  coverBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-  },
   coverBtnGrow: { flex: 1 },
-  coverBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.xs },
   coverAdd: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -621,4 +672,4 @@ const styles = StyleSheet.create({
   },
   coverAddText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   coverHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm },
-});
+}));

@@ -7,12 +7,13 @@
 // expenses list, trip detail, home "expenses today" — MUST use this so the three
 // stay identical.
 
+import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconCircle } from './ui';
 import { categoryIcon } from '../utils/categoryIcons';
 import { countryName } from '../data/countries';
 import { formatMoney, toHomeCurrency } from '../utils/currency';
-import { colors, fontFamily, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, spacing, themedStyles } from '../theme/theme';
 import type { Expense } from '../types';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -30,7 +31,7 @@ function shortDateRange(start: string, end: string): string {
   return `${sDay} ${MONTHS_SHORT[startDate.getUTCMonth()]}–${eDay} ${MONTHS_SHORT[endDate.getUTCMonth()]}`;
 }
 
-export function ExpenseRow({
+function ExpenseRowImpl({
   expense,
   homeCurrency,
   onPress,
@@ -57,7 +58,8 @@ export function ExpenseRow({
 }: {
   expense: Expense;
   homeCurrency: string;
-  onPress: () => void;
+  /** Receives the row's expense so hosts can pass ONE stable callback (Q6 memo). */
+  onPress: (expense: Expense) => void;
   /** Set when this row is one day of a multi-day split: shows the share. */
   splitShare?: number | null;
   background?: string;
@@ -91,9 +93,9 @@ export function ExpenseRow({
         bordered && styles.border,
         bordered && dense && styles.borderDense,
       ]}
-      onPress={onPress}
+      onPress={() => onPress(expense)}
     >
-      <IconCircle icon={categoryIcon(expense.category)} size={40} color="#FFFFFF" />
+      <IconCircle icon={categoryIcon(expense.category)} size={40} color={colors.white} />
       <View style={styles.details}>
         <Text style={styles.rowTitle} numberOfLines={1}>
           {expense.notes || expense.category}
@@ -114,7 +116,7 @@ function payLabel(m: string): string {
   return m === 'card' ? 'card' : 'cash';
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   row: {
     flexDirection: 'row',
     paddingVertical: spacing.lg,
@@ -149,4 +151,8 @@ const styles = StyleSheet.create({
   priceCol: { alignItems: 'flex-end' },
   priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
-});
+}));
+
+// Q6: memoised — a list re-render (search keystroke, focus reload with equal
+// data) no longer re-renders every row whose props did not change.
+export const ExpenseRow = memo(ExpenseRowImpl);

@@ -14,14 +14,14 @@
 
 import { useSyncExternalStore } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import {
   answerConfirm,
   cancelPendingConfirm,
   getCurrentConfirm,
   subscribeConfirm,
 } from '../utils/confirm';
-import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../theme/theme';
+import { Button } from './ui';
 
 export function ConfirmHost() {
   const request = useSyncExternalStore(
@@ -43,19 +43,15 @@ export function ConfirmHost() {
           <Text style={styles.title}>{request.title}</Text>
           <Text style={styles.message}>{request.message}</Text>
           <View style={styles.actions}>
-            <Pressable
-              style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-              onPress={() => answer(false)}
-            >
-              <Text style={styles.actionText}>{request.cancelLabel}</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.action, styles.actionDanger, pressed && styles.actionPressed]}
+            <Button label={request.cancelLabel} variant="ghost" size="md" style={{ flex: 1 }} onPress={() => answer(false)} />
+            <Button
+              label={request.confirmLabel}
+              icon="trash-outline"
+              variant="destructive"
+              size="md"
+              style={{ flex: 1 }}
               onPress={() => answer(true)}
-            >
-              <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.actionTextDanger}>{request.confirmLabel}</Text>
-            </Pressable>
+            />
           </View>
         </Pressable>
       </Pressable>
@@ -63,13 +59,13 @@ export function ConfirmHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing['2xl'],
-    backgroundColor: 'rgba(5,5,15,0.72)',
+    backgroundColor: colors.scrimStrong,
   },
   dialog: {
     width: '100%',
@@ -115,9 +111,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionTextDanger: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
-});
+}));

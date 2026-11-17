@@ -19,12 +19,23 @@ export const JPEG_QUALITY = 0.75;
 const TARGET_BYTES = 500 * 1024;
 
 /**
- * Trip cover photo stage height, shared by the TripCard stage (Home, Trips tab,
- * trip detail) AND the new/edit-trip preview. One constant so the form preview
- * is EXACTLY the same format the card renders — a solid bar on the card used to
- * be previewed at a totally different 4:3 shape in the editor.
+ * Trip cover photo stage, shared by the TripCard stage (Home, Trips tab, trip
+ * detail) AND the new/edit-trip preview, so the editor preview is EXACTLY the
+ * format the card renders (WYSIWYG).
+ *
+ * Q13: a fixed 16:9 ratio instead of a fixed 224px height — on a wide screen a
+ * fixed height cropped the photo to a letterbox, on a narrow phone to a near
+ * square. The minimum height keeps room for the badge row + name/dates/day bar
+ * on the narrowest phones (320px → 180px would clip the verdict line).
  */
-export const TRIP_COVER_HEIGHT = 224;
+export const TRIP_COVER_ASPECT = 16 / 9;
+export const TRIP_COVER_MIN_HEIGHT = 196;
+/** Style fragment for every cover stage — spread it, never re-type it. */
+export const tripCoverStageSize = {
+  width: '100%',
+  aspectRatio: TRIP_COVER_ASPECT,
+  minHeight: TRIP_COVER_MIN_HEIGHT,
+} as const;
 
 export interface SourceSize {
   width?: number;
@@ -97,6 +108,28 @@ export async function processPhoto(base64: string, size?: SourceSize): Promise<U
 
 function approxBytes(b64: string): number {
   return Math.floor((b64.length * 3) / 4);
+}
+
+/** M4: card thumbnail width — 600px covers a ~390pt card at 1.5x and keeps
+ *  the JPEG around 40 KB. */
+export const COVER_THUMB_WIDTH = 600;
+
+/**
+ * Card thumbnail from a stored cover: 600px wide (aspect preserved), JPEG ~0.7.
+ * Returns null when the manipulator fails — the card then falls back to the
+ * gradient, and the next start tries again (thumb stays NULL).
+ */
+export async function makeCoverThumb(cover: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      `data:image/jpeg;base64,${bytesToBase64(cover)}`,
+      [{ resize: { width: COVER_THUMB_WIDTH } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+    );
+    return result.base64 ? base64ToBytes(result.base64) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function base64ToBytes(b64: string): Uint8Array {

@@ -1,20 +1,21 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenses } from '../../src/store/expenseStore';
 import { groupByCountry, searchCountries, sortCountries, summarizeStats, type CountrySort } from '../../src/utils/countryStats';
 import { getPeriodRange, periodLabel, type PeriodPreset } from '../../src/utils/periods';
 import { pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
+import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
-import { colors, fontFamily, fontSize, radius, spacing } from '../../src/theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
-import type { Expense } from '../../src/types';
 
 const PRESETS: PeriodPreset[] = ['all', 'ytd', 'last12', 'custom'];
 // Sort options live in a sheet behind ONE chip ("Highest spend ▾") — the mock's
@@ -39,7 +40,7 @@ export default function CountriesScreen() {
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const { expenses } = useExpenses(); // M1 shared store
   const [query, setQuery] = useState('');
   const [preset, setPreset] = useState<PeriodPreset>('all');
   const [customFrom, setCustomFrom] = useState('');
@@ -48,19 +49,13 @@ export default function CountriesScreen() {
   const [showTo, setShowTo] = useState(false);
   const [fromDate, setFromDate] = useState<Date | null>(null);
   const [toDate, setToDate] = useState<Date | null>(null);
-  const [tripFilter, setTripFilter] = useState<string[]>([]);
+  // M10: shared with Statistics + the other Stats page.
+  const tripFilter = useTripFilterStore((st) => st.selected);
   const [sort, setSort] = useState<CountrySort>('high');
 
-  const [tripPickerOpen, setTripPickerOpen] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [sortPickerOpen, setSortPickerOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
-
-  useFocusEffect(useCallback(() => {
-    let alive = true;
-    loadExpensesForList().then((list) => { if (alive) setExpenses(list); });
-    return () => { alive = false; };
-  }, []));
 
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
   const range = useMemo(() => getPeriodRange(preset, customFrom, customTo), [preset, customFrom, customTo]);
@@ -94,20 +89,12 @@ export default function CountriesScreen() {
     [expenses],
   );
 
-  const toggleTrip = (id: string) =>
-    setTripFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   // Multi-select: several categories = OR. An empty selection means ALL.
   const toggleCategory = (cat: string) =>
     setCategoryFilter((p) => (p.includes(cat) ? p.filter((x) => x !== cat) : [...p, cat]));
 
   // Chip labels in the mock's "Label: value" shape ("Trip: All", "Category: All").
-  const tripChipLabel =
-    activeTripIds.length === 0
-      ? 'Trip: All'
-      : activeTripIds.length === 1
-        ? `Trip: ${trips.find((t) => t.id === activeTripIds[0])?.name ?? '1 trip'}`
-        : `Trip: ${activeTripIds.length} trips`;
   const categoryChipLabel =
     categoryFilter.length === 0
       ? 'Category: All'
@@ -164,12 +151,12 @@ export default function CountriesScreen() {
       {preset === 'custom' && (
         <View style={styles.customRange}>
           <Pressable style={styles.rangeButton} onPress={() => setShowFrom(true)}>
-            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Ionicons name="calendar-outline" size={16} color={colors.primaryText} />
             <Text style={styles.rangeButtonText}>{customFrom || 'From'}</Text>
           </Pressable>
           <Text style={styles.rangeDash}>–</Text>
           <Pressable style={styles.rangeButton} onPress={() => setShowTo(true)}>
-            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Ionicons name="calendar-outline" size={16} color={colors.primaryText} />
             <Text style={styles.rangeButtonText}>{customTo || 'To'}</Text>
           </Pressable>
         </View>
@@ -200,25 +187,24 @@ export default function CountriesScreen() {
         contentContainerStyle={styles.filterRow}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable style={styles.filterButton} onPress={() => setTripPickerOpen(true)}>
-          <Ionicons name="airplane-outline" size={15} color={colors.primary} />
-          <Text style={[styles.filterButtonText, activeTripIds.length > 0 && styles.filterButtonTextOn]}>
-            {tripChipLabel}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
-        </Pressable>
+        <TripFilter
+          trips={trips}
+          selected={activeTripIds}
+          onToggle={useTripFilterStore.getState().toggle}
+          onClear={useTripFilterStore.getState().clear}
+        />
         <Pressable
           style={[styles.filterButton, categoryFilter.length > 0 && styles.filterButtonOn]}
           onPress={() => setCategoryPickerOpen(true)}
         >
-          <Ionicons name="pricetag-outline" size={15} color={colors.primary} />
+          <Ionicons name="pricetag-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, categoryFilter.length > 0 && styles.filterButtonTextOn]}>
             {categoryChipLabel}
           </Text>
           <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
         </Pressable>
         <Pressable style={styles.filterButton} onPress={() => setSortPickerOpen(true)}>
-          <Ionicons name="swap-vertical-outline" size={15} color={colors.primary} />
+          <Ionicons name="swap-vertical-outline" size={15} color={colors.primaryText} />
           <Text style={styles.filterButtonText}>{sortChipLabel}</Text>
           <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
         </Pressable>
@@ -228,7 +214,7 @@ export default function CountriesScreen() {
           Same information that used to be a bare line under the title, now a
           card with the active period spelled out. */}
       <View style={styles.summaryCard}>
-        <Ionicons name="globe-outline" size={26} color={colors.primary} />
+        <Ionicons name="globe-outline" size={26} color={colors.primaryText} />
         <View style={styles.summaryTextWrap}>
           <Text style={styles.summaryMain}>
             {rows.length} {rows.length === 1 ? 'country' : 'countries'} • {formatMoney(total, 'EUR')} total
@@ -267,23 +253,6 @@ export default function CountriesScreen() {
           There is deliberately NO country filter here — this screen already IS
           the country breakdown, so a "Filter by country" sheet only hides the
           other countries. It stays on Over time, where it does filter a series. */}
-      <PickerSheet
-        visible={tripPickerOpen}
-        onClose={() => setTripPickerOpen(false)}
-        title="Filter by trip"
-        maxListHeight={320}
-      >
-        <PickerRow icon="apps-outline" label="All trips" active={activeTripIds.length === 0} onPress={() => setTripFilter([])} />
-        {trips.map((t) => (
-          <PickerRow
-            key={t.id}
-            icon="airplane-outline"
-            label={t.name}
-            active={activeTripIds.includes(t.id)}
-            onPress={() => toggleTrip(t.id)}
-          />
-        ))}
-      </PickerSheet>
 
       <PickerSheet
         visible={categoryPickerOpen}
@@ -326,7 +295,7 @@ export default function CountriesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingHorizontal: spacing.xl },
@@ -375,7 +344,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondary,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
   },
@@ -395,9 +364,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
+  chipActive: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   chipText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
+  chipTextActive: { color: colors.primaryText, fontWeight: '700' },
   customRange: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   rangeInput: {
     flex: 1,
@@ -407,13 +376,13 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
     backgroundColor: colors.secondary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: colors.borderStrong,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   rangeDash: { color: colors.mutedForeground, fontSize: fontSize.sm },
-  rangeButton: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.secondary, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  rangeButton: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.secondary, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   rangeButtonText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   // One horizontally scrollable chip row (filters + sort options on a single
   // line). The negative margin + matching content padding lets the chips scroll
@@ -435,9 +404,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  filterButtonOn: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
+  filterButtonOn: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   filterButtonText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  filterButtonTextOn: { color: colors.primary, fontWeight: '700' },
+  filterButtonTextOn: { color: colors.primaryText, fontWeight: '700' },
   emptyText: {
     color: colors.mutedForeground,
     fontSize: fontSize.md,
@@ -465,7 +434,7 @@ const styles = StyleSheet.create({
   rowMeta: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: 2 },
   barTrack: {
     height: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.surfaceStrong,
     borderRadius: 4,
     overflow: 'hidden',
     marginTop: 8,
@@ -474,4 +443,4 @@ const styles = StyleSheet.create({
   rowRight: { alignItems: 'flex-end', minWidth: 78 },
   rowAmount: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700' },
   rowPct: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans },
-});
+}));

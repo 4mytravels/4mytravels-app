@@ -5,18 +5,25 @@ import type { Trip, TripStatus } from '../types';
 
 interface TripState {
   trips: Trip[];
+  /** True once the store got its first list from storage (Q8): screens show a
+   *  spinner instead of flashing the empty state on a cold start. */
+  hydrated: boolean;
   selectedTripId: string | null;
   setTrips: (trips: Trip[]) => void;
   addTrip: (trip: Trip) => void;
-  updateTrip: (id: string, patch: Partial<Trip> & { coverBytes?: Uint8Array | null }) => void;
+  updateTrip: (
+    id: string,
+    patch: Partial<Trip> & { coverBytes?: Uint8Array | null; coverThumb?: Uint8Array | null },
+  ) => void;
   removeTrip: (id: string) => void;
   selectTrip: (id: string | null) => void;
 }
 
 export const useTripStore = create<TripState>((set) => ({
   trips: [],
+  hydrated: false,
   selectedTripId: null,
-  setTrips: (trips) => set({ trips }),
+  setTrips: (trips) => set({ trips, hydrated: true }),
   addTrip: (trip) => set((s) => ({ trips: [...s.trips, trip] })),
   updateTrip: (id, patch) =>
     set((s) => ({ trips: s.trips.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),

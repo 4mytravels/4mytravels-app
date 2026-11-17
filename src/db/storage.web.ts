@@ -35,13 +35,16 @@ export class WasmStorageAdapter implements StorageAdapter {
   private client: SqliteWorkerClient | null = null;
   private opened = false;
   private encrypted = false;
+  // Session-only copy of the derived key, needed to wrap it for biometric
+  // unlock. Never persisted; cleared on close().
+  private sessionKeyHex: string | null = null;
   vfs: WebVfsMode = 'unknown';
   /** Set when the worker reported a fallback (for the storage-health banner). */
   lastWorkerLog: string | null = null;
 
   async init(config: DatabaseConfig): Promise<void> {
     if (this.opened) return;
-    if (!config.passphrase) {
+    if (!config.passphrase && !config.keyHex) {
       // No passphrase supplied: the app should have shown the unlock gate
       // first (app/_layout.tsx web branch). Fail loudly rather than silently
       // falling back to plaintext memory storage.
@@ -62,12 +65,13 @@ export class WasmStorageAdapter implements StorageAdapter {
       throw e;
     }
 
-    const keyHex = await deriveKeyHex(config.passphrase, salt);
+    const keyHex = config.keyHex ?? (await deriveKeyHex(config.passphrase as string, salt));
 
     try {
       const res = await client.call('open', { keyHex });
       this.vfs = res.vfs ?? 'unknown';
       this.client = client;
+      this.sessionKeyHex = keyHex;
     } catch (e) {
       client.terminate();
       if (e instanceof WorkerDbError && /NOTADB|not a database|decrypt/i.test(e.message)) {
@@ -128,6 +132,12 @@ export class WasmStorageAdapter implements StorageAdapter {
     }
     this.opened = false;
     this.encrypted = false;
+    this.sessionKeyHex = null;
+  }
+
+  /** Derived DB key for this session (for enrolling biometric unlock). */
+  getSessionKeyHex(): string | null {
+    return this.sessionKeyHex;
   }
 
   isEncrypted(): boolean {

@@ -19,6 +19,8 @@
 
 import React, { PropsWithChildren, useEffect } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { colors, themedStyles } from '../theme/theme';
+import { CONTENT_MAX_WIDTH } from '../theme/layout';
 
 // Declared locally: @types/react-dom is not installed and the import must not
 // reach the native bundle (this file is web-only via Metro .web resolution).
@@ -56,7 +58,7 @@ export function ModalHost({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     // Native's ViewStyle has no 'fixed'; react-native-web emits it verbatim.
     position: 'fixed' as unknown as ViewStyle['position'],
@@ -64,9 +66,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'transparent',
+    // M11: opaque, so the sides beside the 560 px column are not the screen below.
+    backgroundColor: colors.background,
     // Below SheetPortal's 10000 so a picker/country sheet paints on top.
     zIndex: 9000,
   },
-  fill: { flex: 1 },
-});
+  // M11: the form keeps the 560 px column on a wide window, like every screen.
+  fill: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' },
+}));

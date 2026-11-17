@@ -36,3 +36,13 @@ export function tripFilterLabel(selected: string[], trips: TripLike[]): string {
   if (names.length === 2) return names.join(' + ');
   return `${names.length} trips`;
 }
+
+/**
+ * M10: compact chip label — "All trips" / "Japan" / "Japan +2". The first name
+ * follows the selection order, so the trip the user picked first leads.
+ */
+export function tripFilterShortLabel(selected: string[], trips: TripLike[]): string {
+  if (selected.length === 0) return 'All trips';
+  const first = trips.find((t) => t.id === selected[0])?.name ?? '—';
+  return selected.length === 1 ? first : `${first} +${selected.length - 1}`;
+}

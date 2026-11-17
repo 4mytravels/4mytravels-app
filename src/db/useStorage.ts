@@ -1,7 +1,8 @@
 // App-level storage bootstrap. Initializes the active StorageAdapter once and
 // keeps the Zustand stores in sync with the encrypted DB (MVP scope §2, §3).
-import { useEffect, useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
+import { showStatus } from '../utils/statusDialog';
 import { getStorageAdapter } from './index';
 import { loadTrips, saveTrip, deleteTrip } from './tripRepo';
 import { useTripStore } from '../store/tripStore';
@@ -67,8 +68,9 @@ export function useBackgroundRateRefresh(ready: boolean, delayMs = 10000) {
       if (!mounted) return;
       void (async () => {
         try {
-          const db = getStorageAdapter();
-          const trips = await loadTrips(db);
+          // Q4: read the trips useStorageInit already put in the store. A second
+          // loadTrips() here re-read every cover BLOB just to get a currency.
+          const trips = useTripStore.getState().trips;
           const base = trips[0]?.homeCurrency ?? 'EUR';
           await refreshRateCache(base);
         } catch {
@@ -93,21 +95,22 @@ export function resetWebStorage(): void {
   void a.close?.();
 }
 
-export function useStorageInit(passphrase: string | null = null) {
+export function useStorageInit(passphrase: string | null = null, keyHex: string | null = null) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const setTrips = useTripStore((s) => s.setTrips);
 
   useEffect(() => {
     let mounted = true;
     // Web: wait for the unlock gate to supply a passphrase. Native passes ''
     // (no passphrase needed — Keystore device key).
-    if (Platform.OS === 'web' && (passphrase === null || passphrase === '')) return;
+    if (Platform.OS === 'web' && !passphrase && !keyHex) return;
     (async () => {
       try {
         const db = getStorageAdapter();
         await db.init(
-          Platform.OS === 'web' ? { passphrase: passphrase ?? undefined } : {},
+          Platform.OS === 'web' ? { passphrase: passphrase ?? undefined, keyHex: keyHex ?? undefined } : {},
         );
         const trips = await loadTrips(db);
         if (mounted) {
@@ -116,6 +119,8 @@ export function useStorageInit(passphrase: string | null = null) {
         }
         // Best-effort rate refresh after the app is usable (not blocking boot).
         void refreshRateCache(trips[0]?.homeCurrency ?? 'EUR');
+        // M4: thumbnails for covers that predate cover_thumb (background).
+        void import('../utils/coverThumbs').then((m) => m.syncCoverThumbs());
       } catch (e) {
         if (e instanceof WrongKeyError) {
           // Web unlock: wrong passphrase — let the gate show again.
@@ -136,7 +141,7 @@ export function useStorageInit(passphrase: string | null = null) {
             e instanceof LegacyPlaintextDatabaseError);
         if (mounted) {
           setError(msg);
-          Alert.alert(
+          showStatus(
             fatal ? 'Storage is not encrypted' : 'Storage error',
             msg,
           );
@@ -149,9 +154,15 @@ export function useStorageInit(passphrase: string | null = null) {
     return () => {
       mounted = false;
     };
-  }, [setTrips, passphrase]);
+  }, [setTrips, passphrase, keyHex, attempt]);
 
-  return { ready, error };
+  // Q7: `retry` re-runs the init after a non-fatal-looking failure (e.g. a
+  // transient OPFS lock) from the error screen in app/_layout.tsx.
+  const retry = useCallback(() => {
+    setError(null);
+    setAttempt((n) => n + 1);
+  }, []);
+  return { ready, error, retry };
 }
 
 // Wire store mutations to persistence. Call once near the root.

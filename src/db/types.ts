@@ -17,6 +17,9 @@ export interface DatabaseConfig {
   // Native: ignored — the key lives in the secure enclave (Android Keystore).
   // Web/PWA: the Argon2-derived passphrase used as the session key (§2.2).
   passphrase?: string;
+  // Web only: already-derived database key (hex), e.g. unwrapped by biometric
+  // unlock. Takes precedence over `passphrase`.
+  keyHex?: string;
   // Web only: open in memory-and-persist (session-held key) mode.
   ephemeralSession?: boolean;
 }

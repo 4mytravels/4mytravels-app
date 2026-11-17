@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,67 +6,62 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { showStatus } from '../../src/utils/statusDialog';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
-import { Pill } from '../../src/components/ui';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles } from '../../src/theme/theme';
+import { Pill, Button } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
 import { WebNotices } from '../../src/components/WebNotices';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { loadExpense } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache } from '../../src/services/rateCache';
-import type { Expense } from '../../src/types';
+import type { Expense, Trip } from '../../src/types';
+import { TripActionsMenu } from '../../src/components/TripActionsMenu';
 import { formatMoney, formatMoneyWhole, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
-import { inclusiveDays } from '../../src/utils/pace';
+import { pickActiveTrip, summarizeToday } from '../../src/utils/today';
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
+  // M1: the shared expense store — loaded once, updated in place on
+  // save/delete, so a tab switch costs no query and edits show everywhere.
+  const { expenses, loaded } = useExpenses();
+  const loading = !loaded;
   const [formOpen, setFormOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [menuTrip, setMenuTrip] = useState<Trip | null>(null);
 
-  // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch (which re-parses every receipt BLOB and causes the ~5s stall).
-  const skipNextFocusRef = useRef(false);
-
-  // Reload on every focus so new expenses appear without an app restart.
-  useFocusEffect(() => {
-    if (skipNextFocusRef.current) {
-      skipNextFocusRef.current = false;
-      return;
-    }
-    let alive = true;
-    (async () => {
-      try {
-        // Metadata only: this screen renders no receipt photos, and loading the
-        // BLOBs on every focus was the single most expensive query in the app.
-        const list = await loadExpensesForList();
-        if (alive) {
-          setExpenses(list);
-          setLoading(false);
-        }
-      } catch {
-        if (alive) setLoading(false);
+  // The list is metadata-only (no receipt BLOB) and saveExpense writes the
+  // receipt verbatim, so the edit form MUST get the full row (pattern 43).
+  // Home used to hand the list row to the form, which wiped the receipt on
+  // the next save. Stable callback so memo(ExpenseRow) holds (Q6).
+  const openTodayExpense = useCallback(async (expense: Expense) => {
+    try {
+      const full = await loadExpense(expense.id);
+      if (!full) {
+        showStatus('Could not open expense', 'This expense could not be loaded.');
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  });
+      setEditingExpense(full);
+      setFormOpen(true);
+    } catch (e) {
+      showStatus('Could not open expense', e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   const trips = useTripStore((s) => s.trips);
+  const tripsHydrated = useTripStore((s) => s.hydrated);
   // Home-wide display currency = the global default home currency from Settings
   // (not the per-trip currency), so the totals follow what the user set there.
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
@@ -104,8 +99,9 @@ export default function HomeScreen() {
   );
   const todayEntries = todaySection?.data ?? [];
   const todaysExpenses = todayEntries.map((entry) => entry.expense);
-  const todayTotal = useMemo(() => {
-    return todayEntries.reduce((sum, entry) => {
+  // Not memoised: todayEntries and toDisplay are new each render, so a memo
+  // never hit, and its old [todayEntries] deps hid stale rates (Q1 lint).
+  const todayTotal = todayEntries.reduce((sum, entry) => {
       const e = entry.expense;
       // Day-part in the EXPENSE currency: for splits it's the per-day share
       // (splitShare is in trip-home currency, so divide back by rateToHome),
@@ -118,65 +114,39 @@ export default function HomeScreen() {
       const dayPartHome = entry.splitShare ?? toHomeCurrency(e);
       return sum + (converted != null ? converted : dayPartHome);
     }, 0);
-  }, [todayEntries]);
 
-  // Unique countries: only from active or past trips (not upcoming).
-  const countrySet = new Set<string>();
-  for (const t of trips) {
-    const status = deriveTripStatus(t);
-    if (status === 'active' || status === 'past') {
-      for (const c of t.countries ?? []) countrySet.add(c.toUpperCase());
-    }
-  }
-  for (const e of expenses) {
-    if (e.country) countrySet.add(e.country.toUpperCase());
-  }
-  const countries = countrySet.size;
+  // Active trip: running on TODAY's local calendar day (src/utils/today.ts).
+  // The old check compared `new Date('<start>T12:00:00') <= now`, so a trip
+  // starting today did not exist on Home until noon (found while testing G1:
+  // "Plan your first trip" next to a trip created that morning).
+  const activeTrip = pickActiveTrip(trips, todayStr);
 
-  // Active trip: must have started (startDate <= now) and not ended.
-  // Sorts by startDate DESC so the most-recently-started trip wins.
-  const activeTrip = trips
-    .filter((t) => {
-      const start = new Date(`${t.startDate}T12:00:00`);
-      const ended = t.endDate ? new Date(`${t.endDate}T12:00:00`) < now : false;
-      return !isNaN(start.getTime()) && start <= now && !ended;
-    })
-    .sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
-
-  const activeTripSpent = activeTrip
-    ? expenses
-        .filter((e) => e.tripId === activeTrip.id)
-        .reduce((sum, e) => {
-          const converted = toDisplay(e.amount, e.currency);
-          return sum + (converted != null ? converted : toHomeCurrency(e));
-        }, 0)
-    : 0;
-
-  // Total spent across all trips (for the quick-fact pill). Whole currency
-  // units (no cents) — the user asked to drop the decimals on the home stats.
-  const totalSpent = expenses.reduce((sum, e) => {
-    const converted = toDisplay(e.amount, e.currency);
-    return sum + (converted != null ? converted : toHomeCurrency(e));
-  }, 0);
-
-  // Total travel days: every PAST trip counts its full length, every ACTIVE
-  // trip counts from its start date up to AND INCLUDING today (never its future
-  // end date). UPCOMING trips are excluded entirely — days you have not travelled
-  // yet must not be counted. All day counting is inclusive (start day = day 1).
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const totalDays = trips.reduce((sum, t) => {
-    const status = deriveTripStatus(t);
-    if (status === 'upcoming') return sum;
-    // Past → the end date; active/open-ended → today. Both inclusive.
-    const endKey = status === 'past' && t.endDate ? t.endDate : todayKey;
-    return sum + inclusiveDays(t.startDate, endKey);
-  }, 0);
+  // G2: the "Today" block — today's spend on the active trip against its
+  // daily budget, in the trip's home currency (the budget's currency).
+  const today = useMemo(
+    () => (activeTrip ? summarizeToday(expenses, activeTrip, todayStr) : null),
+    [expenses, activeTrip, todayStr],
+  );
 
   // Quick-add target trip: the ACTIVE trip (started, not ended) — the same
   // selection rule as the Expenses tab. It used to be the trip of the most
   // recent expense, which handed the form a FUTURE trip when the last entry
   // was pre-logged. Falls back to the most recently started trip.
   const targetTrip = activeTrip ?? [...trips].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
+
+  // Q8 hero selection. Upcoming: the soonest start. Past: the latest end.
+  const nextTrip = activeTrip
+    ? undefined
+    : trips
+        .filter((t) => deriveTripStatus(t) === 'upcoming')
+        .sort((a, b) => (a.startDate < b.startDate ? -1 : 1))[0];
+  const lastTrip = activeTrip || nextTrip
+    ? undefined
+    : trips
+        .filter((t) => deriveTripStatus(t) === 'past')
+        .sort((a, b) => ((a.endDate ?? a.startDate) < (b.endDate ?? b.startDate) ? 1 : -1))[0];
+  const heroTrip = activeTrip ?? nextTrip ?? lastTrip;
+  const heroLabel = activeTrip ? null : nextTrip ? 'Next trip' : lastTrip ? 'Last trip' : null;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -191,41 +161,78 @@ export default function HomeScreen() {
             <AppLogo size={36} />
             <Text style={styles.appTitle}>4 My Travels</Text>
           </View>
-          <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-          </Pressable>
         </View>
 
         {/* Web/PWA notices (storage health + install nudge) under the app title. */}
         <WebNotices />
 
-        {/* Active trip — the SAME card as the Trips tab
-            (src/components/TripCard.tsx): photo stage with badge/name/dates/day
-            bar/verdict, flat footer with Daily avg + Total. Tapping opens the
-            trip detail screen, exactly like the Trips tab does. */}
-        {activeTrip && (
-          <TripCard
-            style={styles.tripCard}
-            trip={activeTrip}
-            expenses={expenses.filter((e) => e.tripId === activeTrip.id)}
-            onPress={() => router.push(`/trip/${activeTrip.id}`)}
-          />
+        {/* Q8 hero — three variants: the ACTIVE trip; otherwise the next
+            upcoming (or else the most recent past) trip with a label; with no
+            trips at all a "create your first trip" card. The active-trip card
+            is the SAME card as the Trips tab (src/components/TripCard.tsx). */}
+        {heroTrip ? (
+          <>
+            {heroLabel && <Text style={styles.heroLabel}>{heroLabel}</Text>}
+            <TripCard
+              style={styles.tripCard}
+              trip={heroTrip}
+              expenses={expenses.filter((e) => e.tripId === heroTrip.id)}
+              onPress={() => router.push(`/trip/${heroTrip.id}`)}
+              onManage={() => setMenuTrip(heroTrip)}
+            />
+          </>
+        ) : tripsHydrated ? (
+          <View style={[styles.emptyCard, styles.tripCard, styles.firstTripCard]}>
+            <Ionicons name="airplane-outline" size={40} color={colors.primaryText} />
+            <Text style={styles.firstTripTitle}>Plan your first trip</Text>
+            <Text style={styles.emptyText}>
+              Create a trip, then log what you spend — converted to your home currency.
+            </Text>
+            <View style={styles.firstTripButton}>
+              <Button label="Create your first trip" icon="add" onPress={() => router.push('/trips/new')} />
+            </View>
+          </View>
+        ) : (
+          <ActivityIndicator color={colors.primaryText} style={styles.tripCard} />
         )}
 
-        {/* Quick facts — elke pil opent het bijbehorende Stats-scherm:
-            countries → Countries-pagina, days → Over time-pagina, spent → de
-            Statistics-tab. */}
-        <View style={styles.quickFacts}>
-          <Pressable onPress={() => router.push('/stats/countries')}>
-            <Pill icon="location-outline" text={`${countries} countries`} />
-          </Pressable>
-          <Pressable onPress={() => router.push('/stats/over-time')}>
-            <Pill icon="calendar-outline" text={`${totalDays} ${totalDays === 1 ? 'day' : 'days'}`} />
-          </Pressable>
-          <Pressable onPress={() => router.push('/statistics')}>
-            <Pill icon="wallet-outline" text={`${formatMoneyWhole(totalSpent, displayCurrency)} spent`} />
-          </Pressable>
-        </View>
+        {/* G2: Home revolves around TODAY — what you spent today on the
+            active trip against its daily budget. Bar colours follow the
+            TripCard rule (pattern 36): primary while within budget, muted
+            grey when over; never red. No budget → the figure alone. */}
+        {activeTrip && today && (
+          <View style={styles.todayCard} accessibilityRole="summary">
+            <Text style={styles.todayLabel}>Today · {activeTrip.name}</Text>
+            <View style={styles.todayRow}>
+              <Text style={styles.todayAmount}>{formatMoney(today.spent, activeTrip.homeCurrency)}</Text>
+              {today.budget != null && (
+                <Text style={styles.todayBudget}>
+                  / {formatMoneyWhole(today.budget, activeTrip.homeCurrency)} budget
+                </Text>
+              )}
+            </View>
+            {today.ratio != null && (
+              <View style={styles.todayTrack}>
+                <View
+                  style={[
+                    styles.todayFill,
+                    {
+                      width: `${Math.round(today.ratio * 100)}%`,
+                      backgroundColor: today.over ? colors.mutedForeground : colors.primary,
+                    },
+                  ]}
+                />
+              </View>
+            )}
+            {today.budget != null && (
+              <Text style={styles.todayHint}>
+                {today.over
+                  ? `${formatMoney(today.spent - today.budget, activeTrip.homeCurrency)} over today's budget`
+                  : `${formatMoney(today.budget - today.spent, activeTrip.homeCurrency)} left today`}
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* Expenses today */}
         <View style={styles.sectionHead}>
@@ -234,7 +241,7 @@ export default function HomeScreen() {
         </View>
 
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
+          <ActivityIndicator color={colors.primaryText} style={{ marginTop: spacing.xl }} />
         ) : todayEntries.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No expenses logged today.</Text>
@@ -250,10 +257,7 @@ export default function HomeScreen() {
               homeCurrency={displayCurrency}
               splitShare={entry.splitShare}
               background={colors.primary12}
-              onPress={() => {
-                setEditingExpense(entry.expense);
-                setFormOpen(true);
-              }}
+              onPress={openTodayExpense}
             />
           ))
         )}
@@ -263,50 +267,48 @@ export default function HomeScreen() {
           button itself stays crisp). */}
       <NavFadeScrim />
 
-      {/* FAB — pinned above the floating nav */}
+      {/* FAB — pinned above the floating nav. G1: the FAB ALWAYS means "add
+          expense"; with no trip there is nothing to file it under, so it is
+          hidden (the empty-state card offers "Create your first trip"). */}
+      {targetTrip && (
       <Pressable
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
-        onPress={() => {
-          if (targetTrip) {
-            setFormOpen(true);
-          } else {
-            router.push('/trips/new');
-          }
-        }}
+        accessibilityRole="button"
+        accessibilityLabel="Add expense"
+        onPress={() => setFormOpen(true)}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
+      )}
+
+      {/* Q17: same trip menu as Trips tab / trip detail (⋯ or long-press). */}
+      <TripActionsMenu trip={menuTrip} onClose={() => setMenuTrip(null)} />
 
       {/* Add/edit-expense sheet (one tap from Home; rows open in edit mode) */}
       <ModalHost visible={formOpen && (!!targetTrip || !!editingExpense)} onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
         {targetTrip && (
           <ExpenseForm
             tripId={editingExpense?.tripId ?? targetTrip.id}
+            tripName={trips.find((t) => t.id === (editingExpense?.tripId ?? targetTrip.id))?.name}
             defaultCurrency={targetTrip.defaultCurrency}
             homeCurrency={targetTrip.homeCurrency}
             initialExpense={editingExpense ?? undefined}
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={async (expense) => {
-              const { saveExpense } = await import('../../src/db/expenseRepo');
-              await saveExpense(expense);
+              // M1: insert-or-replace in the shared store (an edit used to be
+              // prepended a second time).
+              await useExpenseStore.getState().save(expense);
               setFormOpen(false);
               setEditingExpense(null);
-              skipNextFocusRef.current = true;
-              // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
-              setExpenses((prev) => [expense, ...prev]);
             }}
             onDelete={async (expense) => {
               try {
-                const { deleteExpense } = await import('../../src/db/expenseRepo');
-                await deleteExpense(expense.id);
+                await useExpenseStore.getState().remove(expense.id);
                 setFormOpen(false);
                 setEditingExpense(null);
-                skipNextFocusRef.current = true;
-                // Incrementeel: verwijder uit bestaande array (geen volledige herlaad)
-                setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                Alert.alert('Delete failed', msg);
+                showStatus('Delete failed', msg);
               }
             }}
           />
@@ -316,7 +318,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingHorizontal: spacing.xl, paddingBottom: 106 },
   header: {
@@ -340,6 +342,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
+  // G2: "Today" block (above the list of today's expenses).
+  todayCard: {
+    marginBottom: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+    gap: spacing.sm,
+  },
+  todayLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans },
+  todayRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.xs },
+  todayAmount: { color: colors.foreground, fontSize: fontSize['3xl'], fontWeight: '800', fontFamily: fontFamily.heading },
+  todayBudget: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  todayTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.surfaceStrong, overflow: 'hidden' },
+  todayFill: { height: '100%', borderRadius: radius.full },
+  todayHint: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   quickFacts: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -356,15 +375,27 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   emptyText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, textAlign: 'center' },
+  heroLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    fontFamily: fontFamily.sans,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: spacing.sm,
+  },
+  firstTripCard: { alignItems: 'center', gap: spacing.sm },
+  firstTripTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
+  firstTripButton: { alignSelf: 'stretch', marginTop: spacing.md },
   fab: {
     position: 'absolute',
     right: spacing.xl,
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
     ...fabShadow,
   },
-});
+}));

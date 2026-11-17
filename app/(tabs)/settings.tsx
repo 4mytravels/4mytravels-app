@@ -8,9 +8,10 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -19,15 +20,34 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Card, SectionTitle, Button } from '../../src/components/ui';
-import { createBackup, restoreBackup } from '../../src/db/backup';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
+import { Card, SectionTitle, Button, IconButton, FilterChip } from '../../src/components/ui';
+import { useThemeMode } from '../../src/theme/ThemeProvider';
+import { THEME_MODES, THEME_MODE_LABEL } from '../../src/theme/themeMode';
+import {
+  createBackup,
+  parseBackupEnvelope,
+  decryptBackup,
+  InvalidBackupFileError,
+  BackupPassphraseError,
+  MIN_PASSPHRASE_LENGTH,
+  type BackupEnvelope,
+} from '../../src/db/backup';
+import { shareBackup } from '../../src/services/shareBackup';
 import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
 import { saveTrip } from '../../src/db/tripRepo';
 import type { Expense } from '../../src/types';
 import { saveExpense, loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenseStore } from '../../src/store/expenseStore';
+import { syncCoverThumbs } from '../../src/utils/coverThumbs';
 import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
 import { showStatus } from '../../src/utils/statusDialog';
+import {
+  disableBiometric,
+  isBiometricAvailable,
+  isBiometricEnrolled,
+} from '../../src/db/web/biometric';
+import { enrollBiometricForSession } from '../../src/db/web/biometricSession';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
@@ -52,6 +72,7 @@ export default function SettingsScreen() {
   // The floating nav overlaps the bottom of this screen, so the scroll content
   // must clear it: nav height (60) + nav gap (18) + breathing room.
   const insets = useSafeAreaInsets();
+  const { mode: themeMode, setMode: setThemeMode } = useThemeMode();
   const setTrips = useTripStore((s) => s.setTrips);
   const manualRates = useSettingsStore((s) => s.manualRates);
   const setManualRate = useSettingsStore((s) => s.setManualRate);
@@ -63,6 +84,10 @@ export default function SettingsScreen() {
   const [mode, setMode] = useState<null | 'backup' | 'restore'>(null);
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
+  // Restore: the picked + validated file, kept across wrong-passphrase retries.
+  const [restoreFile, setRestoreFile] = useState<{ envelope: BackupEnvelope; name: string } | null>(null);
+  const [passphraseError, setPassphraseError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [nudge, setNudge] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -71,6 +96,32 @@ export default function SettingsScreen() {
   // (name from the export's trip_name, otherwise "import-trip1").
   const importAuto = importTargetTrip === AUTO_TRIP;
   const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
+  // Web only: biometric unlock (WebAuthn PRF).
+  const [bioAvailable, setBioAvailable] = useState(false);
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    setBioEnrolled(isBiometricEnrolled());
+    void isBiometricAvailable().then(setBioAvailable);
+  }, []);
+  const toggleBiometric = async () => {
+    if (bioEnrolled) {
+      disableBiometric();
+      setBioEnrolled(false);
+      return;
+    }
+    try {
+      await enrollBiometricForSession();
+      setBioEnrolled(true);
+    } catch (e) {
+      showStatus(
+        'Biometric unlock unavailable',
+        e instanceof Error && e.name === 'BiometricUnsupported'
+          ? e.message
+          : 'Setup was cancelled. You can try again.',
+      );
+    }
+  };
   const [currencyQuery, setCurrencyQuery] = useState('');
 
   useEffect(() => {
@@ -84,6 +135,8 @@ export default function SettingsScreen() {
   const close = () => {
     setMode(null);
     setPassphrase('');
+    setPassphraseError(null);
+    setRestoreFile(null);
     setBusy(false);
   };
 
@@ -170,6 +223,8 @@ export default function SettingsScreen() {
       const { count, tripName, skippedNote } = await importExpensesFromCsv(text, {
         targetTripId: target,
       });
+      // M1: bulk write → re-read the shared expense list once.
+      await useExpenseStore.getState().reload();
       showStatus(
         'Import complete',
         `${count} expense(s) imported into "${tripName}"${skippedNote}.`,
@@ -189,44 +244,93 @@ export default function SettingsScreen() {
       return;
     }
     setBusy(true);
+    setBusyLabel('Reading your data…');
     try {
-      const envelope = await createBackup(passphrase);
+      // Phases yield to the event loop, so the spinner + label keep painting.
+      const envelope = await createBackup(passphrase, undefined, {
+        onPhase: (phase) => {
+          if (phase === 'serialize') setBusyLabel('Deriving encryption key…');
+          else if (phase === 'kdf') setBusyLabel('Encrypting…');
+          else if (phase === 'encrypt') setBusyLabel('Preparing file…');
+        },
+      });
       await markBackupDone(); // reset the reminder clock (§2.2 backup reminders)
-      const file = new File(Paths.cache, '4mytravels-backup.json');
-      await file.write(envelope);
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Save encrypted backup' });
+      // Share sheet, never a persistent file: temp copy is deleted after the
+      // sheet closes (shared or cancelled). Web without file-share → download.
+      const outcome = await shareBackup(envelope);
       close();
+      if (outcome === 'downloaded') {
+        showStatus('Backup downloaded', 'Your browser cannot share files, so the encrypted backup was downloaded instead.');
+      }
     } catch (e) {
       showStatus('Backup failed', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   };
 
-  const doRestore = async () => {
-    if (passphrase.length < 8) {
-      showStatus('Passphrase too short', 'Enter the passphrase used when the backup was created.');
-      return;
-    }
-    setBusy(true);
+  // Restore order: choose file → validate (no passphrase) → passphrase → restore.
+  // Step 1+2: pick and structurally validate the file. An invalid file is
+  // reported here and the passphrase sheet never opens.
+  const startRestore = async () => {
     try {
       const doc = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: false });
       const picked = doc.canceled ? null : doc.assets?.[0];
-      if (!picked || typeof picked.uri !== 'string') {
-        setBusy(false);
-        return;
-      }
+      if (!picked || typeof picked.uri !== 'string') return; // cancelled
       // Same cross-platform read as the CSV import (web: asset.file; a blob:
       // URL is not fetchable under COEP — see src/utils/readPickedDocument.ts).
-      const envelope = await readPickedDocumentText(picked);
-      const { trips, expenses } = await restoreBackup(envelope, passphrase);
+      const text = await readPickedDocumentText(picked);
+      const envelope = parseBackupEnvelope(text);
+      openRestoreFor(envelope, picked.name ?? 'backup file');
+    } catch (e) {
+      showStatus(
+        e instanceof InvalidBackupFileError ? 'Not a valid backup' : 'Could not read file',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  };
+
+  // Entry point once the file is known (also the hook for a future
+  // "open with"/share-intent handler: it only needs the envelope).
+  const openRestoreFor = (envelope: BackupEnvelope, fileName: string) => {
+    setRestoreFile({ envelope, name: fileName });
+    setPassphrase('');
+    setPassphraseError(null);
+    setMode('restore');
+  };
+
+  // Step 3+4: decrypt with the passphrase. Wrong passphrase → inline error,
+  // file selection kept so the user can retry.
+  const doRestore = async () => {
+    if (!restoreFile) return;
+    if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+      setPassphraseError(`Passphrase is at least ${MIN_PASSPHRASE_LENGTH} characters.`);
+      return;
+    }
+    setBusy(true);
+    setPassphraseError(null);
+    try {
+      // Async Argon2id: yields every ~10 ms so the spinner keeps animating.
+      const { trips, expenses } = await decryptBackup(restoreFile.envelope, passphrase);
+      setPassphrase(''); // never keep the passphrase after use
       for (const t of trips) await saveTrip(t);
       for (const e of expenses) await saveExpense(e);
       setTrips(trips);
-      showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
+      // M1: bulk write → re-read the shared expense list once.
+      await useExpenseStore.getState().reload();
+      // M4: the backup carries only full covers → build card thumbnails.
+      void syncCoverThumbs();
       close();
+      showStatus('Restore complete', `${trips.length} trips and ${expenses.length} expenses restored.`);
     } catch (e) {
-      showStatus('Restore failed', e instanceof Error ? e.message : String(e));
+      setPassphrase('');
+      if (e instanceof BackupPassphraseError) {
+        setPassphraseError('Wrong passphrase. Try again, or cancel.');
+      } else {
+        close();
+        showStatus('Restore failed', e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -248,6 +352,28 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 106 }}
         showsVerticalScrollIndicator={false}
       >
+        {Platform.OS === 'web' && bioAvailable && (
+          <View style={styles.section}>
+            <SectionTitle title="Security" />
+            <Card>
+              <Text style={styles.note}>
+                Unlock with fingerprint or face instead of typing your passphrase. The passphrase
+                stays your recovery key for new devices or a reset browser.
+              </Text>
+              <View style={styles.actions}>
+                <Button
+                  label={bioEnrolled ? 'Disable biometric unlock' : 'Enable biometric unlock'}
+                  icon="finger-print-outline"
+                  variant={bioEnrolled ? 'ghost' : 'primary'}
+                  onPress={toggleBiometric}
+                />
+              </View>
+            </Card>
+          </View>
+        )}
+
+        {/* Q14: one "Data" card. No cloud-* icons — nothing leaves the device
+            except through the share sheet the user picks. */}
         <View style={styles.section}>
           <SectionTitle title="Data" />
           <Card>
@@ -260,20 +386,14 @@ export default function SettingsScreen() {
               </Text>
             )}
             <View style={styles.actions}>
-              <Button label="Create backup" icon="cloud-upload-outline" onPress={() => setMode('backup')} />
+              <Button label="Create backup" icon="archive-outline" onPress={() => setMode('backup')} />
               <View style={{ height: spacing.md }} />
-              <Button label="Restore backup" icon="cloud-download-outline" variant="ghost" onPress={() => setMode('restore')} />
+              <Button label="Restore backup" icon="arrow-undo-outline" variant="ghost" onPress={startRestore} />
             </View>
-          </Card>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle title="CSV export & import" />
-          <Card>
-            <View style={styles.actions}>
-              <Button label="Export expenses" icon="download-outline" onPress={() => setExportOpen(true)} />
+            <View style={[styles.actions, { marginTop: spacing.lg }]}>
+              <Button label="Export CSV" icon="document-text-outline" onPress={() => setExportOpen(true)} />
               <View style={{ height: spacing.md }} />
-              <Button label="Import from CSV" icon="cloud-download-outline" variant="ghost" onPress={() => setImportOpen(true)} />
+              <Button label="Import CSV" icon="document-attach-outline" variant="ghost" onPress={() => setImportOpen(true)} />
             </View>
             <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
               Export one trip as a single CSV, or every trip as separate files. Import supports
@@ -285,6 +405,21 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <SectionTitle title="Preferences" />
           <Card>
+            {/* G5: appearance. System follows the OS light/dark setting. */}
+            <Text style={styles.themeLabel}>Appearance</Text>
+            <View style={styles.themeRow} accessibilityRole="radiogroup" accessibilityLabel="Appearance">
+              {THEME_MODES.map((m) => (
+                <FilterChip
+                  key={m}
+                  label={THEME_MODE_LABEL[m]}
+                  icon={m === 'system' ? 'phone-portrait-outline' : m === 'light' ? 'sunny-outline' : 'moon-outline'}
+                  selected={themeMode === m}
+                  onPress={() => setThemeMode(m)}
+                  accessibilityLabel={`Appearance: ${THEME_MODE_LABEL[m]}`}
+                />
+              ))}
+            </View>
+            <View style={styles.themeDivider} />
             <View style={styles.rateRow}>
               <Text style={styles.rateLabel}>Default home currency</Text>
               <Pressable
@@ -296,7 +431,7 @@ export default function SettingsScreen() {
               </Pressable>
             </View>
             <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
-              Used as the home currency for new trips. You can still change it per trip in the trip editor.
+              Used as the home currency for new trips. A single trip can override it under Advanced in the trip editor.
             </Text>
           </Card>
         </View>
@@ -331,19 +466,19 @@ export default function SettingsScreen() {
             </View>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(WEBSITE_URL))}>
               <Text style={styles.aboutLink}>Website</Text>
-              <Ionicons name="globe-outline" size={16} color={colors.primary} />
+              <Ionicons name="globe-outline" size={16} color={colors.primaryText} />
             </Pressable>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(SOURCE_CODE_URL))}>
               <Text style={styles.aboutLink}>Source code (GitHub)</Text>
-              <Ionicons name="open-outline" size={16} color={colors.primary} />
+              <Ionicons name="open-outline" size={16} color={colors.primaryText} />
             </Pressable>
             <Pressable style={styles.aboutRow} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(ISSUES_URL))}>
               <Text style={styles.aboutLink}>Report an issue</Text>
-              <Ionicons name="bug-outline" size={16} color={colors.primary} />
+              <Ionicons name="bug-outline" size={16} color={colors.primaryText} />
             </Pressable>
             <Pressable style={[styles.aboutRow, { marginBottom: 0 }]} onPress={() => void import('react-native').then(({ Linking }) => Linking.openURL(PRIVACY_URL))}>
               <Text style={styles.aboutLink}>Privacy statement</Text>
-              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryText} />
             </Pressable>
           </Card>
         </View>
@@ -359,7 +494,7 @@ export default function SettingsScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
               <Text style={styles.pickerTitle}>Default home currency</Text>
               <Pressable onPress={() => setCurrencyPickerOpen(false)}>
-                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
+                <Text style={{ color: colors.primaryText, fontWeight: '700', fontSize: fontSize.md }}>Done</Text>
               </Pressable>
             </View>
             <TextInput
@@ -383,10 +518,10 @@ export default function SettingsScreen() {
                     style={[styles.pickerRow, active && styles.pickerRowActive]}
                     onPress={() => { void setDefaultHomeCurrency(c.code); setCurrencyPickerOpen(false); setCurrencyQuery(''); }}
                   >
-                    <Text style={[styles.pickerRowText, active && { color: colors.primary, fontWeight: '700' }]}>
+                    <Text style={[styles.pickerRowText, active && { color: colors.primaryText, fontWeight: '700' }]}>
                       {c.flag} {c.code} — {c.name}
                     </Text>
-                    {active && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    {active && <Ionicons name="checkmark" size={18} color={colors.primaryText} />}
                   </Pressable>
                 );
               })}
@@ -399,33 +534,42 @@ export default function SettingsScreen() {
         <SafeAreaView style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{mode === 'backup' ? 'Create encrypted backup' : 'Restore from backup'}</Text>
-            <Pressable onPress={close} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color={colors.mutedForeground} />
-            </Pressable>
+            <IconButton icon="close" label="Close" variant="plain" size={24} color={colors.mutedForeground} onPress={close} />
           </View>
           <View style={styles.sheetBody}>
             <Text style={styles.note}>
               {mode === 'backup'
                 ? 'Choose a passphrase (min 8 chars). It encrypts the backup and is never stored.'
-                : 'Enter the passphrase used when this backup was created.'}
+                : `File: ${restoreFile?.name ?? ''}\nEnter the passphrase used when this backup was created.`}
             </Text>
             <TextInput
               style={styles.input}
               value={passphrase}
-              onChangeText={setPassphrase}
+              onChangeText={(t) => {
+                setPassphrase(t);
+                if (passphraseError) setPassphraseError(null);
+              }}
+              onSubmitEditing={mode === 'backup' ? doBackup : doRestore}
               placeholder="Passphrase"
               placeholderTextColor={colors.mutedForeground}
               secureTextEntry
               autoCapitalize="none"
             />
+            {mode === 'restore' && passphraseError ? (
+              <Text style={[styles.note, { color: colors.destructive, marginTop: spacing.sm }]}>{passphraseError}</Text>
+            ) : null}
             {busy ? (
-              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing.xl }} />
+              <View style={{ marginTop: spacing.xl, alignItems: 'center', gap: spacing.sm }}>
+                <ActivityIndicator size="large" color={colors.primaryText} />
+                {busyLabel ? <Text style={styles.note}>{busyLabel}</Text> : null}
+              </View>
             ) : (
-              <View style={{ marginTop: spacing.xl }}>
+              <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
                 <Button
-                  label={mode === 'backup' ? 'Create & share' : 'Choose file & restore'}
+                  label={mode === 'backup' ? 'Create & share' : 'Restore'}
                   onPress={mode === 'backup' ? doBackup : doRestore}
                 />
+                {mode === 'restore' ? <Button label="Cancel" variant="ghost" onPress={close} /> : null}
               </View>
             )}
           </View>
@@ -439,7 +583,7 @@ export default function SettingsScreen() {
             <ScrollView style={{ maxHeight: 420 }}>
               {trips.map((t) => (
                 <Pressable key={t.id} style={styles.pickerRow} onPress={() => exportSingleTrip(t.id)}>
-                  <Ionicons name="airplane-outline" size={18} color={colors.primary} />
+                  <Ionicons name="airplane-outline" size={18} color={colors.primaryText} />
                   <Text style={styles.pickerRowText}>{t.name}</Text>
                   <Ionicons name="download-outline" size={18} color={colors.mutedForeground} />
                 </Pressable>
@@ -476,7 +620,7 @@ export default function SettingsScreen() {
                 color={importAuto ? colors.primary : colors.mutedForeground}
               />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.pickerRowText, importAuto && { color: colors.primary, fontWeight: '700' }]}>
+                <Text style={[styles.pickerRowText, importAuto && { color: colors.primaryText, fontWeight: '700' }]}>
                   New trip from file dates
                 </Text>
                 <Text style={{ color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>
@@ -507,7 +651,7 @@ export default function SettingsScreen() {
             <View style={{ marginTop: spacing.lg }}>
               <Button
                 label={busy ? 'Importing…' : 'Choose CSV file'}
-                icon="cloud-download-outline"
+                icon="folder-open-outline"
                 disabled={!importTargetTrip || busy}
                 onPress={doCsvImport}
               />
@@ -519,7 +663,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -559,8 +703,8 @@ const styles = StyleSheet.create({
   },
   aboutLabel: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   aboutValue: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '700', fontFamily: fontFamily.sans },
-  aboutLink: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  aboutLink: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius['3xl'],
@@ -579,6 +723,9 @@ const styles = StyleSheet.create({
   pickerRowActive: {},
   pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, flex: 1 },
+  themeLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  themeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  themeDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.lg },
   currencyPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -600,10 +747,10 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   rateBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   rateBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm },
-});
+}));

@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, Modal, Alert, RefreshControl } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { TripCard } from '../../src/components/TripCard';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { TripActionsMenu } from '../../src/components/TripActionsMenu';
+import { useNavigation, useRouter } from 'expo-router';
 import { useTripStore, deriveTripStatus } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
-import { deleteTrip as deleteTripDb } from '../../src/db/tripRepo';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
+import { groupExpensesByTrip } from '../../src/utils/expenseList';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
 import { Button } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
-import { confirmDestructive } from '../../src/utils/confirm';
-import type { Trip, TripStatus, Expense } from '../../src/types';
+import type { Trip, TripStatus } from '../../src/types';
 
 const FILTERS: Array<'All' | TripStatus> = ['All', 'active', 'upcoming', 'past'];
 
@@ -22,14 +22,20 @@ export default function TripsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
-  const removeTripStore = useTripStore((s) => s.removeTrip);
+  const hydrated = useTripStore((s) => s.hydrated);
   const [filter, setFilter] = useState<'All' | TripStatus>('All');
   // Which trip's manage sheet (Edit / Delete) is open.
   const [managing, setManaging] = useState<Trip | null>(null);
   // Full expense lists (not just sums) so the card can use the SAME
   // computeTripStats as the trip detail screen — otherwise daily avg /
   // over-budget / day counter drift apart between the two screens.
-  const [expensesByTrip, setExpensesByTrip] = useState<Record<string, Expense[]>>({});
+  // M1: derived from the shared store (one load for the app, kept current by
+  // save/delete everywhere) — was a fresh query on every focus.
+  const { expenses: allExpenses } = useExpenses();
+  const expensesByTrip = useMemo(
+    () => groupExpensesByTrip(allExpenses, trips.map((t) => t.id)),
+    [allExpenses, trips],
+  );
   // MUST be declared before the early return below (rules of hooks): the
   // empty-trips branch renders fewer hooks, which crashed React ("Rendered
   // more hooks than during the previous render") the moment the first trip
@@ -40,46 +46,21 @@ export default function TripsScreen() {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // Load expenses per trip for the cards' stats (shared computeTripStats).
-  //
-  // ON FOCUS, not only when the trip list changes: logging an expense on the
-  // Expenses tab left every card showing the old figures until the app was
-  // restarted. Same pattern as home/expenses/statistics.
-  const loadTripExpenses = useCallback(() => {
-    let alive = true;
-    (async () => {
-      const map: Record<string, Expense[]> = {};
-      for (const t of trips) {
-        map[t.id] = await loadExpensesForList(t.id);
-      }
-      if (alive) setExpensesByTrip(map);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [trips]);
-
-  useFocusEffect(loadTripExpenses);
-
   const visible = trips.filter((t) => filter === 'All' || deriveTripStatus(t) === filter);
 
-  const handleDelete = async (trip: Trip) => {
-    // The sheet must stay open until the answer is known: closing it first
-    // destroyed the dialog's host on web (measured: the sheet stayed open after
-    // a refused confirmation, so the user could not tell whether the delete had
-    // run). confirmDestructive resolves true only when the user confirms.
-    const ok = await confirmDestructive({
-      title: 'Delete trip',
-      message: `Delete "${trip.name}" and all its expenses?`,
-    });
-    if (!ok) return;
-    removeTripStore(trip.id);
-    try {
-      await deleteTripDb(trip.id);
-    } catch (e) {
-      Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
-    }
-  };
+
+  // Q8: until the store has its first list, a spinner — never a flash of the
+  // "No trips yet" empty state on a cold start.
+  if (!hydrated) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Header />
+        <View style={styles.empty}>
+          <ActivityIndicator color={colors.primaryText} accessibilityLabel="Loading trips" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (trips.length === 0) {
     return (
@@ -89,7 +70,7 @@ export default function TripsScreen() {
         <View style={styles.empty}>
           <Ionicons name="airplane-outline" size={48} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>No trips yet</Text>
-          <Text style={styles.emptyBody}>Create your first trip to start tracking spends.</Text>
+          <Text style={styles.emptyBody}>Create your first trip to start tracking expenses.</Text>
           <View style={{ marginTop: spacing.xl, width: '70%' }}>
             <Button label="New trip" icon="add" onPress={() => router.push('/trips/new')} />
           </View>
@@ -100,11 +81,7 @@ export default function TripsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    const map: Record<string, Expense[]> = {};
-    for (const t of trips) {
-      map[t.id] = await loadExpensesForList(t.id);
-    }
-    setExpensesByTrip(map);
+    await useExpenseStore.getState().reload();
     setRefreshing(false);
   };
 
@@ -123,10 +100,7 @@ export default function TripsScreen() {
           <>
             <View style={styles.titleRow}>
               <Text style={styles.screenTitle}>Trips</Text>
-              <Pressable style={styles.newButton} onPress={() => router.push('/trips/new')}>
-                <Ionicons name="add" size={18} color={colors.primaryForeground} />
-                <Text style={styles.newButtonText}>New trip</Text>
-              </Pressable>
+              <Button label="New trip" icon="add" size="sm" onPress={() => router.push('/trips/new')} />
             </View>
             <ScrollView
               horizontal
@@ -145,6 +119,16 @@ export default function TripsScreen() {
                 );
               })}
             </ScrollView>
+            {/* G1: "All expenses" (the former Expenses tab) is a sub-view of Trips. */}
+            <Pressable
+              onPress={() => router.push('/expenses')}
+              style={styles.allExpenses}
+              accessibilityRole="button"
+            >
+              <Ionicons name="wallet-outline" size={18} color={colors.primaryText} />
+              <Text style={styles.allExpensesText}>All expenses</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primaryText} />
+            </Pressable>
           </>
         }
         renderItem={({ item }) => (
@@ -162,81 +146,25 @@ export default function TripsScreen() {
       {/* Trip cards fade out under the floating nav. */}
       <NavFadeScrim />
 
-      <ManageSheet
-        trip={managing}
-        onClose={() => setManaging(null)}
-        onEdit={(t) => {
-          router.push({ pathname: '/trips/new', params: { editId: t.id } });
-          // Close AFTER the push: closing the sheet first left the pushed route
-          // unreachable on web (the sheet's backdrop swallowed the tap).
-          setManaging(null);
-        }}
-        onDelete={async (t) => {
-          // Keep the sheet open until the user answers — confirmDestructive
-          // resolves true only on an actual confirmation.
-          await handleDelete(t);
-          setManaging(null);
-        }}
-      />
+      {/* Q17: the SAME menu as the ⋯ on trip detail (⋯ button or long-press
+          on a card). */}
+      <TripActionsMenu trip={managing} onClose={() => setManaging(null)} />
     </SafeAreaView>
   );
 }
 
 function Header() {
-  const router = useRouter();
   return (
     <View style={styles.header}>
       <View style={[styles.logoRow, { gap: 12 }]}>
         <AppLogo size={36} />
         <Text style={styles.appTitle}>4 My Travels</Text>
       </View>
-      <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-        <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-      </Pressable>
     </View>
   );
 }
 
-/** Bottom sheet with Edit / Delete for one trip. */
-function ManageSheet({
-  trip,
-  onClose,
-  onEdit,
-  onDelete,
-}: {
-  trip: Trip | null;
-  onClose: () => void;
-  onEdit: (t: Trip) => void;
-  onDelete: (t: Trip) => void;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <Modal visible={!!trip} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.sheetBackdrop} onPress={onClose}>
-        {trip && (
-          <View style={[styles.sheet, { marginBottom: insets.bottom }]}>
-            <Text style={styles.sheetTitle} numberOfLines={1}>
-              {trip.name}
-            </Text>
-            <Pressable style={styles.sheetItem} onPress={() => onEdit(trip)}>
-              <Ionicons name="create-outline" size={20} color={colors.foreground} />
-              <Text style={styles.sheetItemText}>Edit trip</Text>
-            </Pressable>
-            <Pressable style={styles.sheetItem} onPress={() => onDelete(trip)}>
-              <Ionicons name="trash-outline" size={20} color={colors.destructive} />
-              <Text style={[styles.sheetItemText, { color: colors.destructive }]}>Delete trip</Text>
-            </Pressable>
-            <Pressable style={[styles.sheetItem, styles.sheetCancel]} onPress={onClose}>
-              <Text style={styles.sheetItemText}>Cancel</Text>
-            </Pressable>
-          </View>
-        )}
-      </Pressable>
-    </Modal>
-  );
-}
-
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -254,47 +182,34 @@ const styles = StyleSheet.create({
   cardWrap: { marginBottom: spacing.xl },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
-  newButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.lg, borderRadius: radius.full, gap: spacing.sm },
-  newButtonText: { color: colors.primaryForeground, fontWeight: '600', fontFamily: fontFamily.sans },
   tabsScroll: { marginBottom: spacing.lg },
+  allExpenses: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  allExpensesText: { color: colors.primaryText, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans },
   tabs: { gap: spacing.sm, paddingRight: spacing.lg },
   tab: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: colors.surfaceMedium,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: colors.border,
     position: 'relative',
   },
   tabText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '500', fontFamily: fontFamily.sans },
   tabActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderColor: colors.primary,
   },
-    // Manage sheet
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,5,15,0.70)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius['3xl'],
-    borderTopRightRadius: radius['3xl'],
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-  },
-  sheetTitle: {
-    fontFamily: fontFamily.heading,
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-    color: colors.foreground,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  sheetItem: { flexDirection: 'row', alignItems: 'center', height: 50, paddingHorizontal: spacing.sm, borderRadius: radius.md },
-  sheetItemText: { fontFamily: fontFamily.sans, fontSize: 15, fontWeight: '600', color: colors.foreground, marginLeft: spacing.md },
-  sheetCancel: { marginTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, justifyContent: 'center' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing['3xl'] },
   emptyTitle: { fontSize: fontSize['2xl'], fontWeight: '700', color: colors.foreground, marginTop: spacing.lg, fontFamily: fontFamily.heading },
   emptyBody: { fontSize: fontSize.md, color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.sm },
   emptyFilter: { color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.xl, fontFamily: fontFamily.sans },
-});
+}));

@@ -6,7 +6,7 @@
 // screen. ONE map now, imported by the form (`CategoryChip`), the Statistics
 // donut/legend and the filter sheets — never add a second copy.
 
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ExpenseCategory } from '../types';
 
 export type CategoryIconName = keyof typeof Ionicons.glyphMap;

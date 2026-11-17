@@ -30,6 +30,7 @@ import { Platform } from 'react-native';
 import type { StorageAdapter, DatabaseConfig } from './types';
 import { SCHEMA_VERSION } from './types';
 import { runMigrations } from './migrations';
+import { applyStoragePolicy, reclaimFreePages } from './storagePolicy';
 import {
   EncryptionUnavailableError,
   LegacyPlaintextDatabaseError,
@@ -124,6 +125,12 @@ export class NativeStorageAdapter implements StorageAdapter {
         );
       }
 
+      // M7: secure_delete on this connection + one-time auto_vacuum migration.
+      await applyStoragePolicy(
+        (sql) => this.db!.execute(sql),
+        async (sql) => ((await this.db!.execute(sql)).rows ?? []) as Record<string, unknown>[],
+      );
+
       await this.runSchema();
     })();
 
@@ -184,8 +191,9 @@ export class NativeStorageAdapter implements StorageAdapter {
 
   async compact(): Promise<void> {
     if (!this.db) throw new Error('DB not open');
-    // VACUUM rewrites the DB file, removing deleted ciphertext (GDPR erasure, §2.2).
-    await this.db.execute('VACUUM');
+    // M7: secure_delete (set on open) already zeroed the deleted content;
+    // incremental_vacuum returns the free pages without a full rewrite.
+    await reclaimFreePages((sql) => this.db!.execute(sql));
   }
 
   async close(): Promise<void> {

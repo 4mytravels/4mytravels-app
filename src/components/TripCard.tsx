@@ -5,26 +5,27 @@
 // as the home-screen journey card) with the badge, the name, the dates, the day
 // bar and the pace verdict ON it; the daily/total figures sit on a flat surface
 // BELOW the photo, so the image never runs behind the numbers.
-import { useMemo, useRef } from 'react';
+import { useId, useMemo, useRef } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, fontFamily, radius, fontSize, spacing, cardShadow } from '../theme/theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow, themedStyles, IMAGE_SCRIM } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
 import { computeTripStats, hasDailyBudget } from '../utils/tripStats';
 import { dayProgressRatio, formatDayProgress } from '../utils/pace';
 import { formatDateRange } from '../utils/days';
 import { formatMoney, formatMoneyWhole } from '../utils/currency';
-import { bytesToDataUri, TRIP_COVER_HEIGHT } from '../utils/image';
+import { bytesToDataUri, tripCoverStageSize } from '../utils/image';
 
 // Scrim colour = the app background; only the opacity changes over the photo.
-const SCRIM = '#0A0A1A';
+// Theme-independent: this gradient darkens a PHOTO under white text (G5).
+const SCRIM = IMAGE_SCRIM;
 
 const BADGE: Record<TripStatus, { label: string; fg: string; bg: string }> = {
-  active: { label: 'ACTIVE', fg: '#5EEAD4', bg: 'rgba(13,148,136,0.32)' },
-  upcoming: { label: 'UPCOMING', fg: '#BFDBFE', bg: 'rgba(59,130,246,0.28)' },
-  past: { label: 'PAST', fg: 'rgba(226,232,240,0.72)', bg: 'rgba(148,163,184,0.22)' },
+  active: { label: 'ACTIVE', fg: colors.teal300, bg: colors.teal32 },
+  upcoming: { label: 'UPCOMING', fg: colors.blue200, bg: colors.blue28 },
+  past: { label: 'PAST', fg: colors.foreground72, bg: colors.slate22 },
 };
 
 export function TripCard({
@@ -32,6 +33,7 @@ export function TripCard({
   expenses,
   onPress,
   onManage,
+  pressLabel,
   style,
 }: {
   trip: Trip;
@@ -39,6 +41,8 @@ export function TripCard({
   /** Omit both handlers to render a static card (trip detail screen). */
   onPress?: () => void;
   onManage?: () => void;
+  /** Screen-reader label for onPress when it is not "open trip" (M9: trip detail → change photo). */
+  pressLabel?: string;
   style?: object;
 }) {
   const status = deriveTripStatus(trip);
@@ -70,8 +74,15 @@ export function TripCard({
   // achter beter zichtbaar wordt"). A solid fill hid the photo underneath.
   const fill = status === 'past' ? colors.mutedBar : colors.primaryBar;
 
-  const coverBytes = (trip as Trip & { coverBytes?: Uint8Array | null }).coverBytes;
-  const tripCoverUri = coverBytes && coverBytes.length > 0 ? bytesToDataUri(coverBytes) : null;
+  // M4: the card draws the ~40 KB thumbnail. The full cover is only a
+  // fallback for the moment between a restore and its thumbnail backfill.
+  const t = trip as Trip & { coverBytes?: Uint8Array | null; coverThumb?: Uint8Array | null };
+  const coverBytes = t.coverThumb && t.coverThumb.length > 0 ? t.coverThumb : t.coverBytes;
+  // Q4: base64-encoding a cover is O(size) — once per cover, not per render.
+  const tripCoverUri = useMemo(
+    () => (coverBytes && coverBytes.length > 0 ? bytesToDataUri(coverBytes) : null),
+    [coverBytes],
+  );
   const dayText =
     status === 'upcoming'
       ? 'Not started'
@@ -117,7 +128,7 @@ export function TripCard({
               accessibilityLabel={`Manage ${trip.name}`}
               style={({ pressed }) => [styles.manage, pressed && styles.managePressed]}
             >
-              <Ionicons name="ellipsis-horizontal" size={17} color={colors.foreground} />
+              <Ionicons name="ellipsis-horizontal" size={17} color={colors.onImage} />
             </Pressable>
           )}
         </View>
@@ -184,7 +195,7 @@ export function TripCard({
   }
 
   return (
-    <PressableScale onPress={onPress} onLongPress={onManage} style={style}>
+    <PressableScale onPress={onPress} onLongPress={onManage} label={pressLabel ?? `Open ${trip.name}`} style={style}>
       {body}
     </PressableScale>
   );
@@ -197,6 +208,12 @@ export function TripCard({
  * band visibly on Android and in the PWA — same reason FadeScrim is SVG.
  */
 function CardScrim() {
+  // Per-instance gradient ids. The tab navigator keeps every visited screen
+  // mounted, so several cards share one document on web; with fixed ids every
+  // url(#…) resolved to the FIRST definition, which can sit in a hidden screen
+  // and then paints nothing (found in G5: the trip-detail card lost its scrim
+  // and its no-photo surface, invisible on dark, glaring on light).
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   return (
     <Svg
       style={StyleSheet.absoluteFill}
@@ -205,30 +222,25 @@ function CardScrim() {
       pointerEvents="none"
     >
       <Defs>
-        <LinearGradient id="tripScrimTop" x1="0" y1="0" x2="0" y2="1">
+        <LinearGradient id={`tripScrimTop${uid}`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={SCRIM} stopOpacity="0.38" />
           <Stop offset="1" stopColor={SCRIM} stopOpacity="0" />
         </LinearGradient>
-        <LinearGradient id="tripScrimBottom" x1="0" y1="0" x2="0" y2="1">
+        <LinearGradient id={`tripScrimBottom${uid}`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={SCRIM} stopOpacity="0" />
           <Stop offset="0.45" stopColor={SCRIM} stopOpacity="0.72" />
           <Stop offset="1" stopColor={SCRIM} stopOpacity="0.92" />
         </LinearGradient>
-        {/* Surface for a trip without a photo yet — brand gradient. */}
-        <LinearGradient id="tripNoPhoto" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#1B1E46" />
-          <Stop offset="0.55" stopColor="#2A2560" />
-          <Stop offset="1" stopColor="#141432" />
-        </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width="100" height="45" fill="url(#tripScrimTop)" />
-      <Rect x="0" y="38" width="100" height="62" fill="url(#tripScrimBottom)" />
+      <Rect x="0" y="0" width="100" height="45" fill={`url(#tripScrimTop${uid})`} />
+      <Rect x="0" y="38" width="100" height="62" fill={`url(#tripScrimBottom${uid})`} />
     </Svg>
   );
 }
 
 /** No photo yet → brand gradient + the airplane mark. */
 function PhotoFallback() {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   return (
     <>
       <Svg
@@ -237,10 +249,18 @@ function PhotoFallback() {
         preserveAspectRatio="none"
         pointerEvents="none"
       >
-        <Rect x="0" y="0" width="100" height="100" fill="url(#tripNoPhoto)" />
+        <Defs>
+          {/* Surface for a trip without a photo yet — brand gradient. */}
+          <LinearGradient id={`tripNoPhoto${uid}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={colors.noPhoto1} />
+            <Stop offset="0.55" stopColor={colors.noPhoto2} />
+            <Stop offset="1" stopColor={colors.noPhoto3} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100" height="100" fill={`url(#tripNoPhoto${uid})`} />
       </Svg>
       <View style={styles.photoFallbackMark} pointerEvents="none">
-        <Ionicons name="airplane-outline" size={40} color="rgba(226,232,240,0.28)" />
+        <Ionicons name="airplane-outline" size={40} color={colors.foreground28} />
       </View>
     </>
   );
@@ -251,11 +271,13 @@ function PressableScale({
   children,
   onPress,
   onLongPress,
+  label,
   style,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
   onLongPress?: () => void;
+  label?: string;
   style?: object;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -271,6 +293,8 @@ function PressableScale({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={320}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       onPressIn={() => to(0.98)}
       onPressOut={() => to(1)}
       style={style}
@@ -280,7 +304,7 @@ function PressableScale({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // Full-bleed photo card: the trip's own cover is the background and the scrim
   // carries the text.
   card: {
@@ -292,16 +316,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     overflow: 'hidden',
   },
-  // Photo box: SAME 224px format as the new/edit-trip preview (shared
-  // TRIP_COVER_HEIGHT constant in src/utils/image.ts). The overflow keeps the
+  // Photo box: SAME 16:9 format as the new/edit-trip preview (shared
+  // tripCoverStageSize in src/utils/image.ts, Q13). The overflow keeps the
   // scrim and the absolute rows inside — the image never bleeds into the
   // figure footer below.
-  stage: { width: '100%', height: TRIP_COVER_HEIGHT, overflow: 'hidden' },
+  stage: { ...tripCoverStageSize, overflow: 'hidden' },
   // Brightening lift: a low white veil over the photo (under the scrim), so the
   // native Android JPEG — darker than the web canvas re-encode — matches the
   // PWA. 6% keeps it subtle; text contrast is unaffected (scrim sits on top).
-  brighten: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,0.06)' },
-  pastVeil: { backgroundColor: 'rgba(10,10,26,0.46)' },
+  brighten: { ...StyleSheet.absoluteFill, backgroundColor: colors.surfaceMedium },
+  pastVeil: { backgroundColor: colors.pastVeil },
   photoFallbackMark: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   cardTop: {
     position: 'absolute',
@@ -324,11 +348,11 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: colors.onImageSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  managePressed: { backgroundColor: 'rgba(255,255,255,0.20)' },
+  managePressed: { backgroundColor: colors.onImageSurfacePressed },
   cardBottom: {
     position: 'absolute',
     left: spacing.xl,
@@ -336,23 +360,24 @@ const styles = StyleSheet.create({
     bottom: spacing.lg,
   },
   // SAME type as the home-screen journey title (fontSize.xl / 700 / heading).
-  tripName: { fontFamily: fontFamily.heading, fontSize: fontSize.xl, fontWeight: '700', color: '#FFFFFF' },
+  tripName: { fontFamily: fontFamily.heading, fontSize: fontSize.xl, fontWeight: '700', color: colors.white, ...onImageTextShadow },
   dates: {
+    ...onImageTextShadow,
     fontFamily: fontFamily.sans,
     fontSize: fontSize.base,
     fontWeight: '500',
-    color: 'rgba(226,232,240,0.72)',
+    color: colors.foreground72,
     marginTop: 3,
     marginBottom: spacing.md,
   },
-  track: { height: 4, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.10)', overflow: 'hidden' },
+  track: { height: 4, borderRadius: radius.full, backgroundColor: colors.onImageTrack, overflow: 'hidden' },
   // Verdict + day counter, on the photo (the image is their background).
   verdictRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
-  verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3 },
+  verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3, ...onImageTextShadow },
   // Without a verdict there is only the day counter: fill the row and keep it
   // right-aligned, where it sat next to the verdict.
   verdictDaySolo: { flex: 1, textAlign: 'right' },
-  verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: 'rgba(226,232,240,0.82)' },
+  verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: colors.foreground82, ...onImageTextShadow },
   // Flat surface under the photo: the two figures, no image behind them.
   footer: {
     paddingHorizontal: spacing.lg,
@@ -364,7 +389,7 @@ const styles = StyleSheet.create({
   footerGrid: { flexDirection: 'row', alignItems: 'flex-end' },
   stat: { flex: 1 },
   statRight: { flex: 1, alignItems: 'flex-end' },
-  statLabel: { fontFamily: fontFamily.sans, fontSize: 10, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
+  statLabel: { fontFamily: fontFamily.sans, fontSize: 12, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
   statValue: { fontFamily: fontFamily.sans, fontSize: fontSize.lg, fontWeight: '700', color: colors.foreground },
   statOf: { fontFamily: fontFamily.sans, fontSize: fontSize.base, fontWeight: '500', color: colors.mutedForeground },
-});
+}));

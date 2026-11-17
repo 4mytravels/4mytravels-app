@@ -6,18 +6,19 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Modal,
   TextInput,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { showStatus } from '../../src/utils/statusDialog';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { loadExpensesForList, loadExpense } from '../../src/db/expenseRepo';
+import { loadExpense } from '../../src/db/expenseRepo';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
-import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles } from '../../src/theme/theme';
 import { IconCircle, Button, StatBox } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
@@ -26,7 +27,9 @@ import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { computeTripStats } from '../../src/utils/tripStats';
-import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
+import { scrollTargetSection } from '../../src/utils/scrollTarget';
+import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -61,11 +64,10 @@ export default function ExpensesScreen() {
   // state is empty and the one-shot effect below fills it.
   const [tripFilter, setTripFilter] = useState<string[]>([]);
   const didSeedFilter = useRef(false);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const { expenses, loaded } = useExpenses();
   const [catFilter, setCatFilter] = useState<string>('All');
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(params.add === '1');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
@@ -84,7 +86,6 @@ export default function ExpensesScreen() {
   // Ids that no longer match a trip are dropped (a trip deleted while the filter
   // was active must not blank the list). Empty still means ALL trips.
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
-  const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
 
   const toggleTrip = (id: string) =>
     setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -112,27 +113,19 @@ export default function ExpensesScreen() {
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
   }, [activeTripIds, trips]);
 
-  // ONE load of every expense, filtered in JS. Deliberately NOT re-queried per
-  // filter toggle: toggling a trip is instant, and the query is metadata-only
-  // (no receipt BLOBs) so it stays cheap even with thousands of rows.
-  //
-  // Skip one focus event after an incremental delete/save to avoid a full
-  // re-fetch.
-  const skipNextFocusRef = useRef(false);
-  useFocusEffect(() => {
-    if (skipNextFocusRef.current) {
-      skipNextFocusRef.current = false;
-      return;
-    }
-    let alive = true;
-    (async () => {
-      const list = await loadExpensesForList();
-      if (alive) setExpenses(list);
-    })();
-    return () => {
-      alive = false;
-    };
-  });
+  // ONE shared list of every expense (M1 store), filtered in JS. Loaded once;
+  // save/delete update it in place, so a tab switch costs no query.
+  const scrollPendingRef = useRef(false);
+  const [loadTick, setLoadTick] = useState(0);
+  // Arm the scroll-to-today on every REAL focus (stable callback, so this only
+  // runs on tab open/return). The scroll effect below re-runs when the list
+  // arrives (autoTargetIndex changes), so a cold start still lands on Today.
+  useFocusEffect(
+    useCallback(() => {
+      scrollPendingRef.current = true;
+      setLoadTick((n) => n + 1);
+    }, []),
+  );
 
   const filteredExpenses = useMemo(
     () => filterExpensesByTrips(expenses, activeTripIds),
@@ -142,19 +135,19 @@ export default function ExpensesScreen() {
   // The list is loaded WITHOUT receipt BLOBs, and saveExpense writes
   // `receiptPhoto` verbatim — so editing MUST get the full row or merely saving
   // would delete the photo. Fetch that one row before opening the form.
-  const openExpenseForEdit = async (expense: Expense) => {
+  const openExpenseForEdit = useCallback(async (expense: Expense) => {
     try {
       const full = await loadExpense(expense.id);
       if (!full) {
-        Alert.alert('Could not open expense', 'This expense could not be loaded.');
+        showStatus('Could not open expense', 'This expense could not be loaded.');
         return;
       }
       setEditingExpense(full);
       setFormOpen(true);
     } catch (e) {
-      Alert.alert('Could not open expense', e instanceof Error ? e.message : String(e));
+      showStatus('Could not open expense', e instanceof Error ? e.message : String(e));
     }
-  };
+  }, []);
 
   // Filter by category + search — applied on top of the trip filter.
   const list = useMemo(() => {
@@ -200,19 +193,55 @@ export default function ExpensesScreen() {
 
   // Safety net: SectionList requires onScrollToIndexFailed when scrollToLocation
   // is called without getItemLayout (dynamic section heights).
-  const onScrollToIndexFailed = useCallback(() => {
-    // Silently swallow — Today section is likely already visible or near top
-  }, []);
+  // A target section that is not rendered yet (virtualization) fails: jump by
+  // the average row height so it mounts, then retry the exact location once.
+  const onScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      (listRef.current?.getScrollResponder() as any)?.scrollTo?.({
+        y: info.averageItemLength * info.index,
+        animated: false,
+      });
+      setTimeout(() => {
+        const target = autoTargetRef.current;
+        if (target < 0) return;
+        try {
+          listRef.current?.scrollToLocation({ sectionIndex: target, itemIndex: 0, viewOffset: 0, animated: false });
+        } catch {
+          /* target vanished (filter change) — nothing to do */
+        }
+      }, 50);
+    },
+    [],
+  );
 
-  // Auto-scroll to Today on open/focus. Only needed when Today is NOT the first
-  // section (sections are newest-first, so Today is usually index 0 = visible).
+  // Auto-scroll to Today (or the nearest day) on open AND on every return to
+  // the tab. The tab navigator keeps this screen mounted, so the list keeps its
+  // old offset; the scroll is armed in useFocusEffect and runs after the focus
+  // load has rendered and the trip filter has been seeded.
+  // Regression (65879c0): the effect was keyed on `todayIndex` only and bailed
+  // out on `todayIndex <= 0`, so it never ran when Today was the first section
+  // (the normal case), never re-ran on refocus, and did nothing without Today.
+  const autoTargetIndex = useMemo(
+    () => scrollTargetSection(sections.map((s) => s.day), todayStr),
+    [sections, todayStr],
+  );
+  const autoTargetRef = useRef(-1);
+  autoTargetRef.current = autoTargetIndex;
   useEffect(() => {
-    if (todayIndex <= 0) return; // Already at top or no Today section
-    const timer = setTimeout(() => {
-      listRef.current?.scrollToLocation({ sectionIndex: todayIndex, itemIndex: 0, viewOffset: 0 });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [todayIndex]);
+    if (!scrollPendingRef.current || loadTick === 0) return;
+    if (!didSeedFilter.current && trips.length > 0) return; // filter not seeded yet
+    if (autoTargetIndex < 0) return; // empty list: stay armed for the next load
+    const raf = requestAnimationFrame(() => {
+      scrollPendingRef.current = false; // consumed only when it actually ran
+      listRef.current?.scrollToLocation({
+        sectionIndex: autoTargetIndex,
+        itemIndex: 0,
+        viewOffset: 0,
+        animated: false,
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [loadTick, autoTargetIndex, tripFilter, trips.length]);
 
   // Daily average / budget: only meaningful for ONE trip (a budget is per trip),
   // using the SAME shared helper the Trips tab and trip detail use, so the
@@ -229,12 +258,10 @@ export default function ExpensesScreen() {
   const showTodayJump = hasTodaySection && !isAtToday;
 
   const handleSave = async (expense: Expense) => {
-    const { saveExpense } = await import('../../src/db/expenseRepo');
-    await saveExpense(expense);
+    // M1: insert-or-replace in the shared store (an edit used to be prepended
+    // a second time until the next reload).
+    await useExpenseStore.getState().save(expense);
     setFormOpen(false);
-    skipNextFocusRef.current = true;
-    // Incrementeel: voeg toe aan bestaande array (geen volledige herlaad)
-    setExpenses((prev) => [expense, ...prev]);
   };
 
 
@@ -246,9 +273,7 @@ export default function ExpensesScreen() {
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
-        <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
+
       </View>
 
       {/* Web/PWA notices (storage health + install nudge) under the app title. */}
@@ -258,10 +283,18 @@ export default function ExpensesScreen() {
           search + trip-filter actions. */}
       <View style={styles.titleRow}>
         <View style={styles.titleTextWrap}>
-          <Text style={styles.screenTitle}>Expenses</Text>
-          <Text style={styles.filterLabel} numberOfLines={1}>
-            {filterLabel}
-          </Text>
+          {/* G1: "All expenses" is a sub-view of Trips (no own tab any more);
+              the chevron goes back to the Trips list. replace(), not back():
+              on web back() is a no-op when the page was opened directly. */}
+          <Pressable
+            onPress={() => router.replace('/trips')}
+            accessibilityRole="button"
+            accessibilityLabel="Back to trips"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.foreground} />
+            <Text style={styles.screenTitle}>All expenses</Text>
+          </Pressable>
         </View>
         <View style={styles.titleActions}>
           {!searchOpen && (
@@ -269,18 +302,9 @@ export default function ExpensesScreen() {
               <Ionicons name="search-outline" size={28} color={colors.mutedForeground} />
             </Pressable>
           )}
-          <Pressable
-            style={styles.iconButtonLarge}
-            onPress={() => setPickerOpen(true)}
-            accessibilityLabel="Filter by trip"
-          >
-            <Ionicons name="airplane-outline" size={26} color={colors.primary} />
-            {activeTripIds.length > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
-              </View>
-            )}
-          </Pressable>
+          {/* M10: the shared TripFilter. Expenses keeps its OWN selection,
+              seeded with the current trip on open (pattern 45). */}
+          <TripFilter trips={trips} selected={activeTripIds} onToggle={toggleTrip} onClear={() => setTripFilter([])} />
         </View>
       </View>
 
@@ -294,7 +318,7 @@ export default function ExpensesScreen() {
               value={`${formatMoney(dailyAverage, homeCurrency)} / ${formatMoney(singleTrip.dailyBudget, homeCurrency)}`}
             />
           )}
-          <StatBox label="Total spend" value={formatMoney(totalHome, homeCurrency)} />
+          <StatBox label="Total spent" value={formatMoney(totalHome, homeCurrency)} />
         </View>
       )}
 
@@ -334,7 +358,7 @@ export default function ExpensesScreen() {
                   </Pressable>
                 )}
                 <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }}>
-                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: fontSize.sm }}>Cancel</Text>
+                  <Text style={{ color: colors.primaryText, fontWeight: '700', fontSize: fontSize.sm }}>Cancel</Text>
                 </Pressable>
               </View>
             )}
@@ -366,21 +390,25 @@ export default function ExpensesScreen() {
             splitShare={item.splitShare}
             background={colors.primary12}
             dense
-            onPress={() => {
-              // Full row (incl. the receipt) before the form opens — see
-              // openExpenseForEdit.
-              void openExpenseForEdit(item.expense);
-            }}
+            // Full row (incl. the receipt) before the form opens — see
+            // openExpenseForEdit. Stable callback so memo(ExpenseRow) holds (Q6).
+            onPress={openExpenseForEdit}
           />
         )}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            {trips.length === 0
-              ? 'Create a trip first.'
-              : activeTripIds.length === 0
-                ? 'No expenses yet.'
-                : 'No expenses for the selected trips.'}
-          </Text>
+          !loaded ? (
+            <ActivityIndicator color={colors.primaryText} style={{ marginTop: spacing.xl }} accessibilityLabel="Loading expenses" />
+          ) : trips.length === 0 ? (
+            // Q8: an action, not a dead sentence.
+            <View style={styles.emptyAction}>
+              <Text style={styles.empty}>Expenses belong to a trip.</Text>
+              <Button label="Create a trip" icon="add" onPress={() => router.push('/trips/new')} />
+            </View>
+          ) : (
+            <Text style={styles.empty}>
+              {activeTripIds.length === 0 ? 'No expenses yet.' : 'No expenses for the selected trips.'}
+            </Text>
+          )
         }
       />
 
@@ -389,81 +417,26 @@ export default function ExpensesScreen() {
           in app/_layout and paints on top). Flag: FADE_UNDER_NAV in FadeScrim. */}
       <NavFadeScrim />
 
-      {/* Trip filter sheet — tap to toggle, any number of trips (or none = all).
-          Same interaction as the Statistics tab. */}
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
-          <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
-            <Text style={styles.pickerTitle}>Filter by trip</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              <Pressable style={styles.pickerRow} onPress={() => setTripFilter([])}>
-                <Ionicons
-                  name="apps-outline"
-                  size={18}
-                  color={activeTripIds.length === 0 ? colors.primary : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.pickerRowText,
-                    activeTripIds.length === 0 && { color: colors.primary, fontWeight: '700' },
-                  ]}
-                >
-                  All trips
-                </Text>
-                {activeTripIds.length === 0 && (
-                  <Ionicons name="checkmark" size={18} color={colors.primary} />
-                )}
-              </Pressable>
-              {trips.map((t) => {
-                const on = activeTripIds.includes(t.id);
-                return (
-                  <Pressable key={t.id} style={styles.pickerRow} onPress={() => toggleTrip(t.id)}>
-                    <Ionicons
-                      name="airplane-outline"
-                      size={18}
-                      color={on ? colors.primary : colors.mutedForeground}
-                    />
-                    <Text style={[styles.pickerRowText, on && { color: colors.primary, fontWeight: '700' }]}>
-                      {t.name}
-                    </Text>
-                    {on && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.pickerDoneWrap}>
-              <Button label="Done" onPress={() => setPickerOpen(false)} />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
 
       {/* Add/edit-expense sheet */}
       <ModalHost visible={formOpen} onRequestClose={() => { setFormOpen(false); setEditingExpense(null); }}>
         {formTrip && (
           <ExpenseForm
             tripId={formTrip.id}
+            tripName={formTrip.name}
             defaultCurrency={formTrip.defaultCurrency}
             homeCurrency={formTrip.homeCurrency}
             initialExpense={editingExpense ?? undefined}
             onClose={() => { setFormOpen(false); setEditingExpense(null); }}
             onSave={handleSave}
             onDelete={async (expense) => {
-              const t0 = Date.now();
               try {
-                console.log(`[delete] START id=${expense.id}`);
-                const { deleteExpense } = await import('../../src/db/expenseRepo');
-                console.log(`[delete] import took ${Date.now() - t0}ms`);
-                await deleteExpense(expense.id);
-                console.log(`[delete] DB delete took ${Date.now() - t0}ms`);
+                await useExpenseStore.getState().remove(expense.id);
                 setFormOpen(false);
                 setEditingExpense(null);
-                skipNextFocusRef.current = true;
-                setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
-                console.log(`[delete] UI update took ${Date.now() - t0}ms`);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                Alert.alert('Delete failed', msg);
+                showStatus('Delete failed', msg);
               }
             }}
           />
@@ -480,24 +453,24 @@ export default function ExpensesScreen() {
       )}
 
       {/* FAB — pinned above the floating nav. Files the expense under `formTrip`
-          (the single filtered trip, else the active/most-recent one). */}
+          (the single filtered trip, else the active/most-recent one). G1: the
+          FAB always means "add expense" — hidden when there is no trip (the
+          empty state offers "Create a trip"). */}
+      {formTrip && (
       <Pressable
         style={[styles.fab, { bottom: insets.bottom + 94 }]}
-        onPress={() => {
-          if (!formTrip) {
-            Alert.alert('No trip yet', 'Create a trip before adding expenses.');
-            return;
-          }
-          setFormOpen(true);
-        }}
+        accessibilityRole="button"
+        accessibilityLabel="Add expense"
+        onPress={() => setFormOpen(true)}
       >
         <Ionicons name="add" size={32} color={colors.primaryForeground} />
       </Pressable>
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -513,7 +486,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
@@ -552,13 +525,13 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     paddingHorizontal: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
   },
   filterBadgeText: {
     color: colors.primaryForeground,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     fontFamily: fontFamily.sans,
   },
@@ -609,7 +582,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     justifyContent: 'center',
     alignItems: 'center',
     ...fabShadow,
@@ -625,7 +598,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
@@ -721,7 +694,8 @@ const styles = StyleSheet.create({
   priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
   empty: { color: colors.mutedForeground, textAlign: 'center', marginTop: spacing.xl, fontFamily: fontFamily.sans },
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  emptyAction: { alignItems: 'center', gap: spacing.lg, paddingHorizontal: spacing.xl },
+  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
   pickerSheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: radius['3xl'],
@@ -739,4 +713,4 @@ const styles = StyleSheet.create({
   },
   pickerRowActive: {},
   pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-});
+}));

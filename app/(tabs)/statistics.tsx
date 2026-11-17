@@ -6,530 +6,70 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  Modal,
+  ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, G, Circle, Rect, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
-import * as Sharing from 'expo-sharing';
-import { File, Paths } from 'expo-file-system';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
-import { expensesToCsv } from '../../src/services/csv';
-import type { Expense } from '../../src/types';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Button } from '../../src/components/ui';
+import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
+import { colors, fontFamily, radius, fontSize, spacing, donutPalette, themedStyles } from '../../src/theme/theme';
+import { Pill } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
 import { TimeChart } from '../../src/components/TimeChart';
-import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
-import { filterExpensesByTrips, pruneTripIds, tripFilterLabel } from '../../src/utils/tripFilter';
-import { categoryIcon } from '../../src/utils/categoryIcons';
-import { groupByCountry } from '../../src/utils/countryStats';
+import { formatMoney } from '../../src/utils/currency';
+import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
+import { WIDE_BREAKPOINT } from '../../src/theme/layout';
+import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { groupByTime } from '../../src/utils/timeStats';
-import { expenseDay } from '../../src/utils/periods';
+import { computeBreakdown, pickDisplayCurrency, quickFacts } from '../../src/utils/stats/breakdown';
+import { DonutChart } from '../../src/components/stats/DonutChart';
+import { CategoryLegend } from '../../src/components/stats/CategoryLegend';
+import { Bar, Empty, Section, SeeAll, SplitPaymentBar } from '../../src/components/stats/blocks';
 
-// Premium dark-mode donut palette.
-const DONUT_COLORS = [
-  '#6366F1', // periwinkle blue
-  '#EF4444', // coral red
-  '#10B981', // mint green
-  '#F59E0B', // soft orange
-  '#8B5CF6', // lavender purple
-  '#6B7280', // gray — Others
-];
-
-// Category icons come from the ONE map (src/utils/categoryIcons.ts) — the form,
-// this donut and the filter sheets must agree on a category's icon.
-
-interface DonutSlice {
-  category: string;
-  value: number;
-  color: string;
-  frac: number;
-  startAngle: number;
-  endAngle: number;
-}
-
-// SVG arc path for a donut slice (angles in degrees, clockwise from 12 o'clock).
-function donutSlicePath(
-  cx: number,
-  cy: number,
-  outerR: number,
-  innerR: number,
-  startDeg: number,
-  endDeg: number,
-): string {
-  const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180;
-  const s = toRad(startDeg);
-  const e = toRad(endDeg);
-  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
-
-  const x1 = cx + outerR * Math.cos(s);
-  const y1 = cy + outerR * Math.sin(s);
-  const x2 = cx + outerR * Math.cos(e);
-  const y2 = cy + outerR * Math.sin(e);
-  const x3 = cx + innerR * Math.cos(e);
-  const y3 = cy + innerR * Math.sin(e);
-  const x4 = cx + innerR * Math.cos(s);
-  const y4 = cy + innerR * Math.sin(s);
-
-  return [
-    `M${x1},${y1}`,
-    `A${outerR},${outerR} 0 ${largeArc} 1 ${x2},${y2}`,
-    `L${x3},${y3}`,
-    `A${innerR},${innerR} 0 ${largeArc} 0 ${x4},${y4}`,
-    'Z',
-  ].join(' ');
-}
-
-function midAngle(start: number, end: number): number {
-  return (start + end) / 2;
-}
-
-function labelPos(cx: number, cy: number, angleDeg: number, r: number) {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-function DonutChart({
-  slices,
-  total,
-  size,
-  innerRadius,
-}: {
-  slices: DonutSlice[];
-  total: number;
-  size: number;
-  innerRadius: number;
-}) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const outerR = size / 2 - 4;
-  const labelR = (outerR + innerRadius) / 2;
-
-  if (slices.length === 0) {
-    return (
-      <View style={[styles.donutEmpty, { width: size, height: size, borderRadius: size / 2 }]}>
-        <Text style={styles.donutEmptyText}>No data</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ width: size, height: size }}>
-      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <G>
-          {slices.map((s) => (
-            <Path
-              key={s.category}
-              d={donutSlicePath(cx, cy, outerR, innerRadius, s.startAngle, s.endAngle)}
-              fill={s.color}
-            />
-          ))}
-        </G>
-      </Svg>
-      {/* Labels on slices — only for slices >= 4% */}
-      {slices.map((s) => {
-        const pct = Math.round(s.frac * 100);
-        if (pct < 4) return null;
-        const mid = midAngle(s.startAngle, s.endAngle);
-        const pos = labelPos(cx, cy, mid, labelR);
-        return (
-          <View
-            key={`label-${s.category}`}
-            style={[
-              styles.sliceLabelWrap,
-              {
-                left: pos.x - 45,
-                top: pos.y - 12,
-                width: 90,
-              },
-            ]}
-            pointerEvents="none"
-          >
-            <View style={styles.sliceLabelRow}>
-              <Ionicons
-                name={categoryIcon(s.category)}
-                size={10}
-                color="#fff"
-                style={{ marginRight: 2 }}
-              />
-              <Text style={styles.sliceLabelText} numberOfLines={1}>
-                {s.category} {pct}%
-              </Text>
-            </View>
-          </View>
-        );
-      })}
-      {/* Center hole */}
-      <View
-        style={[
-          styles.donutCenter,
-          {
-            width: innerRadius * 2,
-            height: innerRadius * 2,
-            borderRadius: innerRadius,
-            transform: [{ translateX: -innerRadius }, { translateY: -innerRadius }],
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <Text style={styles.donutCenterLabel}>Total</Text>
-        <Text style={styles.donutCenterValue}>{formatMoney(total, 'EUR')}</Text>
-      </View>
-    </View>
-  );
-}
-
-// Horizontal bar for sections — large flag to the left, name + bar stacked.
-function Bar({
-  label,
-  value,
-  max,
-  displayCurrency,
-  color = colors.primary,
-  flag,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  displayCurrency: string;
-  color?: string;
-  flag?: string;
-}) {
-  const pct = max > 0 ? Math.min(1, value / max) : 0;
-  return (
-    <View style={styles.barRow}>
-      {flag && <Text style={styles.barFlagLarge}>{flag}</Text>}
-      <View style={styles.barContent}>
-        <View style={styles.barLine1}>
-          <Text style={styles.barLabel} numberOfLines={1}>{label}</Text>
-          <Text style={styles.barValue} numberOfLines={1}>{formatMoney(value, displayCurrency)}</Text>
-        </View>
-        <View style={styles.barTrack}>
-          <View style={[styles.barFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// Smooth line chart with gradient fill for "Over time".
-function LineChart({
-  data,
-  displayCurrency,
-  height = 160,
-  width: chartWidth,
-}: {
-  data: Array<{ month: string; value: number; ym: string }>;
-  displayCurrency: string;
-  height?: number;
-  width: number;
-}) {
-  if (data.length === 0) {
-    return (
-      <View style={[styles.lineChartEmpty, { height, width: chartWidth }]}>
-        <Text style={styles.donutEmptyText}>No data</Text>
-      </View>
-    );
-  }
-
-  const maxVal = Math.max(...data.map(d => d.value));
-  const padding = { top: 20, bottom: 30, left: 40, right: 20 };
-  const innerW = chartWidth - padding.left - padding.right;
-  const innerH = height - padding.top - padding.bottom;
-
-  const points = data.map((d, i) => {
-    const x = padding.left + (innerW / Math.max(1, data.length - 1)) * i;
-    const y = padding.top + innerH - (maxVal > 0 ? (d.value / maxVal) * innerH : 0);
-    return { ...d, x, y };
-  });
-
-  // Smooth path via cubic bezier
-  const linePath = points.reduce((acc, p, i) => {
-    if (i === 0) return `M${p.x},${p.y}`;
-    const prev = points[i - 1];
-    const cpx1 = prev.x + (p.x - prev.x) / 3;
-    const cpx2 = prev.x + (2 * (p.x - prev.x)) / 3;
-    return `${acc} C${cpx1},${prev.y} ${cpx2},${p.y} ${p.x},${p.y}`;
-  }, '');
-
-  // Fill area path
-  const fillPath = `${linePath} L${points[points.length - 1].x},${padding.top + innerH} L${points[0].x},${padding.top + innerH} Z`;
-
-  // Gradient fill ID
-  const gradientId = 'lineGradient';
-
-  // Highlight point (max value)
-  const maxPoint = points.reduce((a, b) => (a.value >= b.value ? a : b));
-
-  return (
-    <View style={{ width: chartWidth, height }}>
-      <Svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth} ${height}`}>
-        <Defs>
-          <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={colors.primary} stopOpacity="0.30" />
-            <Stop offset="100%" stopColor={colors.primary} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-        <Path d={fillPath} fill={`url(#${gradientId})`} />
-        <Path d={linePath} fill="none" stroke={colors.primary} strokeWidth="2.5" strokeLinecap="round" />
-        {points.map((p) => (
-          <Circle
-            key={p.ym}
-            cx={p.x}
-            cy={p.y}
-            r="4"
-            fill={colors.background}
-            stroke={p.ym === maxPoint.ym ? colors.primary : colors.mutedForeground}
-            strokeWidth="2"
-          />
-        ))}
-        <G>
-          {maxPoint.y > 30 ? (
-            <Rect x={maxPoint.x - 28} y={maxPoint.y - 24} width="56" height="18" rx="9" fill={colors.primary} />
-          ) : (
-            <Rect x={maxPoint.x - 28} y={maxPoint.y + 8} width="56" height="18" rx="9" fill={colors.primary} />
-          )}
-          <SvgText
-            x={maxPoint.x}
-            y={maxPoint.y > 30 ? maxPoint.y - 11 : maxPoint.y + 21}
-            textAnchor="middle"
-            fill={colors.primaryForeground}
-            fontSize="10"
-            fontWeight="700"
-            fontFamily={fontFamily.sans}
-          >
-            {formatMoney(maxPoint.value, displayCurrency)}
-          </SvgText>
-        </G>
-        {points.map((p) => (
-          <SvgText
-            key={`x-${p.ym}`}
-            x={p.x}
-            y={height - 6}
-            textAnchor="middle"
-            fill={colors.mutedForeground}
-            fontSize="9"
-            fontFamily={fontFamily.sans}
-          >
-            {monthShort(p.month)}
-          </SvgText>
-        ))}
-      </Svg>
-    </View>
-  );
-}
-
-function monthShort(ym: string): string {
-  const [y, m] = ym.split('-').map((n) => parseInt(n, 10));
-  if (!m || m < 1 || m > 12) return ym;
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${names[m - 1]} ${y}`;
-}
-
-// Split payment bar: Card left, Cash right, with percentages.
-function SplitPaymentBar({
-  cardValue,
-  cashValue,
-  displayCurrency,
-}: {
-  cardValue: number;
-  cashValue: number;
-  displayCurrency: string;
-}) {
-  const total = cardValue + cashValue;
-  const cardPct = total > 0 ? Math.round((cardValue / total) * 100) : 0;
-  const cashPct = total > 0 ? Math.round((cashValue / total) * 100) : 0;
-  const cardWidth = total > 0 ? cardValue / total : 0;
-  const cashWidth = total > 0 ? cashValue / total : 0;
-
-  return (
-    <View style={styles.splitBarContainer}>
-      <View style={styles.splitBarLabels}>
-        <Text style={styles.splitBarLabelLeft}>
-          <Ionicons name="card-outline" size={14} color={colors.primary} /> Card
-        </Text>
-        <Text style={styles.splitBarLabelRight}>
-          Cash <Ionicons name="cash-outline" size={14} color={colors.success} />
-        </Text>
-      </View>
-      <View style={styles.splitBarTrack}>
-        <View
-          style={[
-            styles.splitBarFillLeft,
-            {
-              width: `${cardWidth * 100}%`,
-              backgroundColor: colors.primary,
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.splitBarFillRight,
-            {
-              width: `${cashWidth * 100}%`,
-              backgroundColor: colors.success,
-            },
-          ]}
-        />
-      </View>
-      <View style={styles.splitBarValues}>
-        <Text style={styles.splitBarValueLeft}>
-          {cardPct}% · {formatMoney(cardValue, displayCurrency)}
-        </Text>
-        <Text style={styles.splitBarValueRight}>
-          {formatMoney(cashValue, displayCurrency)} · {cashPct}%
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Empty({ text = 'No data.' }: { text?: string }) {
-  return <Text style={styles.emptyText}>{text}</Text>;
-}
-
+// G3: the Stats overview is now layout only. Every number comes from
+// src/utils/stats/breakdown.ts (tested in scripts/test-stats-utils.mjs), the
+// charts/blocks from src/components/stats/*. Donut palette unchanged.
 export default function StatisticsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // M11: AppFrame widens this screen to WIDE_MAX_WIDTH from WIDE_BREAKPOINT.
+  const twoCol = useWindowDimensions().width >= WIDE_BREAKPOINT;
   const trips = useTripStore((s) => s.trips);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  // M1 shared store; Q8: spinner until the first load, then ONE empty card.
+  const { expenses, loaded } = useExpenses();
   const [refreshing, setRefreshing] = useState(false);
-  // Trip filter: empty = every trip. Otherwise only the selected trips count
-  // towards the charts (1, several, or all — user request).
-  const [tripFilter, setTripFilter] = useState<string[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // Trip filter: empty = every trip. M10: shared with Countries / Over time.
+  const tripFilter = useTripFilterStore((s) => s.selected);
 
-  // Most-used trip home currency for display.
-  const displayCurrency = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const t of trips) counts[t.homeCurrency] = (counts[t.homeCurrency] ?? 0) + 1;
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'EUR';
-  }, [trips]);
-
-  // Drop trips that no longer exist (deleted while a filter was active). The
-  // filtering itself lives in src/utils/tripFilter.ts — unit-tested by
-  // scripts/test-trip-filter.mjs.
+  const displayCurrency = useMemo(() => pickDisplayCurrency(trips), [trips]);
+  // Drop trips that no longer exist (deleted while a filter was active).
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
   const filteredExpenses = useMemo(
     () => filterExpensesByTrips(expenses, activeTripIds),
     [expenses, activeTripIds],
   );
-  const filterLabel = useMemo(() => tripFilterLabel(activeTripIds, trips), [activeTripIds, trips]);
-  // Het Over time-blok hieronder toont DEZELFDE grafiek als de Over time-pagina,
-  // dus via dezelfde aggregatie (groupByTime) — maar als PREVIEW met alleen de
-  // laatste 12 maanden (12 kolommen van ~23px i.p.v. 47 van ~6px). De volledige
-  // reeks staat achter "View all".
+  // Over time preview: the SAME chart as /stats/over-time, last 12 months.
   const chartRows = useMemo(
     () => groupByTime(filteredExpenses, { period: 'month' }).slice(-12),
     [filteredExpenses],
   );
+  const facts = useMemo(() => quickFacts(filteredExpenses), [filteredExpenses]);
+  // Q6: all breakdowns in one memo.
+  const { catEntries, slices, total, maxCountry, topCountries, cardValue, cashValue } = useMemo(
+    () => computeBreakdown(filteredExpenses, expenses, activeTripIds, donutPalette),
+    [filteredExpenses, expenses, activeTripIds],
+  );
 
-  const toggleTrip = (id: string) =>
-    setTripFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-
-  const loadData = useMemo(() => {
-    return async () => {
-      // Metadata only — the charts never draw a receipt photo.
-      const list = await loadExpensesForList();
-      setExpenses(list);
-    };
-  }, []);
-
-  useFocusEffect(() => {
-    loadData();
-  });
-
+  // M1: the shared store loads once; pull-to-refresh re-reads storage.
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await useExpenseStore.getState().reload();
     setRefreshing(false);
-  };
-
-  // --- Category breakdown (top 5 + Others) ---
-  const byCategory: Record<string, number> = {};
-  for (const e of filteredExpenses) {
-    const h = toHomeCurrency(e);
-    byCategory[e.category] = (byCategory[e.category] ?? 0) + h;
-  }
-  const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
-
-  // Top 5 + Others
-  const MAX_SLICES = 5;
-  const topEntries = catEntries.slice(0, MAX_SLICES);
-  const othersValue = catEntries.slice(MAX_SLICES).reduce((s, [, v]) => s + v, 0);
-  const chartEntries = [...topEntries];
-  if (othersValue > 0) {
-    chartEntries.push(['Others', othersValue]);
-  }
-
-  const total = catEntries.reduce((s, [, v]) => s + v, 0);
-
-  // Build donut slices
-  const slices: DonutSlice[] = [];
-  let acc = 0;
-  for (let i = 0; i < chartEntries.length; i++) {
-    const [cat, val] = chartEntries[i];
-    const frac = total > 0 ? val / total : 0;
-    const start = acc * 360;
-    acc += frac;
-    const end = acc * 360;
-    slices.push({
-      category: cat,
-      value: val,
-      color: DONUT_COLORS[i % DONUT_COLORS.length],
-      frac,
-      startAngle: start,
-      endAngle: end,
-    });
-  }
-
-  // --- Country breakdown (top 5 preview) ---
-  // Trip filtering already happened above; pass no filter here.
-  const countryEntries = groupByCountry(expenses, { tripIds: activeTripIds });
-  const maxCountry = countryEntries.length ? countryEntries[0].amount : 1;
-  const topCountries = countryEntries.slice(0, 5);
-
-  // --- Payment breakdown ---
-  const byPayment: Record<string, number> = {};
-  for (const e of filteredExpenses) {
-    const pm = e.paymentMethod === 'card' ? 'Card' : 'Cash';
-    byPayment[pm] = (byPayment[pm] ?? 0) + toHomeCurrency(e);
-  }
-  const cardValue = byPayment.Card ?? 0;
-  const cashValue = byPayment.Cash ?? 0;
-
-  // Export CSV.
-  const tripNameById: Record<string, string> = {};
-  for (const t of trips) tripNameById[t.id] = t.name;
-
-  const exportCsv = async () => {
-    if (filteredExpenses.length === 0) return;
-    try {
-      // Exports what is on screen: the active trip filter applies here too.
-      const csv = expensesToCsv(filteredExpenses, tripNameById);
-      const file = new File(Paths.cache, '4mt-statistics.csv');
-      await file.write(csv);
-      await Sharing.shareAsync(file.uri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Export expenses',
-      });
-    } catch {
-      // ignore share cancellation
-    }
   };
 
   return (
@@ -539,30 +79,18 @@ export default function StatisticsScreen() {
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
-        <Pressable style={styles.settingsIcon} onPress={() => router.push('/settings')}>
-          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
       </View>
       <View style={styles.titleWrap}>
         <View style={styles.titleTextWrap}>
-          <Text style={styles.screenTitle}>Statistics</Text>
-          <Text style={styles.filterLabel} numberOfLines={1}>
-            {filterLabel}
-          </Text>
+          <Text style={styles.screenTitle}>Stats</Text>
         </View>
-        {/* Same trip selector as the Expenses tab, but multi-select. */}
-        <Pressable
-          style={styles.iconButtonLarge}
-          onPress={() => setPickerOpen(true)}
-          accessibilityLabel="Filter by trip"
-        >
-          <Ionicons name="airplane-outline" size={26} color={colors.primary} />
-          {activeTripIds.length > 0 && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeTripIds.length}</Text>
-            </View>
-          )}
-        </Pressable>
+        {/* M10: the shared TripFilter (text label + filter icon). */}
+        <TripFilter
+          trips={trips}
+          selected={activeTripIds}
+          onToggle={useTripFilterStore.getState().toggle}
+          onClear={useTripFilterStore.getState().clear}
+        />
       </View>
 
       {/* Web/PWA notices (storage health + install nudge) under the screen title. */}
@@ -570,169 +98,71 @@ export default function StatisticsScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 106 }]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Donut chart */}
-        <View style={styles.donutSection}>
-          <DonutChart
-            slices={slices}
-            total={total}
-            size={280}
-            innerRadius={80}
-          />
-        </View>
-
-        {/* Category legend */}
-        <View style={styles.legendSection}>
-          {slices.map((s, i) => {
-            const pct = Math.round(s.frac * 100);
-            const isOthers = s.category === 'Others' && catEntries.length > MAX_SLICES;
-            return (
-              <View key={s.category}>
-                <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: s.color }]} />
-                  <Ionicons
-                    name={categoryIcon(s.category)}
-                    size={14}
-                    color={colors.mutedForeground}
-                    style={{ marginLeft: 8 }}
-                  />
-                  <Text style={styles.legendLabel} numberOfLines={1}>
-                    {s.category}
-                  </Text>
-                  <Text style={styles.legendPct}>{pct}%</Text>
-                  <Text style={styles.legendValue}>
-                    {formatMoney(s.value, displayCurrency)}
-                  </Text>
-                </View>
-                {/* Indented sub-rows for Others */}
-                {isOthers &&
-                  catEntries.slice(MAX_SLICES).map(([cat, val]) => {
-                    const subPct = total > 0 ? Math.round((val / total) * 100) : 0;
-                    return (
-                      <View key={cat} style={styles.legendSubRow}>
-                        <Ionicons
-                          name={categoryIcon(cat)}
-                          size={11}
-                          color={colors.mutedForeground}
-                        />
-                        <Text style={styles.legendSubLabel} numberOfLines={1}>
-                          {cat}
-                        </Text>
-                        <Text style={styles.legendSubPct}>{subPct}%</Text>
-                        <Text style={styles.legendSubValue}>
-                          {formatMoney(val, displayCurrency)}
-                        </Text>
-                      </View>
-                    );
-                  })}
+        {!loaded ? (
+          <ActivityIndicator color={colors.primaryText} style={{ marginTop: spacing['3xl'] }} accessibilityLabel="Loading stats" />
+        ) : filteredExpenses.length === 0 ? (
+          /* Q8: one empty-state card. The sub-page links stay reachable (pattern 54). */
+          <View style={styles.emptyCard}>
+            <Ionicons name="pie-chart-outline" size={40} color={colors.mutedForeground} />
+            <Text style={styles.emptyCardTitle}>No expenses to analyse yet</Text>
+            <Text style={styles.emptyCardBody}>
+              {activeTripIds.length > 0
+                ? 'The selected trips have no expenses. Change the trip filter or log an expense.'
+                : 'Log an expense on a trip and your spending breakdown appears here.'}
+            </Text>
+            <SeeAll label="By country" onPress={() => router.push('/stats/countries')} />
+            <SeeAll label="Over time" onPress={() => router.push('/stats/over-time')} />
+          </View>
+        ) : (<>
+          {/* G1 (N8): the quick facts that used to sit on Home; each pill opens
+              the page that explains it. */}
+          <View style={styles.quickFacts}>
+            <Pressable onPress={() => router.push('/stats/countries')} accessibilityRole="button">
+              <Pill icon="location-outline" text={`${facts.countries} ${facts.countries === 1 ? 'country' : 'countries'}`} />
+            </Pressable>
+            <Pressable onPress={() => router.push('/stats/over-time')} accessibilityRole="button">
+              <Pill icon="calendar-outline" text={`${facts.days} ${facts.days === 1 ? 'day' : 'days'}`} />
+            </Pressable>
+            <Pill icon="wallet-outline" text={`${formatMoney(total, displayCurrency)} spent`} />
+          </View>
+          {/* M11: two columns from WIDE_BREAKPOINT — charts left, breakdowns right. */}
+          <View style={twoCol ? styles.cols : undefined}>
+            <View style={twoCol ? styles.col : undefined}>
+              <View style={styles.donutSection}>
+                <DonutChart slices={slices} total={total} size={280} innerRadius={80} />
               </View>
-            );
-          })}
-        </View>
-
-        {/* By country */}
-        <Section title="By country">
-          {topCountries.length === 0 ? (
-            <Empty text="No countries tagged yet." />
-          ) : (
-            topCountries.map((c) => (
-              <Bar key={c.code} label={c.name} value={c.amount} max={maxCountry} displayCurrency={displayCurrency} color={colors.accent} flag={c.flag} />
-            ))
-          )}
-          <Pressable style={styles.seeAll} onPress={() => router.push('/stats/countries')}>
-            <Text style={styles.seeAllText}>View all</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-          </Pressable>
-        </Section>
-
-        {/* Over time — DEZELFDE grafiek als op de Over time-pagina
-            (src/components/TimeChart.tsx), niet de oude mini-balkjesstrook van
-            12 maanden: die had geen as, geen jaargrenzen en een andere eenheid.
-            Wel dezelfde horizon als die strook: de laatste 12 maanden. */}
-        <Section title="Over time">
-          {chartRows.length === 0 ? (
-            <Empty />
-          ) : (
-            <TimeChart rows={chartRows} period="month" plotH={140} />
-          )}
-          {/* Altijd een link naar de pagina, ook zonder data — anders is
-              /stats/over-time onbereikbaar op een lege dataset (By country
-              toont zijn link altijd). */}
-          <Pressable style={styles.seeAll} onPress={() => router.push('/stats/over-time')}>
-            <Text style={styles.seeAllText}>View all</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-          </Pressable>
-        </Section>
-
-        {/* By payment — LAST of the preview blocks (below country and over
-            time), directly above the export button. */}
-        <Section title="By payment">
-          <SplitPaymentBar
-            cardValue={cardValue}
-            cashValue={cashValue}
-            displayCurrency={displayCurrency}
-          />
-        </Section>
-
-        {/* Export button */}
-        <View style={styles.exportWrap}>
-          <Button label="Export CSV" icon="download-outline" onPress={exportCsv} />
-        </View>
-      </ScrollView>
-
-      {/* Trip filter sheet — tap to toggle, any number of trips (or none = all). */}
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)}>
-          <View style={[styles.pickerSheet, { marginBottom: insets.bottom }]}>
-            <Text style={styles.pickerTitle}>Filter by trip</Text>
-            <ScrollView style={{ maxHeight: 400 }}>
-              <Pressable
-                style={styles.pickerRow}
-                onPress={() => setTripFilter([])}
-              >
-                <Ionicons
-                  name="apps-outline"
-                  size={18}
-                  color={activeTripIds.length === 0 ? colors.primary : colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.pickerRowText,
-                    activeTripIds.length === 0 && { color: colors.primary, fontWeight: '700' },
-                  ]}
-                >
-                  All trips
-                </Text>
-                {activeTripIds.length === 0 && (
-                  <Ionicons name="checkmark" size={18} color={colors.primary} />
+              <CategoryLegend slices={slices} catEntries={catEntries} total={total} displayCurrency={displayCurrency} />
+            </View>
+            <View style={twoCol ? styles.col : undefined}>
+              <Section title="By country">
+                {topCountries.length === 0 ? (
+                  <Empty text="No countries tagged yet." />
+                ) : (
+                  topCountries.map((c) => (
+                    <Bar key={c.code} label={c.name} value={c.amount} max={maxCountry} displayCurrency={displayCurrency} color={colors.accent} flag={c.flag} />
+                  ))
                 )}
-              </Pressable>
-              {trips.map((t) => {
-                const on = activeTripIds.includes(t.id);
-                return (
-                  <Pressable key={t.id} style={styles.pickerRow} onPress={() => toggleTrip(t.id)}>
-                    <Ionicons
-                      name="airplane-outline"
-                      size={18}
-                      color={on ? colors.primary : colors.mutedForeground}
-                    />
-                    <Text style={[styles.pickerRowText, on && { color: colors.primary, fontWeight: '700' }]}>
-                      {t.name}
-                    </Text>
-                    {on && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.pickerDoneWrap}>
-              <Button label="Done" onPress={() => setPickerOpen(false)} />
+                <SeeAll onPress={() => router.push('/stats/countries')} />
+              </Section>
+
+              {/* Over time — the SAME chart as the Over time page (TimeChart),
+                  last 12 months. The link is unconditional (pattern 54). */}
+              <Section title="Over time">
+                {chartRows.length === 0 ? <Empty /> : <TimeChart rows={chartRows} period="month" plotH={140} />}
+                <SeeAll onPress={() => router.push('/stats/over-time')} />
+              </Section>
+
+              {/* By payment — last of the preview blocks. Export lives in
+                  Settings and the trip ⋯ menu only (G1). */}
+              <Section title="By payment">
+                <SplitPaymentBar cardValue={cardValue} cashValue={cashValue} displayCurrency={displayCurrency} />
+              </Section>
             </View>
           </View>
-        </Pressable>
-      </Modal>
+        </>)}
+      </ScrollView>
 
       {/* Content fades out under the floating nav. */}
       <NavFadeScrim />
@@ -740,7 +170,9 @@ export default function StatisticsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
+  cols: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
+  col: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -751,19 +183,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  settingsIcon: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceMedium,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  appTitle: {
-    color: colors.foreground,
-    fontSize: fontSize.xl,
-    fontWeight: '700',
-    fontFamily: fontFamily.heading,
-  },
+  appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   titleWrap: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -772,332 +192,35 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
   },
-  screenTitle: {
-    color: colors.foreground,
-    fontSize: fontSize['4xl'],
-    fontWeight: '800',
-    fontFamily: fontFamily.heading,
-  },
+  screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   titleTextWrap: { flex: 1 },
-  // Which trips the charts below are showing ("All trips" / one name / "3 trips").
-  filterLabel: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-    marginTop: 2,
-  },
-  // Same 44px round button as the Expenses trip selector.
-  iconButtonLarge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surfaceMedium,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  filterBadge: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  filterBadgeText: {
-    color: colors.primaryForeground,
-    fontSize: 10,
-    fontWeight: '800',
-    fontFamily: fontFamily.sans,
-  },
-  // Trip filter sheet
-  pickerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  pickerSheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius['3xl'],
-    borderTopRightRadius: radius['3xl'],
-    padding: spacing.xl,
-  },
-  pickerTitle: {
-    color: colors.foreground,
-    fontSize: fontSize.xl,
-    fontWeight: '700',
-    fontFamily: fontFamily.heading,
-    marginBottom: spacing.lg,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-  pickerDoneWrap: { marginTop: spacing.lg },
-  titleSettingsIcon: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-  },
-  scroll: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: 40,
-  },
-  // Donut
-  donutSection: {
-    alignItems: 'center',
-    marginVertical: spacing.lg,
-  },
-  donutEmpty: {
-    backgroundColor: colors.surfaceStrong,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  donutEmptyText: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.sans,
-  },
-  sliceLabelWrap: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sliceLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  sliceLabelText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '600',
-    fontFamily: fontFamily.sans,
-  },
-  donutCenter: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  donutCenterLabel: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-    marginBottom: 2,
-  },
-  donutCenterValue: {
-    color: colors.foreground,
-    fontSize: fontSize.xl,
-    fontWeight: '800',
-    fontFamily: fontFamily.heading,
-  },
-  // Legend
-  legendSection: {
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    flex: 1,
-    color: colors.foreground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-    marginLeft: spacing.sm,
-  },
-  legendPct: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-    marginRight: spacing.md,
-    minWidth: 32,
-    textAlign: 'right',
-  },
-  legendValue: {
-    color: colors.foreground,
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    fontFamily: fontFamily.sans,
-    minWidth: 72,
-    textAlign: 'right',
-  },
-  // Sections
-  section: {
+  scroll: { paddingHorizontal: spacing.xl, paddingBottom: 40 },
+  donutSection: { alignItems: 'center', marginVertical: spacing.lg },
+  // G1: quick-fact pills (moved from Home); wraps on narrow screens.
+  quickFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.xl },
+  emptyCard: {
     marginTop: spacing.xl,
-    padding: spacing.md,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
     backgroundColor: colors.card,
     borderRadius: radius.xl,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  sectionTitle: {
+  emptyCardTitle: {
     color: colors.foreground,
     fontSize: fontSize.lg,
     fontWeight: '700',
     fontFamily: fontFamily.heading,
-    marginBottom: spacing.md,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
-  emptyText: {
+  emptyCardBody: {
     color: colors.mutedForeground,
-    fontSize: fontSize.sm,
+    fontSize: fontSize.md,
     fontFamily: fontFamily.sans,
-    marginTop: spacing.sm,
-  },
-  // Bar
-  barRow: { 
-    marginBottom: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  barFlagLarge: { 
-    fontSize: 30,
-    lineHeight: 32,
-    marginTop: 2,
-  },
-  barContent: {
-    flex: 1,
-  },
-  barLine1: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  barLabel: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  barValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  barTrack: {
-    height: 10,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  barFill: { height: '100%', borderRadius: 5 },
-  lineChartEmpty: {
-    backgroundColor: colors.surfaceStrong,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: radius.lg,
-  },
-  // Split payment bar
-  splitBarContainer: {
-    marginTop: spacing.sm,
-  },
-  splitBarLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    textAlign: 'center',
     marginBottom: spacing.sm,
   },
-  splitBarLabelLeft: {
-    color: colors.foreground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-    fontWeight: '600',
-  },
-  splitBarLabelRight: {
-    color: colors.foreground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-    fontWeight: '600',
-  },
-  splitBarTrack: {
-    flexDirection: 'row',
-    height: 28,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-    backgroundColor: colors.surfaceStrong,
-  },
-  splitBarFillLeft: {
-    height: '100%',
-    borderTopLeftRadius: radius.full,
-    borderBottomLeftRadius: radius.full,
-  },
-  splitBarFillRight: {
-    height: '100%',
-    borderTopRightRadius: radius.full,
-    borderBottomRightRadius: radius.full,
-  },
-  splitBarValues: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-  },
-  splitBarValueLeft: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-  },
-  splitBarValueRight: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.sans,
-  },
-  // Export
-  exportWrap: {
-    marginTop: spacing.xl,
-  },
-  // "See all" link under a preview section.
-  seeAll: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
-    marginTop: spacing.md,
-  },
-  seeAllText: {
-    color: colors.primary,
-    fontSize: fontSize.sm,
-    fontWeight: '700',
-    fontFamily: fontFamily.sans,
-  },
-  chartWrap: { alignItems: 'center' },
-  legendSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 3,
-    paddingLeft: 32,
-    gap: 6,
-  },
-  legendSubLabel: {
-    flex: 1,
-    color: colors.mutedForeground,
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.sans,
-    marginLeft: spacing.xs,
-  },
-  legendSubPct: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.sans,
-    minWidth: 28,
-    textAlign: 'right',
-  },
-  legendSubValue: {
-    color: colors.mutedForeground,
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.sans,
-    minWidth: 60,
-    textAlign: 'right',
-  },
-});
+}));

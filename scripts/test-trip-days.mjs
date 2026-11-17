@@ -44,6 +44,7 @@ try {
     'src/utils/currency.ts',
     'src/utils/days.ts',
     'src/utils/tripStats.ts',
+    'src/utils/today.ts',
   ], { cwd: root, stdio: 'pipe' });
 } catch (e) {
   console.error('Kon utils niet compileren:', e.stderr?.toString() ?? e.message);
@@ -255,6 +256,38 @@ assert(sameMinute[0].id === 'b-second' && sameMinute[1].id === 'a-first',
 const splitLate = groupByDaySplitAware([mkExp('late2', late)]);
 assert(splitLate.length === 1 && splitLate[0].day === '2026-10-17',
   'groupByDaySplitAware: 23:30 in dezelfde dag (got ' + (splitLate[0] && splitLate[0].day) + ')');
+
+// --- G2: Home "Today" block (src/utils/today.ts) ---------------------------
+{
+  const { summarizeToday, isTripActiveOn, pickActiveTrip } = require(join(cache, 'utils', 'today.js'));
+  const day = '2026-10-17';
+  const at = (d, hh) => localDateTimeISO(d, `${hh}:00`, 0, 0);
+  const fx = [
+    // 20 EUR today on t1
+    { id: 'a', tripId: 't1', amount: 20, currency: 'EUR', rateToHome: 1, rateDate: day, category: 'Food', createdAt: at(day, '09'), paymentMethod: 'card' },
+    // 1000 THB @ 0.025 = 25 EUR today on t1
+    { id: 'b', tripId: 't1', amount: 1000, currency: 'THB', rateToHome: 0.025, rateDate: day, category: 'Food', createdAt: at(day, '20'), paymentMethod: 'cash' },
+    // 4-night hotel 100 EUR split 15–18 Oct → 25 EUR share today
+    { id: 'c', tripId: 't1', amount: 100, currency: 'EUR', rateToHome: 1, rateDate: '2026-10-15', category: 'Lodging', createdAt: at('2026-10-15', '12'), paymentMethod: 'card', multiDaySplit: { splitStart: '2026-10-15', splitEnd: '2026-10-18' } },
+    // yesterday on t1 — must not count
+    { id: 'd', tripId: 't1', amount: 99, currency: 'EUR', rateToHome: 1, rateDate: '2026-10-16', category: 'Food', createdAt: at('2026-10-16', '12'), paymentMethod: 'card' },
+    // today on ANOTHER trip — must not count
+    { id: 'e', tripId: 't2', amount: 50, currency: 'EUR', rateToHome: 1, rateDate: day, category: 'Food', createdAt: at(day, '12'), paymentMethod: 'card' },
+  ];
+  const s = summarizeToday(fx, { id: 't1', dailyBudget: 80 }, day);
+  assert(Math.abs(s.spent - 70) < 1e-9, `today: 20 + 25 (THB) + 25 (split share) = 70 (got ${s.spent})`);
+  assert(s.budget === 80 && Math.abs(s.ratio - 0.875) < 1e-9 && s.over === false && s.count === 3, 'today: budget 80, ratio 0.875, not over, 3 entries');
+  const over = summarizeToday(fx, { id: 't1', dailyBudget: 50 }, day);
+  assert(over.over === true && over.ratio === 1, 'today: over budget → ratio clamped to 1');
+  const nob = summarizeToday(fx, { id: 't1', dailyBudget: 0 }, day);
+  assert(nob.budget === null && nob.ratio === null && nob.over === false, 'today: no budget → no bar, never "over"');
+  assert(summarizeToday([], { id: 't1', dailyBudget: 80 }, day).spent === 0, 'today: empty → 0');
+  assert(isTripActiveOn({ startDate: day, endDate: null }, day), 'a trip starting TODAY is active all day (not only after noon)');
+  assert(isTripActiveOn({ startDate: '2026-10-01', endDate: day }, day), 'a trip ending today is still active');
+  assert(!isTripActiveOn({ startDate: '2026-10-18' }, day) && !isTripActiveOn({ startDate: '2026-10-01', endDate: '2026-10-16' }, day), 'future / ended trips are not active');
+  const pick = pickActiveTrip([{ id: 'old', startDate: '2026-10-01' }, { id: 'new', startDate: '2026-10-10' }, { id: 'fut', startDate: '2026-11-01' }], day);
+  assert(pick && pick.id === 'new', 'pickActiveTrip: most recently started running trip');
+}
 
 rmSync(cache, { recursive: true, force: true });
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} FAILURE(S)`);

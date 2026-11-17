@@ -1,19 +1,20 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTripStore } from '../../src/store/tripStore';
-import { loadExpensesForList } from '../../src/db/expenseRepo';
+import { useExpenses } from '../../src/store/expenseStore';
 import { groupByTime, timeTotal, periodLabelLong, type TimePeriod } from '../../src/utils/timeStats';
 import { pruneTripIds } from '../../src/utils/tripFilter';
+import { TripFilter } from '../../src/components/TripFilter';
+import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
 import { countryName } from '../../src/data/countries';
-import { colors, fontFamily, fontSize, radius, spacing, navShadow } from '../../src/theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, navShadow, themedStyles } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { TimeChart } from '../../src/components/TimeChart';
-import type { Expense } from '../../src/types';
 
 const PERIOD_LABEL: Record<TimePeriod, string> = { month: 'Month', quarter: 'Quarter', year: 'Year' };
 const PERIODS: TimePeriod[] = ['month', 'quarter', 'year'];
@@ -23,21 +24,15 @@ export default function OverTimeScreen() {
   const insets = useSafeAreaInsets();
   const trips = useTripStore((s) => s.trips);
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const { expenses } = useExpenses(); // M1 shared store
   const [period, setPeriod] = useState<TimePeriod>('month');
-  const [tripFilter, setTripFilter] = useState<string[]>([]);
+  // M10: shared with Statistics + the other Stats page.
+  const tripFilter = useTripFilterStore((st) => st.selected);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
 
-  const [tripPickerOpen, setTripPickerOpen] = useState(false);
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
-
-  useFocusEffect(useCallback(() => {
-    let alive = true;
-    loadExpensesForList().then((list) => { if (alive) setExpenses(list); });
-    return () => { alive = false; };
-  }, []));
 
   const activeTripIds = useMemo(() => pruneTripIds(tripFilter, trips), [tripFilter, trips]);
   const rows = useMemo(
@@ -74,8 +69,6 @@ export default function OverTimeScreen() {
     [expenses],
   );
 
-  const toggleTrip = (id: string) =>
-    setTripFilter((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   // Multi-select: several categories = OR. An empty selection means ALL.
   const toggleCategory = (cat: string) =>
@@ -87,7 +80,6 @@ export default function OverTimeScreen() {
         ? categoryFilter[0]
         : `${categoryFilter.length} categories`;
 
-  const tripLabelTx = activeTripIds.length === 0 ? 'All trips' : `${activeTripIds.length} trips`;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -126,18 +118,17 @@ export default function OverTimeScreen() {
         contentContainerStyle={styles.chipRow}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable style={styles.filterButton} onPress={() => setTripPickerOpen(true)}>
-          <Ionicons name="airplane-outline" size={15} color={colors.primary} />
-          <Text style={[styles.filterButtonText, activeTripIds.length > 0 && styles.filterButtonTextOn]}>
-            {tripLabelTx}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
-        </Pressable>
+        <TripFilter
+          trips={trips}
+          selected={activeTripIds}
+          onToggle={useTripFilterStore.getState().toggle}
+          onClear={useTripFilterStore.getState().clear}
+        />
         <Pressable
           style={[styles.filterButton, countryFilter != null && styles.filterButtonOn]}
           onPress={() => setCountryPickerOpen(true)}
         >
-          <Ionicons name="earth-outline" size={15} color={colors.primary} />
+          <Ionicons name="earth-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, countryFilter != null && styles.filterButtonTextOn]}>
             {countryFilter ? countryName(countryFilter) : 'All countries'}
           </Text>
@@ -147,7 +138,7 @@ export default function OverTimeScreen() {
           style={[styles.filterButton, categoryFilter.length > 0 && styles.filterButtonOn]}
           onPress={() => setCategoryPickerOpen(true)}
         >
-          <Ionicons name="pricetag-outline" size={15} color={colors.primary} />
+          <Ionicons name="pricetag-outline" size={15} color={colors.primaryText} />
           <Text style={[styles.filterButtonText, categoryFilter.length > 0 && styles.filterButtonTextOn]}>
             {categoryChipLabel}
           </Text>
@@ -203,23 +194,6 @@ export default function OverTimeScreen() {
 
       {/* Filter sheets WITHOUT a search bar — same build-up as the Statistics
           trip filter (title, icon+label rows, Done). */}
-      <PickerSheet
-        visible={tripPickerOpen}
-        onClose={() => setTripPickerOpen(false)}
-        title="Filter by trip"
-        maxListHeight={320}
-      >
-        <PickerRow icon="apps-outline" label="All trips" active={activeTripIds.length === 0} onPress={() => setTripFilter([])} />
-        {trips.map((t) => (
-          <PickerRow
-            key={t.id}
-            icon="airplane-outline"
-            label={t.name}
-            active={activeTripIds.includes(t.id)}
-            onPress={() => toggleTrip(t.id)}
-          />
-        ))}
-      </PickerSheet>
 
       <PickerSheet
         visible={countryPickerOpen}
@@ -261,7 +235,7 @@ export default function OverTimeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingHorizontal: spacing.xl },
@@ -336,9 +310,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
+  chipActive: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   chipText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
+  chipTextActive: { color: colors.primaryText, fontWeight: '700' },
   periodNav: {
     flexDirection: 'row',
     height: 36,
@@ -362,7 +336,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   periodItemActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   periodText: {
     fontSize: fontSize.xs,
@@ -383,9 +357,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  filterButtonOn: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.44)' },
+  filterButtonOn: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   filterButtonText: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  filterButtonTextOn: { color: colors.primary, fontWeight: '700' },
+  filterButtonTextOn: { color: colors.primaryText, fontWeight: '700' },
   emptyText: {
     color: colors.mutedForeground,
     fontSize: fontSize.md,
@@ -409,11 +383,11 @@ const styles = StyleSheet.create({
   topLabel: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '600' },
   barTrack: {
     height: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.surfaceStrong,
     borderRadius: 4,
     overflow: 'hidden',
     marginTop: 6,
   },
   barFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primary },
   topValue: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700', minWidth: 78, textAlign: 'right' },
-});
+}));

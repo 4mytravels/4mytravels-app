@@ -4,6 +4,74 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
+### Verbeterplan fase 1 (branch `verbeterplan-2026-11-16`, dev only)
+- **Fixed an endless query loop** on Home, Expenses and Stats (inline
+  `useFocusEffect` callbacks); `react-hooks/exhaustive-deps` is now an error. (Q1)
+- **Errors are visible on web**: `Alert.alert` replaced by the in-app status and
+  confirm hosts — *Delete expense* did nothing on the PWA before. The Expenses
+  `+` without a trip opens *New trip*; a storage failure shows a Retry screen. (Q7)
+- **Contrast** to WCAG AA: `primarySolid`/`primaryText` tokens, chart colours
+  `*-400`. (Q9) Minimum text size 11 px, 12 px uppercase labels. (Q10)
+- Dark-only UI (`userInterfaceStyle: dark`, `color-scheme`). (Q12)
+- New theme tokens (status colours, scrim, typeScale, iconSize). (Q11)
+- Settings: one *Data* card, no cloud icons, *Export CSV* / *Import CSV*. (Q14)
+- New expense starts on the last-used category and shows the target trip. (Q15)
+- `/` redirects to `/home`; wording cleanup. (Q16)
+- Performance: Trips loads expenses in 1 query (Q3), memoised covers and no
+  second `loadTrips` (Q4), `created_at` indexes, schema v3 (Q5), memoised
+  expense rows and stats breakdowns (Q6).
+- Tooling: ESLint flat config + `npm run lint` (dev manifest).
+
+### Backup
+- **Create backup now shares the file and leaves no copy on disk.** The
+  encrypted backup (`4mytravels-backup-YYYY-MM-DD.json`) goes straight to the
+  system share sheet. The temporary cache copy is deleted once the sheet
+  closes, whether the user shared or cancelled, and leftovers from earlier
+  runs are swept. On web/PWA the Web Share API sends the file from memory.
+  Cancelling is silent. Browsers that cannot share files (e.g. desktop
+  Firefox) fall back to a download.
+- **Create backup is ~3–5x faster, much smaller, and photos now survive a
+  restore (format v2).** Root cause: receipt/cover photos (`Uint8Array`) went
+  through plain `JSON.stringify`, which writes every byte as `"123":45,` —
+  ~12x bloat — and the ciphertext was then hex-encoded (another 2x). 3.9 MB of
+  photos became a 93 MB file; ~30 receipts ran the JS heap out of memory. On
+  restore those objects were handed to the DB instead of bytes, so photos did
+  not round-trip. v2 stores photos and ciphertext as base64, derives the key
+  with async Argon2id (UI keeps animating; spinner shows the current step),
+  and loads trips + expenses in parallel. Crypto unchanged: Argon2id m=64 MiB,
+  t=3, p=1 (RFC 9106 §4 / above OWASP minimum), derived once per backup;
+  XChaCha20-Poly1305. v1 backups still restore (photos revived to bytes).
+  Timings (Node/V8, same dataset, before → after): 0 photos 1.13 s → 1.06 s;
+  10 receipts + 2 covers 9.2 s / 93 MB → 1.34 s / 6.9 MB; 30 receipts + 5
+  covers OOM → 1.8 s / 20 MB. Argon2id (~1.1 s) is now the dominant cost.
+  Tests: `npm run test:backup`; bench: `npm run bench:backup`.
+- **Restore asks for the file first, then the passphrase.** Settings -> Restore
+  backup now opens the file picker straight away, validates the file (JSON
+  envelope, version, kdf, salt/nonce/ciphertext shape) and only then asks for
+  the passphrase. A file that is not a backup is reported without a passphrase
+  prompt. A wrong passphrase shows an inline error and keeps the selected file
+  for a retry; Cancel closes the sheet. The passphrase is cleared from state
+  after every attempt and the derived key is zeroed.
+  Tests: `npm run test:backup`. Manual check: valid file -> restore; CSV/other
+  JSON -> "Not a valid backup"; wrong passphrase -> retry; picker/sheet cancel.
+
+### PWA
+- **Easier first-run setup.** The PWA now generates a 6-word passphrase (EFF
+  large wordlist, ~77 bit) instead of asking you to invent one. The create
+  screen is a real form with a username + `new-password` field, so password
+  managers offer to save it; Copy / Download-recovery-file buttons and a
+  "I have saved this passphrase" check guard against lock-out. "Use my own
+  passphrase" is still available.
+- **Biometric unlock (WebAuthn PRF).** After the first unlock the app offers
+  fingerprint/face unlock; Settings -> Security toggles it. The passkey's PRF
+  secret wraps the Argon2id-derived DB key (AES-GCM, ciphertext only in
+  localStorage); the passphrase remains the recovery key. Falls back silently
+  to the passphrase when PRF is unsupported.
+- **Date headers and day totals no longer look cramped/smeared on web.**
+  expo-font registered the variable Manrope/Sora TTFs with a single weight, so
+  browsers faked bold. `useAppFonts()` now re-registers them with the full
+  200–800 weight range on web (`src/theme/fonts.ts`).
+
 ## [1.1.2] - 2026-11-15
 
 ### Trips

@@ -23,7 +23,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatMoney } from '../utils/currency';
 import type { TimePeriod, TimeRow } from '../utils/timeStats';
-import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
 
 const AXIS_W = 38;
 const TOOLTIP_W = 96;
@@ -136,7 +136,7 @@ export function TimeChart({
           {/* Value axis — the bars are too small to carry a value label each. */}
           <View style={[styles.axis, { height: plotH }]} pointerEvents="none">
             {ticks.slice().reverse().map((t) => (
-              <Text key={t} style={styles.axisLabel} numberOfLines={1}>{compactMoney(t)}</Text>
+              <Text key={t} maxFontSizeMultiplier={1.3} style={styles.axisLabel} numberOfLines={1}>{compactMoney(t)}</Text>
             ))}
           </View>
 
@@ -206,6 +206,7 @@ export function TimeChart({
                 {rows.map((r) => (
                   <Text
                     key={`m-${r.key}`}
+                    maxFontSizeMultiplier={1.3}
                     style={[styles.monthLabel, { width: pitch }, selected === r.key && { color: colors.foreground }]}
                     numberOfLines={1}
                   >
@@ -223,6 +224,7 @@ export function TimeChart({
                   {yearGroups.map((g) => (
                     <Text
                       key={`y-${g.year}`}
+                      maxFontSizeMultiplier={1.3}
                       style={[styles.yearLabel, { width: pitch * g.count }]}
                       numberOfLines={1}
                     >
@@ -239,32 +241,32 @@ export function TimeChart({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   chartArea: { marginBottom: spacing.md },
   chartRow: { flexDirection: 'row', alignItems: 'flex-start' },
   axis: { width: AXIS_W, justifyContent: 'space-between', alignItems: 'flex-end', paddingRight: 6 },
-  axisLabel: { color: colors.mutedForeground, fontSize: 9, fontFamily: fontFamily.sans },
+  axisLabel: { color: colors.mutedForeground, fontSize: 11, fontFamily: fontFamily.sans },
   plot: { overflow: 'hidden', justifyContent: 'flex-end' },
   gridLine: {
     position: 'absolute',
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.surfaceStrong,
   },
   yearMark: {
     position: 'absolute',
     top: 2,
     bottom: 0,
     width: 1,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: colors.white28,
   },
   // Doorzichtige stub voor een periode zonder uitgaven (alleen een rand).
   barFillZero: {
     height: 4,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    borderColor: colors.white22,
     borderRadius: 1,
   },
   labelsArea: { position: 'relative' },
@@ -274,13 +276,13 @@ const styles = StyleSheet.create({
   labelsRow: { flexDirection: 'row', marginTop: 6 },
   monthLabel: {
     color: colors.mutedForeground,
-    fontSize: 9,
+    fontSize: 11,
     fontFamily: fontFamily.sans,
     textAlign: 'center',
   },
   yearLabel: {
     color: colors.mutedForeground,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: fontFamily.sans,
     textAlign: 'center',
@@ -300,4 +302,4 @@ const styles = StyleSheet.create({
   },
   tooltipLabel: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, textAlign: 'center' },
   tooltipValue: { color: colors.foreground, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans },
-});
+}));

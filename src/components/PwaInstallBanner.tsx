@@ -19,8 +19,8 @@
 // minimal-ui display mode) or right after an appinstalled event.
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, fontFamily, radius, spacing, cardShadow } from '../theme/theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { colors, fontFamily, radius, spacing, cardShadow, themedStyles } from '../theme/theme';
 
 type BipEvent = Event & { prompt: () => Promise<void>; userChoice?: Promise<unknown> };
 type Mode = 'hidden' | 'prompt' | 'ios' | 'manual';
@@ -182,7 +182,7 @@ export function PwaInstallBanner() {
 
   return (
     <View style={styles.wrap}>
-      <Ionicons name="phone-portrait-outline" size={20} color={colors.primary} style={styles.icon} />
+      <Ionicons name="phone-portrait-outline" size={20} color={colors.primaryText} style={styles.icon} />
       <View style={styles.body}>
         <Text style={styles.label}>Add 4MyTravels to your home screen</Text>
         <Text style={styles.detail}>
@@ -219,7 +219,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   });
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // Sits in the layout flow directly below the screen's "4 My Travels" header
   // (user request: top of the screen, not floating above the nav).
   // OPAQUE surface: the old translucent primary tint over the dark background
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginHorizontal: spacing.xl,
     marginBottom: spacing.lg,
-    backgroundColor: '#1A1B41', // solid: #6366F1 @18% over the #0A0A1A background
+    backgroundColor: colors.primaryNoticeSurface, // solid: #6366F1 @18% over the #0A0A1A background
     borderColor: colors.primaryBorder,
     ...cardShadow,
   },
@@ -260,8 +260,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySolid,
   },
   ctaText: { color: colors.primaryForeground, fontSize: 12, fontWeight: '700', fontFamily: fontFamily.sans },
   close: { color: colors.mutedForeground, fontSize: 14 },
-});
+}));

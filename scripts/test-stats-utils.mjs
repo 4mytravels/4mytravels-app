@@ -13,7 +13,7 @@
 // Gebruik:  node scripts/test-stats-utils.mjs
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -44,6 +44,7 @@ try {
     '--outDir', cache,
     'src/utils/countryStats.ts',
     'src/utils/timeStats.ts',
+    'src/utils/stats/breakdown.ts',
   ], { cwd: root, stdio: 'pipe' });
 } catch (e) {
   console.error('Kon de stats-utils niet compileren:', e.stderr?.toString() ?? e.message);
@@ -224,6 +225,77 @@ assert(bothCats.map((m) => m.key).join(',') === '2026-01,2026-02' && near(time.t
 const foodOnly = time.groupByTime(catTimeline, { period: 'month', categories: ['Food'] });
 assert(foodOnly.length === 1 && near(foodOnly[0].value, 100),
   'één categorie op de tijdreeks laat alleen die maand over');
+
+// --- G3: Stats-overview breakdown (src/utils/stats/breakdown.ts) -----------
+{
+  const bd = require(join(cache, 'utils', 'stats', 'breakdown.js'));
+  const pal = ['#c0', '#c1', '#c2', '#c3', '#c4', '#c5'];
+  const cats = ['Food', 'Lodging', 'Transport', 'Activities', 'Shopping', 'Groceries', 'General'];
+  const rows = [];
+  let n = 0;
+  for (const [i, c] of cats.entries()) {
+    for (let k = 0; k <= i; k++) {
+      rows.push({
+        id: `r${n}`, tripId: n % 3 === 2 ? 't2' : 't1', amount: 10 * (i + 1) + k, currency: n % 2 ? 'THB' : 'EUR',
+        rateToHome: n % 2 ? 0.025 : 1, rateDate: `2026-0${1 + (n % 6)}-1${n % 9}`, category: c,
+        createdAt: `2026-0${1 + (n % 6)}-1${n % 9}T10:00:00.000Z`, paymentMethod: n % 4 ? 'card' : 'cash',
+        country: ['TH', 'JP', 'NL', undefined][n % 4],
+      });
+      n++;
+    }
+  }
+  const tripIds = ['t1'];
+  const filtered = rows.filter((r) => tripIds.includes(r.tripId));
+
+  // SNAPSHOT: the old inline memo of app/(tabs)/statistics.tsx (before G3),
+  // copied verbatim as the reference. The extracted util must give the SAME
+  // output on the same input.
+  const old = (() => {
+    const MAX_SLICES = 5; const DONUT_COLORS = pal; const toHome = (x) => x.amount * x.rateToHome;
+    const byCategory = {};
+    for (const x of filtered) { const h = toHome(x); byCategory[x.category] = (byCategory[x.category] ?? 0) + h; }
+    const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    const topEntries = catEntries.slice(0, MAX_SLICES);
+    const othersValue = catEntries.slice(MAX_SLICES).reduce((s, [, v]) => s + v, 0);
+    const chartEntries = [...topEntries];
+    if (othersValue > 0) chartEntries.push(['Others', othersValue]);
+    const total = catEntries.reduce((s, [, v]) => s + v, 0);
+    const slices = []; let acc = 0;
+    for (let i = 0; i < chartEntries.length; i++) {
+      const [cat, val] = chartEntries[i]; const frac = total > 0 ? val / total : 0;
+      const start = acc * 360; acc += frac; const end = acc * 360;
+      slices.push({ category: cat, value: val, color: DONUT_COLORS[i % DONUT_COLORS.length], frac, startAngle: start, endAngle: end });
+    }
+    const countryEntries = countries.groupByCountry(rows, { tripIds });
+    const maxCountry = countryEntries.length ? countryEntries[0].amount : 1;
+    const topCountries = countryEntries.slice(0, 5);
+    const byPayment = {};
+    for (const x of filtered) { const pm = x.paymentMethod === 'card' ? 'Card' : 'Cash'; byPayment[pm] = (byPayment[pm] ?? 0) + toHome(x); }
+    return { catEntries, slices, total, countryEntries, maxCountry, topCountries, cardValue: byPayment.Card ?? 0, cashValue: byPayment.Cash ?? 0 };
+  })();
+  const now = bd.computeBreakdown(filtered, rows, tripIds, pal);
+  assert(JSON.stringify(now) === JSON.stringify(old), 'G3 snapshot: computeBreakdown === the old inline Stats memo (byte-identical JSON)');
+  assert(now.slices.length === 6 && now.slices[5].category === 'Others' && now.catEntries.length === 7, 'top 5 + Others from 7 categories');
+  assert(near(now.slices[now.slices.length - 1].endAngle, 360) && near(now.slices.reduce((s, x) => s + x.frac, 0), 1), 'slices cover the full circle');
+  assert(now.slices.every((s, i) => s.color === pal[i]), 'donut colours follow the palette order (palette unchanged)');
+  assert(near(now.cardValue + now.cashValue, now.total), 'card + cash = total');
+  const facts = bd.quickFacts(filtered);
+  assert(facts.countries === new Set(filtered.map((r) => r.country).filter(Boolean)).size && facts.days === countries.summarizeStats(filtered).days, 'quickFacts: distinct countries + distinct days');
+  assert(bd.pickDisplayCurrency([{ homeCurrency: 'USD' }, { homeCurrency: 'EUR' }, { homeCurrency: 'USD' }]) === 'USD' && bd.pickDisplayCurrency([]) === 'EUR', 'display currency = most-used home currency, EUR default');
+  const ps = bd.paymentSplit(75, 25);
+  assert(ps.cardPct === 75 && ps.cashPct === 25 && near(ps.cardFrac, 0.75), 'paymentSplit 75/25');
+  assert(bd.paymentSplit(0, 0).cardPct === 0, 'paymentSplit of nothing = 0%');
+  const p = bd.donutSlicePath(140, 140, 136, 80, 0, 90);
+  assert(p.startsWith('M140,4 A136,136 0 0 1 276,140') && p.endsWith('Z'), 'donutSlicePath geometry (quarter slice from 12 o\'clock)');
+}
+
+// G3: the screen itself is layout only.
+{
+  const src = readFileSync(join(root, 'app/(tabs)/statistics.tsx'), 'utf8');
+  const lines = src.split('\n').length;
+  assert(lines < 300, `statistics.tsx < 300 lines (got ${lines})`);
+  assert(!/toHomeCurrency|byCategory|donutSlicePath/.test(src), 'statistics.tsx does no arithmetic of its own');
+}
 
 if (failed) {
   console.error(`\n${failed} test(s) gefaald`);

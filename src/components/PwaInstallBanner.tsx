@@ -20,7 +20,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, radius, spacing, cardShadow } from '../theme/theme';
+import { colors, fontFamily, radius, spacing, cardShadow, themedStyles } from '../theme/theme';
 
 type BipEvent = Event & { prompt: () => Promise<void>; userChoice?: Promise<unknown> };
 type Mode = 'hidden' | 'prompt' | 'ios' | 'manual';
@@ -219,7 +219,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   });
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // Sits in the layout flow directly below the screen's "4 My Travels" header
   // (user request: top of the screen, not floating above the nav).
   // OPAQUE surface: the old translucent primary tint over the dark background
@@ -264,4 +264,4 @@ const styles = StyleSheet.create({
   },
   ctaText: { color: colors.primaryForeground, fontSize: 12, fontWeight: '700', fontFamily: fontFamily.sans },
   close: { color: colors.mutedForeground, fontSize: 14 },
-});
+}));

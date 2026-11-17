@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../theme/theme';
 import { formatMoney } from '../../utils/currency';
 import { paymentSplit } from '../../utils/stats/breakdown';
 
@@ -100,7 +100,7 @@ export function SplitPaymentBar({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   section: {
     marginTop: spacing.xl,
     padding: spacing.md,
@@ -132,4 +132,4 @@ const styles = StyleSheet.create({
   splitBarFillRight: { height: '100%', borderTopRightRadius: radius.full, borderBottomRightRadius: radius.full },
   splitBarValues: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
   splitBarValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-});
+}));

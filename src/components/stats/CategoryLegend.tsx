@@ -2,7 +2,7 @@
 // into indented sub-rows (moved out of statistics.tsx).
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, fontSize, spacing } from '../../theme/theme';
+import { colors, fontFamily, fontSize, spacing, themedStyles } from '../../theme/theme';
 import { formatMoney } from '../../utils/currency';
 import { categoryIcon } from '../../utils/categoryIcons';
 import { MAX_SLICES, type DonutSlice } from '../../utils/stats/breakdown';
@@ -51,7 +51,7 @@ export function CategoryLegend({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   legendSection: { gap: spacing.sm, marginBottom: spacing.xl },
   legendRow: {
     flexDirection: 'row',
@@ -75,4 +75,4 @@ const styles = StyleSheet.create({
   legendSubLabel: { flex: 1, color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginLeft: spacing.xs },
   legendSubPct: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, minWidth: 28, textAlign: 'right' },
   legendSubValue: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, minWidth: 60, textAlign: 'right' },
-});
+}));

@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../theme/theme';
+import { colors, spacing, themedStyles } from '../theme/theme';
 
 type Level = 'ok' | 'fallback' | 'volatile';
 
@@ -93,7 +93,7 @@ export function StorageHealthBanner() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // Layout flow inside WebNotices, directly under the screen header — same
   // placement as the install nudge (user request). OPAQUE surfaces: these are
   // notices the user has to read, so the old translucent tints are baked over
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     borderColor: colors.redNoticeBorder,
   },
   body: { flex: 1, gap: 4 },
-  label: { color: colors.white, fontSize: 13, fontWeight: '600' },
+  label: { color: colors.foreground, fontSize: 13, fontWeight: '600' },
   detail: { color: colors.mutedForeground, fontSize: 12, lineHeight: 17 },
   close: { color: colors.mutedForeground, fontSize: 14 },
-});
+}));

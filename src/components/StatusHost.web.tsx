@@ -11,7 +11,7 @@
 import { useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { getCurrentStatus, dismissStatus, subscribeStatus } from '../utils/statusDialog';
-import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../theme/theme';
 import { Button } from './ui';
 
 // Declared locally: @types/react-dom is not installed in this project, and the
@@ -43,7 +43,7 @@ export function StatusHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     // RN's ViewStyle union has no 'fixed' (native has no such keyword); on web
     // react-native-web emits the value verbatim, which is what we need.
@@ -104,4 +104,4 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
   },
-});
+}));

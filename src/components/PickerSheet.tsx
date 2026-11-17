@@ -27,7 +27,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetPortal } from './SheetPortal';
 import { useKeyboardHeight } from '../utils/useKeyboardHeight';
-import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
 
 export function PickerSheet({
   visible,
@@ -157,7 +157,7 @@ export function PickerRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: {
     position: 'absolute',
     top: 0,
@@ -229,4 +229,4 @@ const styles = StyleSheet.create({
   },
   rowActive: {},
   rowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-});
+}));

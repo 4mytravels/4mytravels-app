@@ -3,7 +3,7 @@
 // keeps a toggle. Renders nothing on native or when WebAuthn PRF is unavailable.
 import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, themedStyles } from '../theme/theme';
 import {
   dismissBiometricPrompt,
   isBiometricAvailable,
@@ -65,13 +65,13 @@ export function BiometricEnrollPrompt() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   wrap: { position: 'absolute', left: 0, right: 0, top: 0, padding: 16, alignItems: 'center', zIndex: 9000 },
   card: {
     width: '100%', maxWidth: 420, backgroundColor: colors.card, borderRadius: 16,
     borderWidth: 1, borderColor: colors.border, padding: 16, gap: 8,
   },
-  title: { color: colors.white, fontSize: 16, fontWeight: '700' },
+  title: { color: colors.foreground, fontSize: 16, fontWeight: '700' },
   body: { color: colors.mutedForeground, fontSize: 13, lineHeight: 18 },
   error: { color: colors.red400, fontSize: 13 },
   row: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
@@ -79,4 +79,4 @@ const styles = StyleSheet.create({
   btnText: { color: colors.primaryForeground, fontWeight: '600' },
   ghost: { backgroundColor: 'transparent' },
   ghostText: { color: colors.mutedForeground, fontWeight: '600' },
-});
+}));

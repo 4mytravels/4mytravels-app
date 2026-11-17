@@ -10,7 +10,7 @@ import { useExpenses, useExpenseStore } from '../../../src/store/expenseStore';
 import { expensesOfTrip } from '../../../src/utils/expenseList';
 import type { Expense } from '../../../src/types';
 import { groupByDaySplitAware } from '../../../src/utils/days';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../../src/theme/theme';
 import { SectionTitle, Button, IconCircle } from '../../../src/components/ui';
 import { TripCard } from '../../../src/components/TripCard';
 import { TripActionsMenu } from '../../../src/components/TripActionsMenu';
@@ -251,7 +251,7 @@ export default function TripDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   // Back button on the left, the two actions on the right — no title: the trip
   // name lives on the card below (it was rendered twice before).
@@ -348,4 +348,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-});
+}));

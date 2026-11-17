@@ -2,7 +2,7 @@ import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
-import { colors, fontFamily, radius, fontSize, spacing, navShadow } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, navShadow, themedStyles } from '../../src/theme/theme';
 
 type NavItem = {
   name: string;
@@ -89,7 +89,7 @@ export function FloatingNav() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // Full-bleed: the nav must span edge to edge so the items sit in one straight
   // row from the left edge to the right edge. On web, `left:0/right:0` +
   // `alignItems:'center'` + a child with `width:'100%'` makes react-native-web
@@ -139,4 +139,4 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
     lineHeight: 11,
   },
-});
+}));

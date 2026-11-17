@@ -12,7 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles } from '../../src/theme/theme';
 import { Pill, Button } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
@@ -318,7 +318,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingHorizontal: spacing.xl, paddingBottom: 106 },
   header: {
@@ -398,4 +398,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...fabShadow,
   },
-});
+}));

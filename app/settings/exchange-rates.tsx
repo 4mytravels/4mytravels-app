@@ -16,7 +16,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
 import { Card, SectionTitle } from '../../src/components/ui';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { loadRateCache, type RateCache } from '../../src/services/rateCache';
@@ -173,7 +173,7 @@ export default function CustomRatesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -221,4 +221,4 @@ const styles = StyleSheet.create({
   rateBtnTextGhost: { color: colors.primaryText },
   clearBtn: { padding: spacing.xs },
   footerNote: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, lineHeight: 20, marginTop: spacing.lg },
-});
+}));

@@ -13,7 +13,7 @@ import { IconCircle } from './ui';
 import { categoryIcon } from '../utils/categoryIcons';
 import { countryName } from '../data/countries';
 import { formatMoney, toHomeCurrency } from '../utils/currency';
-import { colors, fontFamily, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, spacing, themedStyles } from '../theme/theme';
 import type { Expense } from '../types';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -116,7 +116,7 @@ function payLabel(m: string): string {
   return m === 'card' ? 'card' : 'cash';
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   row: {
     flexDirection: 'row',
     paddingVertical: spacing.lg,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   priceCol: { alignItems: 'flex-end' },
   priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
   priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
-});
+}));
 
 // Q6: memoised — a list re-render (search keystroke, focus reload with equal
 // data) no longer re-renders every row whose props did not change.

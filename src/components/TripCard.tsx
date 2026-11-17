@@ -5,11 +5,11 @@
 // as the home-screen journey card) with the badge, the name, the dates, the day
 // bar and the pace verdict ON it; the daily/total figures sit on a flat surface
 // BELOW the photo, so the image never runs behind the numbers.
-import { useMemo, useRef } from 'react';
+import { useId, useMemo, useRef } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow, themedStyles, IMAGE_SCRIM } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
 import { computeTripStats, hasDailyBudget } from '../utils/tripStats';
@@ -19,7 +19,8 @@ import { formatMoney, formatMoneyWhole } from '../utils/currency';
 import { bytesToDataUri, tripCoverStageSize } from '../utils/image';
 
 // Scrim colour = the app background; only the opacity changes over the photo.
-const SCRIM = colors.background;
+// Theme-independent: this gradient darkens a PHOTO under white text (G5).
+const SCRIM = IMAGE_SCRIM;
 
 const BADGE: Record<TripStatus, { label: string; fg: string; bg: string }> = {
   active: { label: 'ACTIVE', fg: colors.teal300, bg: colors.teal32 },
@@ -127,7 +128,7 @@ export function TripCard({
               accessibilityLabel={`Manage ${trip.name}`}
               style={({ pressed }) => [styles.manage, pressed && styles.managePressed]}
             >
-              <Ionicons name="ellipsis-horizontal" size={17} color={colors.foreground} />
+              <Ionicons name="ellipsis-horizontal" size={17} color={colors.onImage} />
             </Pressable>
           )}
         </View>
@@ -207,6 +208,12 @@ export function TripCard({
  * band visibly on Android and in the PWA — same reason FadeScrim is SVG.
  */
 function CardScrim() {
+  // Per-instance gradient ids. The tab navigator keeps every visited screen
+  // mounted, so several cards share one document on web; with fixed ids every
+  // url(#…) resolved to the FIRST definition, which can sit in a hidden screen
+  // and then paints nothing (found in G5: the trip-detail card lost its scrim
+  // and its no-photo surface, invisible on dark, glaring on light).
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   return (
     <Svg
       style={StyleSheet.absoluteFill}
@@ -215,30 +222,25 @@ function CardScrim() {
       pointerEvents="none"
     >
       <Defs>
-        <LinearGradient id="tripScrimTop" x1="0" y1="0" x2="0" y2="1">
+        <LinearGradient id={`tripScrimTop${uid}`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={SCRIM} stopOpacity="0.38" />
           <Stop offset="1" stopColor={SCRIM} stopOpacity="0" />
         </LinearGradient>
-        <LinearGradient id="tripScrimBottom" x1="0" y1="0" x2="0" y2="1">
+        <LinearGradient id={`tripScrimBottom${uid}`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={SCRIM} stopOpacity="0" />
           <Stop offset="0.45" stopColor={SCRIM} stopOpacity="0.72" />
           <Stop offset="1" stopColor={SCRIM} stopOpacity="0.92" />
         </LinearGradient>
-        {/* Surface for a trip without a photo yet — brand gradient. */}
-        <LinearGradient id="tripNoPhoto" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor={colors.noPhoto1} />
-          <Stop offset="0.55" stopColor={colors.noPhoto2} />
-          <Stop offset="1" stopColor={colors.card} />
-        </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width="100" height="45" fill="url(#tripScrimTop)" />
-      <Rect x="0" y="38" width="100" height="62" fill="url(#tripScrimBottom)" />
+      <Rect x="0" y="0" width="100" height="45" fill={`url(#tripScrimTop${uid})`} />
+      <Rect x="0" y="38" width="100" height="62" fill={`url(#tripScrimBottom${uid})`} />
     </Svg>
   );
 }
 
 /** No photo yet → brand gradient + the airplane mark. */
 function PhotoFallback() {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   return (
     <>
       <Svg
@@ -247,7 +249,15 @@ function PhotoFallback() {
         preserveAspectRatio="none"
         pointerEvents="none"
       >
-        <Rect x="0" y="0" width="100" height="100" fill="url(#tripNoPhoto)" />
+        <Defs>
+          {/* Surface for a trip without a photo yet — brand gradient. */}
+          <LinearGradient id={`tripNoPhoto${uid}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={colors.noPhoto1} />
+            <Stop offset="0.55" stopColor={colors.noPhoto2} />
+            <Stop offset="1" stopColor={colors.noPhoto3} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100" height="100" fill={`url(#tripNoPhoto${uid})`} />
       </Svg>
       <View style={styles.photoFallbackMark} pointerEvents="none">
         <Ionicons name="airplane-outline" size={40} color={colors.foreground28} />
@@ -294,7 +304,7 @@ function PressableScale({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // Full-bleed photo card: the trip's own cover is the background and the scrim
   // carries the text.
   card: {
@@ -338,11 +348,11 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: radius.full,
-    backgroundColor: colors.borderStrong,
+    backgroundColor: colors.onImageSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  managePressed: { backgroundColor: colors.white20 },
+  managePressed: { backgroundColor: colors.onImageSurfacePressed },
   cardBottom: {
     position: 'absolute',
     left: spacing.xl,
@@ -360,7 +370,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
     marginBottom: spacing.md,
   },
-  track: { height: 4, borderRadius: radius.full, backgroundColor: colors.border, overflow: 'hidden' },
+  track: { height: 4, borderRadius: radius.full, backgroundColor: colors.onImageTrack, overflow: 'hidden' },
   // Verdict + day counter, on the photo (the image is their background).
   verdictRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
   verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3, ...onImageTextShadow },
@@ -382,4 +392,4 @@ const styles = StyleSheet.create({
   statLabel: { fontFamily: fontFamily.sans, fontSize: 12, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
   statValue: { fontFamily: fontFamily.sans, fontSize: fontSize.lg, fontWeight: '700', color: colors.foreground },
   statOf: { fontFamily: fontFamily.sans, fontSize: fontSize.base, fontWeight: '500', color: colors.mutedForeground },
-});
+}));

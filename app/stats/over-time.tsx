@@ -12,7 +12,7 @@ import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
 import { countryName } from '../../src/data/countries';
-import { colors, fontFamily, fontSize, radius, spacing, navShadow } from '../../src/theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, navShadow, themedStyles } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { TimeChart } from '../../src/components/TimeChart';
 
@@ -235,7 +235,7 @@ export default function OverTimeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingHorizontal: spacing.xl },
@@ -390,4 +390,4 @@ const styles = StyleSheet.create({
   },
   barFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primary },
   topValue: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700', minWidth: 78, textAlign: 'right' },
-});
+}));

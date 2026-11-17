@@ -20,8 +20,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Card, SectionTitle, Button, IconButton } from '../../src/components/ui';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
+import { Card, SectionTitle, Button, IconButton, FilterChip } from '../../src/components/ui';
+import { useThemeMode } from '../../src/theme/ThemeProvider';
+import { THEME_MODES, THEME_MODE_LABEL } from '../../src/theme/themeMode';
 import {
   createBackup,
   parseBackupEnvelope,
@@ -70,6 +72,7 @@ export default function SettingsScreen() {
   // The floating nav overlaps the bottom of this screen, so the scroll content
   // must clear it: nav height (60) + nav gap (18) + breathing room.
   const insets = useSafeAreaInsets();
+  const { mode: themeMode, setMode: setThemeMode } = useThemeMode();
   const setTrips = useTripStore((s) => s.setTrips);
   const manualRates = useSettingsStore((s) => s.manualRates);
   const setManualRate = useSettingsStore((s) => s.setManualRate);
@@ -402,6 +405,21 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <SectionTitle title="Preferences" />
           <Card>
+            {/* G5: appearance. System follows the OS light/dark setting. */}
+            <Text style={styles.themeLabel}>Appearance</Text>
+            <View style={styles.themeRow} accessibilityRole="radiogroup" accessibilityLabel="Appearance">
+              {THEME_MODES.map((m) => (
+                <FilterChip
+                  key={m}
+                  label={THEME_MODE_LABEL[m]}
+                  icon={m === 'system' ? 'phone-portrait-outline' : m === 'light' ? 'sunny-outline' : 'moon-outline'}
+                  selected={themeMode === m}
+                  onPress={() => setThemeMode(m)}
+                  accessibilityLabel={`Appearance: ${THEME_MODE_LABEL[m]}`}
+                />
+              ))}
+            </View>
+            <View style={styles.themeDivider} />
             <View style={styles.rateRow}>
               <Text style={styles.rateLabel}>Default home currency</Text>
               <Pressable
@@ -645,7 +663,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -705,6 +723,9 @@ const styles = StyleSheet.create({
   pickerRowActive: {},
   pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   rateLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, flex: 1 },
+  themeLabel: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  themeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  themeDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.lg },
   currencyPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -732,4 +753,4 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   rateBtnText: { color: colors.primaryForeground, fontWeight: '600', fontSize: fontSize.sm },
-});
+}));

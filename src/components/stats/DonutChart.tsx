@@ -3,7 +3,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Path, G } from 'react-native-svg';
-import { colors, fontFamily, fontSize } from '../../theme/theme';
+import { colors, fontFamily, fontSize, themedStyles } from '../../theme/theme';
 import { formatMoney } from '../../utils/currency';
 import { categoryIcon } from '../../utils/categoryIcons';
 import { donutSlicePath, labelPos, type DonutSlice } from '../../utils/stats/breakdown';
@@ -85,7 +85,7 @@ export function DonutChart({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   donutEmpty: { backgroundColor: colors.surfaceStrong, justifyContent: 'center', alignItems: 'center' },
   donutEmptyText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   sliceLabelWrap: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
@@ -108,4 +108,4 @@ const styles = StyleSheet.create({
   },
   donutCenterLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginBottom: 2 },
   donutCenterValue: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '800', fontFamily: fontFamily.heading },
-});
+}));

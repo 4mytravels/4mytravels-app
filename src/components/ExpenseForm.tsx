@@ -32,6 +32,7 @@ import {
   radius,
   fontSize,
   spacing,
+  themedStyles,
 } from '../theme/theme';
 import {
   EXPENSE_CATEGORIES,
@@ -823,7 +824,7 @@ export function ExpenseForm({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.backdropSoft },
   sheet: {
@@ -1056,4 +1057,4 @@ const styles = StyleSheet.create({
   viewerImage: { width: '100%', height: '90%' },
   viewerClose: { position: 'absolute', top: 48, right: 24, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.white15, alignItems: 'center', justifyContent: 'center' },
   splitHint: { color: colors.mutedForeground, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans },
-});
+}));

@@ -10,7 +10,7 @@
 import { type ReactNode } from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import { usePathname } from 'expo-router';
-import { colors } from '../theme/theme';
+import { colors, themedStyles } from '../theme/theme';
 import { CONTENT_MAX_WIDTH, frameMaxWidth } from '../theme/layout';
 
 export function AppFrame({ children, nav }: { children: ReactNode; nav: ReactNode }) {
@@ -28,10 +28,10 @@ export function AppFrame({ children, nav }: { children: ReactNode; nav: ReactNod
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   outer: { flex: 1, backgroundColor: colors.background },
   // alignSelf (not a parent alignItems) — see pattern 24: a percentage width
   // under an alignItems:center parent resolves against a shrink-to-fit box.
   column: { flex: 1, width: '100%', alignSelf: 'center' },
   navLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
-});
+}));

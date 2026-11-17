@@ -36,7 +36,7 @@ import { pickTripCoverBytes } from '../../src/utils/tripActions';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
-import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
 import { Button, IconButton } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
 
@@ -590,7 +590,7 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   sheet: {
     backgroundColor: colors.background,
@@ -672,4 +672,4 @@ const styles = StyleSheet.create({
   },
   coverAddText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   coverHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm },
-});
+}));

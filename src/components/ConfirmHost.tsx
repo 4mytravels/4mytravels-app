@@ -20,7 +20,7 @@ import {
   getCurrentConfirm,
   subscribeConfirm,
 } from '../utils/confirm';
-import { colors, fontFamily, radius, fontSize, spacing } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../theme/theme';
 import { Button } from './ui';
 
 export function ConfirmHost() {
@@ -59,7 +59,7 @@ export function ConfirmHost() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     alignItems: 'center',
@@ -116,4 +116,4 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
   },
-});
+}));

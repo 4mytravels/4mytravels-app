@@ -18,7 +18,7 @@ import { loadExpense } from '../../src/db/expenseRepo';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
-import { colors, fontFamily, radius, fontSize, spacing, fabShadow } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles } from '../../src/theme/theme';
 import { IconCircle, Button, StatBox } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
@@ -470,7 +470,7 @@ export default function ExpensesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -713,4 +713,4 @@ const styles = StyleSheet.create({
   },
   pickerRowActive: {},
   pickerRowText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-});
+}));

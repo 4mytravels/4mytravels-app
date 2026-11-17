@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import type { Trip } from '../types';
-import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
 import { changeTripCover, deleteTripWithConfirm, exportTripCsv } from '../utils/tripActions';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -86,7 +86,7 @@ export function TripActionsMenu({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: colors.scrim },
   anchor: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', paddingHorizontal: spacing.md },
   sheet: {
@@ -120,4 +120,4 @@ const styles = StyleSheet.create({
   rule: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   cancel: { justifyContent: 'center', borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.xs },
   cancelText: { color: colors.mutedForeground },
-});
+}));

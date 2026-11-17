@@ -15,7 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
-import { colors, fontFamily, radius, fontSize, spacing, donutPalette } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, donutPalette, themedStyles } from '../../src/theme/theme';
 import { Pill } from '../../src/components/ui';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -170,7 +170,7 @@ export default function StatisticsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   cols: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
   col: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: colors.background },
@@ -223,4 +223,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
-});
+}));

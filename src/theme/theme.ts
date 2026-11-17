@@ -2,7 +2,7 @@
 // (src/styles.css, dark theme). oklch values were converted to sRGB hex because
 // React Native does not support oklch. Fonts: Manrope (body) + Sora (headings).
 
-export const colors = {
+export const darkColors = {
   // core
   background: '#0A0A1A', // oklch(0.155 0.034 281.738)
   foreground: '#E2E8F0', // oklch(0.929 0.013 255.508)
@@ -94,6 +94,10 @@ export const colors = {
   scrim: 'rgba(5,5,15,0.64)',
   onImage: '#FFFFFF',
   onImageMuted: 'rgba(255,255,255,0.80)',
+  // G5: controls ON a cover photo (manage button, day-bar track): theme-independent.
+  onImageSurface: 'rgba(255,255,255,0.12)',
+  onImageSurfacePressed: 'rgba(255,255,255,0.20)',
+  onImageTrack: 'rgba(255,255,255,0.10)',
   imageGradientTop: 'rgba(0,0,0,0)',
   imageGradientBottom: 'rgba(0,0,0,0.72)',
 
@@ -133,7 +137,127 @@ export const colors = {
   amber500: '#F59E0B',
   noPhoto1: '#1B1E46',
   noPhoto2: '#2A2560',
-} as const;
+  noPhoto3: '#141432', // = dark card; the no-photo stand-in stays dark in both themes (G5)
+};
+
+// G5: light palette. Same keys as darkColors; contrast pairs are asserted in
+// scripts/test-theme-contrast.mjs (WCAG AA: text 4.5:1, large/graphics 3:1).
+// Tokens for things drawn ON A PHOTO (onImage*, trip-card badges/veil/bars,
+// image gradients, the no-photo stand-in) and the chart series keep their dark values: the photo, not
+// the theme, is their background. Donut palette is untouched (owner decision).
+export const lightColors: Record<keyof typeof darkColors, string> = {
+  ...darkColors,
+  background: '#F5F6FA',
+  foreground: '#0F172A',
+  card: '#FFFFFF',
+  cardForeground: '#0F172A',
+  popover: '#FFFFFF',
+  primary: '#6366F1',
+  primaryForeground: '#FFFFFF',
+  primarySolid: '#4F46E5',
+  primaryText: '#4338CA',
+  secondary: '#ECEEF5',
+  secondaryForeground: '#0F172A',
+  muted: '#ECEEF5',
+  mutedForeground: '#4B5768',
+  accent: '#6D28D9',
+  accentForeground: '#FFFFFF',
+  destructive: '#C81E1E',
+  destructiveForeground: '#FFFFFF',
+  border: 'rgba(15,23,42,0.12)',
+  borderStrong: 'rgba(15,23,42,0.16)',
+  input: 'rgba(15,23,42,0.22)',
+  ring: '#4F46E5',
+  success: '#047857',
+  routeLine: '#0E7490',
+  visitedDot: '#B45309',
+  globeGlow: 'rgba(99,102,241,0.16)',
+  surfaceSoft: 'rgba(15,23,42,0.03)',
+  surfaceMedium: 'rgba(15,23,42,0.05)',
+  surfaceStrong: 'rgba(15,23,42,0.07)',
+  primary12: 'rgba(99,102,241,0.10)',
+  primary20: 'rgba(99,102,241,0.16)',
+  primary28: 'rgba(99,102,241,0.24)',
+  primaryBorder: 'rgba(79,70,229,0.45)',
+  success15: 'rgba(4,120,87,0.12)',
+  navSurface: 'rgba(255,255,255,0.92)',
+  black20: 'rgba(15,23,42,0.04)',
+  black48: 'rgba(15,23,42,0.30)',
+  warning: '#92400E',
+  warning15: 'rgba(217,119,6,0.12)',
+  warningBorder: 'rgba(217,119,6,0.40)',
+  danger: '#BE123C',
+  danger15: 'rgba(225,29,72,0.10)',
+  dangerBorder: 'rgba(225,29,72,0.35)',
+  info: '#1D4ED8',
+  info15: 'rgba(37,99,235,0.10)',
+  infoBorder: 'rgba(37,99,235,0.35)',
+  teal: '#0F766E',
+  teal15: 'rgba(13,148,136,0.12)',
+  tealBorder: 'rgba(13,148,136,0.40)',
+  successBorder: 'rgba(4,120,87,0.35)',
+  scrim: 'rgba(15,23,42,0.45)',
+  backdrop: 'rgba(15,23,42,0.45)',
+  backdropSoft: 'rgba(15,23,42,0.35)',
+  scrimStrong: 'rgba(15,23,42,0.55)',
+  black45: 'rgba(15,23,42,0.55)',
+  white20: 'rgba(15,23,42,0.18)',
+  white22: 'rgba(15,23,42,0.22)',
+  white28: 'rgba(15,23,42,0.28)',
+  white35: 'rgba(15,23,42,0.45)',
+  red400: '#C81E1E',
+  red12: 'rgba(220,38,38,0.10)',
+  amberNoticeSurface: '#FDF3DC',
+  amberNoticeBorder: 'rgba(217,119,6,0.40)',
+  redNoticeSurface: '#FDE8E8',
+  redNoticeBorder: 'rgba(220,38,38,0.35)',
+  primaryNoticeSurface: '#E8E9FD',
+  amber10: 'rgba(217,119,6,0.10)',
+  amber500: '#B45309',
+};
+
+export type ColorScheme = 'dark' | 'light';
+let activeScheme: ColorScheme = 'dark';
+const palettes: Record<ColorScheme, Record<keyof typeof darkColors, string>> = {
+  dark: darkColors,
+  light: lightColors,
+};
+
+/** The scheme every `colors.x` read resolves against right now. */
+export function getActiveScheme(): ColorScheme {
+  return activeScheme;
+}
+/** Switch the palette. Callers must re-render (ThemeProvider remounts the tree). */
+export function setActiveScheme(s: ColorScheme): void {
+  activeScheme = s;
+}
+
+// `colors.x` is a getter on the active palette, so every call site reads the
+// current scheme on each render.
+export const colors = {} as { readonly [K in keyof typeof darkColors]: string };
+for (const key of Object.keys(darkColors) as (keyof typeof darkColors)[]) {
+  Object.defineProperty(colors, key, { enumerable: true, get: () => palettes[activeScheme][key] });
+}
+
+/**
+ * Module-scope styles that follow the theme:
+ * `const styles = themedStyles(() => StyleSheet.create({...}))`. The factory
+ * runs once per scheme (lazily); `styles.x` resolves against the active scheme.
+ */
+export function themedStyles<T extends object>(factory: () => T): T {
+  const cache: Partial<Record<ColorScheme, T>> = {};
+  const current = (): T => (cache[activeScheme] ??= factory());
+  return new Proxy({} as T, {
+    get: (_t, prop) => (current() as Record<PropertyKey, unknown>)[prop],
+    has: (_t, prop) => prop in current(),
+    ownKeys: () => Reflect.ownKeys(current()),
+    getOwnPropertyDescriptor: (_t, prop) => {
+      const d = Object.getOwnPropertyDescriptor(current(), prop);
+      return d ? { ...d, configurable: true } : undefined;
+    },
+  });
+}
+
 
 // Statistics donut: top 5 categories + "Others" (moved out of the screen, M3).
 export const donutPalette = [
@@ -249,3 +373,6 @@ export const onImageTextShadow = {
 };
 
 export type ThemeColors = typeof colors;
+
+/** Dark backdrop for gradients drawn over a cover photo: theme-independent. */
+export const IMAGE_SCRIM = '#0A0A1A';

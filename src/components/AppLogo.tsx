@@ -1,7 +1,7 @@
 // App logo (the 4MT mark from the Obsidian vault /assets/icon.png).
 // Use this in headers instead of the placeholder globe icon.
 import { Image, StyleSheet } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, themedStyles } from '../theme/theme';
 
 export function AppLogo({ size = 28 }: { size?: number }) {
   return (
@@ -13,6 +13,6 @@ export function AppLogo({ size = 28 }: { size?: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   logo: { backgroundColor: colors.background },
-});
+}));

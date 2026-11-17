@@ -23,7 +23,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatMoney } from '../utils/currency';
 import type { TimePeriod, TimeRow } from '../utils/timeStats';
-import { colors, fontFamily, fontSize, radius, spacing } from '../theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
 
 const AXIS_W = 38;
 const TOOLTIP_W = 96;
@@ -241,7 +241,7 @@ export function TimeChart({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   chartArea: { marginBottom: spacing.md },
   chartRow: { flexDirection: 'row', alignItems: 'flex-start' },
   axis: { width: AXIS_W, justifyContent: 'space-between', alignItems: 'flex-end', paddingRight: 6 },
@@ -302,4 +302,4 @@ const styles = StyleSheet.create({
   },
   tooltipLabel: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, textAlign: 'center' },
   tooltipValue: { color: colors.foreground, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans },
-});
+}));

@@ -6,6 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { colors } from '../src/theme/theme';
+import { ThemeProvider, ThemedTree, useThemeMode } from '../src/theme/ThemeProvider';
 import { FloatingNav } from '../src/components/FloatingNav';
 import { AppFrame } from '../src/components/AppFrame';
 import { ConfirmHost } from '../src/components/ConfirmHost';
@@ -44,7 +45,18 @@ function usePwaBootstrap(ready: boolean): void {
 // Web (PWA): storage is passphrase-encrypted (scope §2.2), so the unlock gate
 // must run BEFORE useStorageInit() — the adapter derives its key from the
 // passphrase. Native keeps the Keystore device key and skips the gate.
+// G5: the provider sits OUTSIDE the layout body so the palette is set before
+// any `colors.x` in it is read; RootInner subscribes so it re-renders on a switch.
 export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootInner />
+    </ThemeProvider>
+  );
+}
+
+function RootInner() {
+  useThemeMode();
   const fontsLoaded = useAppFonts();
   const isWeb = Platform.OS === 'web';
   const [passphrase, setPassphrase] = useState<string | null>(
@@ -143,46 +155,48 @@ export default function RootLayout() {
   }
 
   return (
-    <AppFrame nav={<FloatingNav />}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        {/* Trip detail renders its own dark header — hide the native (white) one. */}
-        <Stack.Screen name="trip/[id]/index" options={{ title: 'Trip', headerShown: false }} />
-        {/* G1: trip edit has its own route (was /trips/new?editId=…). */}
-        <Stack.Screen
-          name="trip/[id]/edit"
-          options={{ presentation: 'modal', title: 'Edit trip', headerShown: false }}
-        />
-        <Stack.Screen
-          name="trips/new"
-          options={{ presentation: 'modal', title: 'New trip', headerShown: false }}
-        />
-        <Stack.Screen
-          name="settings/exchange-rates"
-          options={{ title: 'Exchange rates', headerShown: false }}
-        />
-        <Stack.Screen name="stats" options={{ headerShown: false }} />
-      </Stack>
-      {/* M11: FloatingNav is passed to AppFrame (nav prop) so it stays on the
-          560 px column; the Stack is centred at max-width. */}
-      {/* ONE confirmation dialog for every destructive action, mounted above the
-          navigator so it can never be clipped by a screen or a sheet. Web: a
-          body portal at z-index 10000 (see ConfirmHost.web.tsx). */}
-      <ConfirmHost />
-      {/* Status messages (import/restore results, errors). Alert.alert is a
-          NO-OP in react-native-web, so without this host every failure was
-          invisible on the PWA — an import "just did nothing". */}
-      <StatusHost />
-      {/* Web share target: finishes an import that arrived through the Android
-          share sheet (Delen -> 4MyTravels). Reads the file the service worker
-          stashed; mounted only once storage is unlocked, because it writes to
-          the encrypted database. No-op on native. */}
-      <SharedImportHost />
-      {/* Web: one-time offer to enable biometric unlock after (first) unlock. */}
-      <BiometricEnrollPrompt />
-      {/* Web notices (storage health + install nudge) render per screen, in the
-          flow under the header — see src/components/WebNotices.tsx. */}
-    </AppFrame>
+    <ThemedTree>
+      <AppFrame nav={<FloatingNav />}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          {/* Trip detail renders its own dark header — hide the native (white) one. */}
+          <Stack.Screen name="trip/[id]/index" options={{ title: 'Trip', headerShown: false }} />
+          {/* G1: trip edit has its own route (was /trips/new?editId=…). */}
+          <Stack.Screen
+            name="trip/[id]/edit"
+            options={{ presentation: 'modal', title: 'Edit trip', headerShown: false }}
+          />
+          <Stack.Screen
+            name="trips/new"
+            options={{ presentation: 'modal', title: 'New trip', headerShown: false }}
+          />
+          <Stack.Screen
+            name="settings/exchange-rates"
+            options={{ title: 'Exchange rates', headerShown: false }}
+          />
+          <Stack.Screen name="stats" options={{ headerShown: false }} />
+        </Stack>
+        {/* M11: FloatingNav is passed to AppFrame (nav prop) so it stays on the
+            560 px column; the Stack is centred at max-width. */}
+        {/* ONE confirmation dialog for every destructive action, mounted above the
+            navigator so it can never be clipped by a screen or a sheet. Web: a
+            body portal at z-index 10000 (see ConfirmHost.web.tsx). */}
+        <ConfirmHost />
+        {/* Status messages (import/restore results, errors). Alert.alert is a
+            NO-OP in react-native-web, so without this host every failure was
+            invisible on the PWA — an import "just did nothing". */}
+        <StatusHost />
+        {/* Web share target: finishes an import that arrived through the Android
+            share sheet (Delen -> 4MyTravels). Reads the file the service worker
+            stashed; mounted only once storage is unlocked, because it writes to
+            the encrypted database. No-op on native. */}
+        <SharedImportHost />
+        {/* Web: one-time offer to enable biometric unlock after (first) unlock. */}
+        <BiometricEnrollPrompt />
+        {/* Web notices (storage health + install nudge) render per screen, in the
+            flow under the header — see src/components/WebNotices.tsx. */}
+      </AppFrame>
+    </ThemedTree>
   );
 }
 

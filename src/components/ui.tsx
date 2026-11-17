@@ -24,6 +24,7 @@ import {
   typeScale,
   touchTarget,
   focusShadow,
+  themedStyles,
 } from '../theme/theme';
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../types';
 import { categoryIcon } from '../utils/categoryIcons';
@@ -367,7 +368,8 @@ export const Input = forwardRef<TextInput, TextInputProps & { invalid?: boolean 
 // Text in a screen that imports both.
 export type TextVariant = 'display' | 'title' | 'section' | 'body' | 'amount' | 'label' | 'caption';
 
-export const textVariants: Record<TextVariant, TextStyle> = {
+// G5: themed so `color` follows the active scheme.
+export const textVariants: Record<TextVariant, TextStyle> = themedStyles((): Record<TextVariant, TextStyle> => ({
   display: { fontFamily: fontFamily.heading, fontSize: typeScale.display, fontWeight: '800', color: colors.foreground },
   title: { fontFamily: fontFamily.heading, fontSize: typeScale.title, fontWeight: '700', color: colors.foreground },
   section: { fontFamily: fontFamily.heading, fontSize: typeScale.bodyLg, fontWeight: '700', color: colors.foreground },
@@ -388,7 +390,7 @@ export const textVariants: Record<TextVariant, TextStyle> = {
     letterSpacing: 0.6,
   },
   caption: { fontFamily: fontFamily.sans, fontSize: typeScale.caption, color: colors.mutedForeground },
-};
+}));
 
 export function AppText({ variant = 'body', style, ...rest }: TextProps & { variant?: TextVariant }) {
   return (

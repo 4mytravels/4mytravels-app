@@ -19,7 +19,7 @@
 
 import React, { PropsWithChildren, useEffect } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, themedStyles } from '../theme/theme';
 import { CONTENT_MAX_WIDTH } from '../theme/layout';
 
 // Declared locally: @types/react-dom is not installed and the import must not
@@ -58,7 +58,7 @@ export function ModalHost({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     // Native's ViewStyle has no 'fixed'; react-native-web emits it verbatim.
     position: 'fixed' as unknown as ViewStyle['position'],
@@ -73,4 +73,4 @@ const styles = StyleSheet.create({
   },
   // M11: the form keeps the 560 px column on a wide window, like every screen.
   fill: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' },
-});
+}));

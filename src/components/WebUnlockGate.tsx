@@ -16,7 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors } from '../theme/theme';
+import { colors, themedStyles } from '../theme/theme';
 import { generatePassphrase } from '../db/web/passphrase';
 import { isBiometricEnrolled, unlockWithBiometric } from '../db/web/biometric';
 import { Button } from './ui';
@@ -76,7 +76,7 @@ function PasswordManagerForm(props: {
       value: props.passphrase, readOnly: true, 'aria-label': 'Generated passphrase',
       style: {
         background: colors.surfaceMedium, border: `1px solid ${colors.borderStrong}`,
-        borderRadius: 10, color: colors.white, fontSize: 16, padding: '12px 14px',
+        borderRadius: 10, color: colors.foreground, fontSize: 16, padding: '12px 14px',
         fontFamily: 'ui-monospace, monospace', width: '100%', boxSizing: 'border-box',
       },
     }),
@@ -301,7 +301,7 @@ export function WebUnlockGate({ onUnlock, onUnlockKey }: WebUnlockGateProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   title: {
-    color: colors.white,
+    color: colors.foreground,
     fontSize: 24,
     fontWeight: '700',
     textAlign: 'center',
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: 10,
-    color: colors.white,
+    color: colors.foreground,
     fontSize: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -373,11 +373,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 999,
     paddingVertical: 8, paddingHorizontal: 14,
   },
-  chipText: { color: colors.white, fontSize: 13, fontWeight: '600' },
+  chipText: { color: colors.foreground, fontSize: 13, fontWeight: '600' },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: colors.mutedForeground },
   checkboxOn: { backgroundColor: colors.primarySolid, borderColor: colors.primary },
-  checkLabel: { color: colors.white, fontSize: 14 },
+  checkLabel: { color: colors.foreground, fontSize: 14 },
   link: { color: colors.primaryText, fontSize: 13, textAlign: 'center' },
   hint: {
     color: colors.mutedForeground,
@@ -385,4 +385,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 17,
   },
-});
+}));

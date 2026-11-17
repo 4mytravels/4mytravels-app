@@ -36,7 +36,8 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta httpEquiv="Content-Security-Policy" content={CSP} />
         <meta name="theme-color" content={colors.background} />
-        {/* Q12: the UI is dark-only; stop the browser from offering light form controls/scrollbars. */}
+        {/* Static default (dark, the pre-hydration look). G5: ThemeProvider rewrites
+            color-scheme, theme-color and the body background for the chosen theme. */}
         <meta name="color-scheme" content="dark" />
         <meta name="description" content="Privacy-first travel expense tracker. Encrypted local storage, no account, no tracking." />
         <link rel="manifest" href="/manifest.webmanifest" />

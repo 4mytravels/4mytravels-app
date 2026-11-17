@@ -29,7 +29,7 @@ import type { Expense, Trip } from '../../src/types';
 import { TripActionsMenu } from '../../src/components/TripActionsMenu';
 import { formatMoney, formatMoneyWhole, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
-import { inclusiveDays } from '../../src/utils/pace';
+import { pickActiveTrip, summarizeToday } from '../../src/utils/today';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -115,57 +115,18 @@ export default function HomeScreen() {
       return sum + (converted != null ? converted : dayPartHome);
     }, 0);
 
-  // Unique countries: only from active or past trips (not upcoming).
-  const countrySet = new Set<string>();
-  for (const t of trips) {
-    const status = deriveTripStatus(t);
-    if (status === 'active' || status === 'past') {
-      for (const c of t.countries ?? []) countrySet.add(c.toUpperCase());
-    }
-  }
-  for (const e of expenses) {
-    if (e.country) countrySet.add(e.country.toUpperCase());
-  }
-  const countries = countrySet.size;
+  // Active trip: running on TODAY's local calendar day (src/utils/today.ts).
+  // The old check compared `new Date('<start>T12:00:00') <= now`, so a trip
+  // starting today did not exist on Home until noon (found while testing G1:
+  // "Plan your first trip" next to a trip created that morning).
+  const activeTrip = pickActiveTrip(trips, todayStr);
 
-  // Active trip: must have started (startDate <= now) and not ended.
-  // Sorts by startDate DESC so the most-recently-started trip wins.
-  const activeTrip = trips
-    .filter((t) => {
-      const start = new Date(`${t.startDate}T12:00:00`);
-      const ended = t.endDate ? new Date(`${t.endDate}T12:00:00`) < now : false;
-      return !isNaN(start.getTime()) && start <= now && !ended;
-    })
-    .sort((a, b) => (a.startDate < b.startDate ? 1 : -1))[0];
-
-  const activeTripSpent = activeTrip
-    ? expenses
-        .filter((e) => e.tripId === activeTrip.id)
-        .reduce((sum, e) => {
-          const converted = toDisplay(e.amount, e.currency);
-          return sum + (converted != null ? converted : toHomeCurrency(e));
-        }, 0)
-    : 0;
-
-  // Total spent across all trips (for the quick-fact pill). Whole currency
-  // units (no cents) — the user asked to drop the decimals on the home stats.
-  const totalSpent = expenses.reduce((sum, e) => {
-    const converted = toDisplay(e.amount, e.currency);
-    return sum + (converted != null ? converted : toHomeCurrency(e));
-  }, 0);
-
-  // Total travel days: every PAST trip counts its full length, every ACTIVE
-  // trip counts from its start date up to AND INCLUDING today (never its future
-  // end date). UPCOMING trips are excluded entirely — days you have not travelled
-  // yet must not be counted. All day counting is inclusive (start day = day 1).
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const totalDays = trips.reduce((sum, t) => {
-    const status = deriveTripStatus(t);
-    if (status === 'upcoming') return sum;
-    // Past → the end date; active/open-ended → today. Both inclusive.
-    const endKey = status === 'past' && t.endDate ? t.endDate : todayKey;
-    return sum + inclusiveDays(t.startDate, endKey);
-  }, 0);
+  // G2: the "Today" block — today's spend on the active trip against its
+  // daily budget, in the trip's home currency (the budget's currency).
+  const today = useMemo(
+    () => (activeTrip ? summarizeToday(expenses, activeTrip, todayStr) : null),
+    [expenses, activeTrip, todayStr],
+  );
 
   // Quick-add target trip: the ACTIVE trip (started, not ended) — the same
   // selection rule as the Expenses tab. It used to be the trip of the most
@@ -235,8 +196,43 @@ export default function HomeScreen() {
           <ActivityIndicator color={colors.primaryText} style={styles.tripCard} />
         )}
 
-        {/* G1 (N8): the quick-fact pills moved to Stats — Home is about the
-            current trip and today. */}
+        {/* G2: Home revolves around TODAY — what you spent today on the
+            active trip against its daily budget. Bar colours follow the
+            TripCard rule (pattern 36): primary while within budget, muted
+            grey when over; never red. No budget → the figure alone. */}
+        {activeTrip && today && (
+          <View style={styles.todayCard} accessibilityRole="summary">
+            <Text style={styles.todayLabel}>Today · {activeTrip.name}</Text>
+            <View style={styles.todayRow}>
+              <Text style={styles.todayAmount}>{formatMoney(today.spent, activeTrip.homeCurrency)}</Text>
+              {today.budget != null && (
+                <Text style={styles.todayBudget}>
+                  / {formatMoneyWhole(today.budget, activeTrip.homeCurrency)} budget
+                </Text>
+              )}
+            </View>
+            {today.ratio != null && (
+              <View style={styles.todayTrack}>
+                <View
+                  style={[
+                    styles.todayFill,
+                    {
+                      width: `${Math.round(today.ratio * 100)}%`,
+                      backgroundColor: today.over ? colors.mutedForeground : colors.primary,
+                    },
+                  ]}
+                />
+              </View>
+            )}
+            {today.budget != null && (
+              <Text style={styles.todayHint}>
+                {today.over
+                  ? `${formatMoney(today.spent - today.budget, activeTrip.homeCurrency)} over today's budget`
+                  : `${formatMoney(today.budget - today.spent, activeTrip.homeCurrency)} left today`}
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* Expenses today */}
         <View style={styles.sectionHead}>
@@ -346,6 +342,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
+  // G2: "Today" block (above the list of today's expenses).
+  todayCard: {
+    marginBottom: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+    gap: spacing.sm,
+  },
+  todayLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans },
+  todayRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.xs },
+  todayAmount: { color: colors.foreground, fontSize: fontSize['3xl'], fontWeight: '800', fontFamily: fontFamily.heading },
+  todayBudget: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  todayTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.surfaceStrong, overflow: 'hidden' },
+  todayFill: { height: '100%', borderRadius: radius.full },
+  todayHint: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   quickFacts: {
     flexDirection: 'row',
     gap: spacing.sm,

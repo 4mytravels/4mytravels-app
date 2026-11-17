@@ -154,12 +154,16 @@ export default function TripsScreen() {
 }
 
 function Header() {
+  const router = useRouter();
   return (
     <View style={styles.header}>
       <View style={[styles.logoRow, { gap: 12 }]}>
         <AppLogo size={36} />
         <Text style={styles.appTitle}>4 My Travels</Text>
       </View>
+      <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
+        <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
+      </Pressable>
     </View>
   );
 }

@@ -29,7 +29,8 @@ import type { Expense, Trip } from '../../src/types';
 import { TripActionsMenu } from '../../src/components/TripActionsMenu';
 import { formatMoney, formatMoneyWhole, toHomeCurrency } from '../../src/utils/currency';
 import { groupByDaySplitAware } from '../../src/utils/days';
-import { pickActiveTrip, summarizeToday } from '../../src/utils/today';
+import { pickActiveTrip } from '../../src/utils/today';
+import { inclusiveDays } from '../../src/utils/pace';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -121,12 +122,34 @@ export default function HomeScreen() {
   // "Plan your first trip" next to a trip created that morning).
   const activeTrip = pickActiveTrip(trips, todayStr);
 
-  // G2: the "Today" block — today's spend on the active trip against its
-  // daily budget, in the trip's home currency (the budget's currency).
-  const today = useMemo(
-    () => (activeTrip ? summarizeToday(expenses, activeTrip, todayStr) : null),
-    [expenses, activeTrip, todayStr],
-  );
+  // Quick facts (restored on user request 2026-11-17, after G1 moved them to
+  // Stats). Countries: active/past trips + every expense country.
+  const countrySet = new Set<string>();
+  for (const t of trips) {
+    const status = deriveTripStatus(t);
+    if (status === 'active' || status === 'past') {
+      for (const c of t.countries ?? []) countrySet.add(c.toUpperCase());
+    }
+  }
+  for (const e of expenses) {
+    if (e.country) countrySet.add(e.country.toUpperCase());
+  }
+  const countries = countrySet.size;
+
+  // Total spent across all trips, in the display currency (whole units).
+  const totalSpent = expenses.reduce((sum, e) => {
+    const converted = toDisplay(e.amount, e.currency);
+    return sum + (converted != null ? converted : toHomeCurrency(e));
+  }, 0);
+
+  // Travel days: past trips full length, active trips up to and incl. today,
+  // upcoming trips excluded. Inclusive counting (start day = day 1).
+  const totalDays = trips.reduce((sum, t) => {
+    const status = deriveTripStatus(t);
+    if (status === 'upcoming') return sum;
+    const endKey = status === 'past' && t.endDate ? t.endDate : todayStr;
+    return sum + inclusiveDays(t.startDate, endKey);
+  }, 0);
 
   // Quick-add target trip: the ACTIVE trip (started, not ended) — the same
   // selection rule as the Expenses tab. It used to be the trip of the most
@@ -161,6 +184,9 @@ export default function HomeScreen() {
             <AppLogo size={36} />
             <Text style={styles.appTitle}>4 My Travels</Text>
           </View>
+          <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
+            <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
+          </Pressable>
         </View>
 
         {/* Web/PWA notices (storage health + install nudge) under the app title. */}
@@ -196,43 +222,18 @@ export default function HomeScreen() {
           <ActivityIndicator color={colors.primaryText} style={styles.tripCard} />
         )}
 
-        {/* G2: Home revolves around TODAY — what you spent today on the
-            active trip against its daily budget. Bar colours follow the
-            TripCard rule (pattern 36): primary while within budget, muted
-            grey when over; never red. No budget → the figure alone. */}
-        {activeTrip && today && (
-          <View style={styles.todayCard} accessibilityRole="summary">
-            <Text style={styles.todayLabel}>Today · {activeTrip.name}</Text>
-            <View style={styles.todayRow}>
-              <Text style={styles.todayAmount}>{formatMoney(today.spent, activeTrip.homeCurrency)}</Text>
-              {today.budget != null && (
-                <Text style={styles.todayBudget}>
-                  / {formatMoneyWhole(today.budget, activeTrip.homeCurrency)} budget
-                </Text>
-              )}
-            </View>
-            {today.ratio != null && (
-              <View style={styles.todayTrack}>
-                <View
-                  style={[
-                    styles.todayFill,
-                    {
-                      width: `${Math.round(today.ratio * 100)}%`,
-                      backgroundColor: today.over ? colors.mutedForeground : colors.primary,
-                    },
-                  ]}
-                />
-              </View>
-            )}
-            {today.budget != null && (
-              <Text style={styles.todayHint}>
-                {today.over
-                  ? `${formatMoney(today.spent - today.budget, activeTrip.homeCurrency)} over today's budget`
-                  : `${formatMoney(today.budget - today.spent, activeTrip.homeCurrency)} left today`}
-              </Text>
-            )}
-          </View>
-        )}
+        {/* Quick facts — each pill opens the matching Stats screen. */}
+        <View style={styles.quickFacts}>
+          <Pressable onPress={() => router.push('/stats/countries')}>
+            <Pill icon="location-outline" text={`${countries} countries`} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/stats/over-time')}>
+            <Pill icon="calendar-outline" text={`${totalDays} ${totalDays === 1 ? 'day' : 'days'}`} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/statistics')}>
+            <Pill icon="wallet-outline" text={`${formatMoneyWhole(totalSpent, displayCurrency)} spent`} />
+          </Pressable>
+        </View>
 
         {/* Expenses today */}
         <View style={styles.sectionHead}>

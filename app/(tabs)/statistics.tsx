@@ -79,6 +79,9 @@ export default function StatisticsScreen() {
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
+        <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
+          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
+        </Pressable>
       </View>
       <View style={styles.titleWrap}>
         <View style={styles.titleTextWrap}>
@@ -174,6 +177,13 @@ const styles = themedStyles(() => StyleSheet.create({
   cols: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
   col: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: colors.background },
+  settingsIcon: {
+    padding: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMedium,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

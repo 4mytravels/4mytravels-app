@@ -273,7 +273,9 @@ export default function ExpensesScreen() {
           <AppLogo size={36} />
           <Text style={styles.appTitle}>4 My Travels</Text>
         </View>
-
+        <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
+          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
+        </Pressable>
       </View>
 
       {/* Web/PWA notices (storage health + install nudge) under the app title. */}

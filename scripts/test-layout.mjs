@@ -34,14 +34,14 @@ assert(/<AppFrame nav=\{<FloatingNav \/>\}>/.test(layout) && !/^\s*<FloatingNav 
 const stats = readFileSync(join(root, 'app/(tabs)/statistics.tsx'), 'utf8');
 assert(/useWindowDimensions\(\)\.width >= WIDE_BREAKPOINT/.test(stats) && /twoCol \? styles\.cols/.test(stats), 'Statistics switches to two columns from WIDE_BREAKPOINT');
 
-// G1 information architecture: Home · Trips · Stats · Settings.
+// IA (user revert 2026-11-17): nav Home · Trips · Expenses · Stats; Settings = ⚙ top-right.
 const nav = readFileSync(join(root, 'src/components/FloatingNav.tsx'), 'utf8');
 const labels = [...nav.matchAll(/label: '([^']+)'/g)].map((m) => m[1]);
-assert(JSON.stringify(labels) === JSON.stringify(['Home', 'Trips', 'Stats', 'Settings']), `nav labels are Home/Trips/Stats/Settings (got ${labels.join('/')})`);
-assert(/also: \['\/expenses', '\/trip'\]/.test(nav), 'All expenses + trip detail keep the Trips tab lit');
+assert(JSON.stringify(labels) === JSON.stringify(['Home', 'Trips', 'Expenses', 'Stats']), `nav labels are Home/Trips/Expenses/Stats (got ${labels.join('/')})`);
+assert(/also: \['\/trip'\]/.test(nav), 'trip detail keeps the Trips tab lit');
 for (const f of ['home', 'trips', 'expenses', 'statistics']) {
   const src = readFileSync(join(root, `app/(tabs)/${f}.tsx`), 'utf8');
-  assert(!src.includes("router.push('/settings')"), `${f}: no ⚙ header shortcut (Settings is in the nav)`);
+  assert(src.includes("router.push('/settings')"), `${f}: ⚙ header shortcut to Settings`);
   assert(!src.includes("router.push('/trips/new');\n          }") && !/fab[\s\S]{0,400}trips\/new/.test(src), `${f}: the FAB never opens New trip`);
 }
 assert(!stats.includes('Export CSV'), 'Stats has no Export button (export = Settings + trip ⋯ menu)');

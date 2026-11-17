@@ -18,9 +18,9 @@ type NavItem = {
 // trip detail (/trip/<id>). Settings is in the nav; the per-screen ⚙ is gone.
 const NAV_ITEMS: NavItem[] = [
   { name: '/home', label: 'Home', icon: 'home-outline', activeIcon: 'home' },
-  { name: '/trips', label: 'Trips', icon: 'airplane-outline', activeIcon: 'airplane', also: ['/expenses', '/trip'] },
+  { name: '/trips', label: 'Trips', icon: 'airplane-outline', activeIcon: 'airplane', also: ['/trip'] },
+  { name: '/expenses', label: 'Expenses', icon: 'wallet-outline', activeIcon: 'wallet' },
   { name: '/statistics', label: 'Stats', icon: 'bar-chart-outline', activeIcon: 'bar-chart', also: ['/stats'] },
-  { name: '/settings', label: 'Settings', icon: 'settings-outline', activeIcon: 'settings' },
 ];
 
 export function FloatingNav() {

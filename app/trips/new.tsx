@@ -37,7 +37,7 @@ import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
 import { colors, fontFamily, radius, fontSize, spacing } from '../../src/theme/theme';
-import { Button } from '../../src/components/ui';
+import { Button, IconButton } from '../../src/components/ui';
 import type { Trip } from '../../src/types';
 
 // bytesToBase64 lives in src/utils/image.ts (shared with the expense form).
@@ -306,6 +306,15 @@ export default function NewTripScreen() {
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const [homeTouched, setHomeTouched] = useState(false);
+  // M9: editing opens "More details" when any optional field carries data, and
+  // "Advanced" when this trip overrides the Settings home currency.
+  const [detailsOpen, setDetailsOpen] = useState(
+    !!existing &&
+      ((existing.countries?.length ?? 0) > 0 || existing.dailyBudget > 0 || !!(existing as { coverThumb?: unknown; coverBytes?: unknown }).coverThumb || !!(existing as { coverBytes?: unknown }).coverBytes || existing.defaultCurrency !== 'EUR'),
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(
+    !!existing && existing.homeCurrency !== (useSettingsStore.getState().defaultHomeCurrency || 'EUR'),
+  );
   useEffect(() => { void hydrateSettings(); }, [hydrateSettings]);
   useEffect(() => {
     if (!isEdit && !homeTouched && defaultHomeCurrency) setHomeCurrency(defaultHomeCurrency);
@@ -412,12 +421,14 @@ export default function NewTripScreen() {
         <View style={styles.handle} />
         <View style={styles.header}>
           <Text style={styles.title}>{isEdit ? 'Edit trip' : 'New trip'}</Text>
-          <Pressable
-            style={styles.closeButton}
+          <IconButton
+            icon="close"
+            label="Close"
+            variant="plain"
+            size={24}
+            color={colors.mutedForeground}
             onPress={() => (Platform.OS === 'web' ? router.replace('/trips') : router.back())}
-          >
-            <Ionicons name="close" size={24} color={colors.mutedForeground} />
-          </Pressable>
+          />
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -440,14 +451,34 @@ export default function NewTripScreen() {
               />
             </Field>
           </View>
-          <View style={styles.row}>
-            <Field label="Home currency" style={{ flex: 1, marginRight: spacing.md }}>
-              <CurrencyPicker value={homeCurrency} onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }} />
-            </Field>
-            <Field label="Default currency" style={{ flex: 1 }}>
-              <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
-            </Field>
-          </View>
+          {/* M9: step 1 is name + dates only. Everything else is optional and
+              sits behind "More details"; the home currency comes from
+              Settings and lives under "Advanced". */}
+          <Pressable
+            style={styles.detailsToggle}
+            onPress={() => setDetailsOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: detailsOpen }}
+          >
+            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Fewer details' : 'More details'}</Text>
+            <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
+            {!detailsOpen && (
+              <Text style={styles.detailsSummary} numberOfLines={1}>
+                {[
+                  defaultCurrency,
+                  countries.length ? `${countries.length} ${countries.length === 1 ? 'country' : 'countries'}` : null,
+                  parseFloat(dailyBudget) > 0 ? `${dailyBudget}/day` : 'No budget',
+                  coverPreview ? 'Photo' : null,
+                ].filter(Boolean).join(' · ')}
+              </Text>
+            )}
+          </Pressable>
+
+          {detailsOpen && (<>
+          <Field label="Local currency">
+            <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
+            <Text style={styles.coverHint}>Pre-filled when you add an expense.</Text>
+          </Field>
           <Field label="Countries visited">
             <CountryMultiPicker selected={countries} onChange={setCountries} />
           </Field>
@@ -495,6 +526,28 @@ export default function NewTripScreen() {
             )}
             <Text style={styles.coverHint}>Stored encrypted locally. GPS/EXIF location is never saved.</Text>
           </Field>
+
+          <Pressable
+            style={styles.detailsToggle}
+            onPress={() => setAdvancedOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: advancedOpen }}
+          >
+            <Text style={styles.detailsToggleText}>Advanced</Text>
+            <Ionicons name={advancedOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
+            {!advancedOpen && (
+              <Text style={styles.detailsSummary} numberOfLines={1}>Home currency {homeCurrency}</Text>
+            )}
+          </Pressable>
+          {advancedOpen && (
+            <Field label="Home currency">
+              <CurrencyPicker value={homeCurrency} onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }} />
+              <Text style={styles.coverHint}>
+                Totals for this trip are converted to this currency. The default comes from Settings ({defaultHomeCurrency || 'EUR'}).
+              </Text>
+            </Field>
+          )}
+          </>)}
         </ScrollView>
 
         <View style={styles.footer}>
@@ -545,7 +598,9 @@ const styles = StyleSheet.create({
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.white20, alignSelf: 'center', marginBottom: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
-  closeButton: { padding: spacing.xs },
+  detailsToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44, marginBottom: spacing.md },
+  detailsToggleText: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  detailsSummary: { flex: 1, textAlign: 'right', color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   scroll: { paddingBottom: spacing.lg },
   row: { flexDirection: 'row' },
   label: { fontSize: fontSize.md, color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans, marginBottom: spacing.sm },

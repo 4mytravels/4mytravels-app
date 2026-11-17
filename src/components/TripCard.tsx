@@ -32,6 +32,7 @@ export function TripCard({
   expenses,
   onPress,
   onManage,
+  pressLabel,
   style,
 }: {
   trip: Trip;
@@ -39,6 +40,8 @@ export function TripCard({
   /** Omit both handlers to render a static card (trip detail screen). */
   onPress?: () => void;
   onManage?: () => void;
+  /** Screen-reader label for onPress when it is not "open trip" (M9: trip detail → change photo). */
+  pressLabel?: string;
   style?: object;
 }) {
   const status = deriveTripStatus(trip);
@@ -191,7 +194,7 @@ export function TripCard({
   }
 
   return (
-    <PressableScale onPress={onPress} onLongPress={onManage} style={style}>
+    <PressableScale onPress={onPress} onLongPress={onManage} label={pressLabel ?? `Open ${trip.name}`} style={style}>
       {body}
     </PressableScale>
   );
@@ -258,11 +261,13 @@ function PressableScale({
   children,
   onPress,
   onLongPress,
+  label,
   style,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
   onLongPress?: () => void;
+  label?: string;
   style?: object;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -278,6 +283,8 @@ function PressableScale({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={320}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       onPressIn={() => to(0.98)}
       onPressOut={() => to(1)}
       style={style}

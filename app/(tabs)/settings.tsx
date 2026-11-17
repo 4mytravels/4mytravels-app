@@ -413,7 +413,7 @@ export default function SettingsScreen() {
               </Pressable>
             </View>
             <Text style={[styles.note, { marginTop: spacing.md, marginBottom: 0 }]}>
-              Used as the home currency for new trips. You can still change it per trip in the trip editor.
+              Used as the home currency for new trips. A single trip can override it under Advanced in the trip editor.
             </Text>
           </Card>
         </View>

@@ -20,6 +20,7 @@ import { formatMoney, toHomeCurrency } from '../../src/utils/currency';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
+import { changeTripCover } from '../../src/utils/tripActions';
 
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -132,7 +133,14 @@ export default function TripDetailScreen() {
             {/* SAME card as the Trips tab (src/components/TripCard.tsx) —
                 photo + name + dates + day bar + verdict, figures below it. */}
             <View style={styles.heroCard}>
-              <TripCard trip={trip} expenses={expenses} />
+              {/* M9: a tap on the cover opens the photo picker directly
+                  (2 taps instead of ⋯ → Change photo → picker). */}
+              <TripCard
+                trip={trip}
+                expenses={expenses}
+                onPress={() => { void changeTripCover(trip); }}
+                pressLabel="Change trip photo"
+              />
             </View>
 
             <View style={styles.sectionHead}>

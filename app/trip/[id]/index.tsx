@@ -210,6 +210,7 @@ export default function TripDetailScreen() {
             homeCurrency={trip.homeCurrency}
             splitShare={item.splitShare}
             background={colors.primary12}
+            dense
             onPress={openExpenseForEdit}
           />
         )}

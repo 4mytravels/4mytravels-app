@@ -258,6 +258,7 @@ export default function HomeScreen() {
               homeCurrency={displayCurrency}
               splitShare={entry.splitShare}
               background={colors.primary12}
+              dense
               onPress={openTodayExpense}
             />
           ))

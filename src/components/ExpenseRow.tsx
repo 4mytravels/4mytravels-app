@@ -49,10 +49,11 @@ function ExpenseRowImpl({
    */
   fullBleed = true,
   /**
-   * Tighter vertical rhythm for a long log list (the Expenses tab). Only the
+   * Tighter vertical rhythm, used by EVERY expense list (Expenses tab, Home
+   * today list, trip detail) so all three look identical. Only the
    * padding changes — plus the separator collapses to ONE hairline between two
    * adjacent rows (top border off) instead of two stacked 1px rules, which
-   * otherwise read as a 2px line. The trip detail / home rows stay roomy.
+   * otherwise read as a 2px line.
    */
   dense = false,
 }: {

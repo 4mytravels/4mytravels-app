@@ -130,6 +130,19 @@ function applyKeyAndScheme(keyHex) {
   db.exec('SELECT count(*) FROM sqlite_schema;');
 }
 
+// M7 — mirror of src/db/storagePolicy.ts (keep in sync). secure_delete is
+// per connection (set on EVERY open); auto_vacuum lives in the file header and
+// needs one VACUUM to take effect on an existing database. Returns true when
+// that one-time migration ran.
+function applyStoragePolicy() {
+  db.exec('PRAGMA secure_delete = ON;');
+  const mode = Number(db.selectValue('PRAGMA auto_vacuum;'));
+  if (mode === 2) return false;
+  db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
+  db.exec('VACUUM;');
+  return true;
+}
+
 function exportDbBytes() {
   const u8 = sqlite3Api.capi.sqlite3_js_db_export(db.pointer);
   return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
@@ -205,6 +218,7 @@ async function opOpen(msg) {
   if (vfsMode === 'sahpool') {
     db = new sqlite3Api.oo1.DB({ filename: DB_FILENAME, flags: 'ct', vfs: SAHPOOL_VFS });
     applyKeyAndScheme(msg.keyHex);
+    applyStoragePolicy();
     reply(msg.id, { ok: true, vfs: vfsMode, isNew: false });
     return;
   }
@@ -229,6 +243,7 @@ async function opOpen(msg) {
     }
     postMessage({ log: 'snapshot restore failed, starting fresh: ' + e.message });
   }
+  if (applyStoragePolicy() && seeded) await flushIdbSnapshot();
   reply(msg.id, { ok: true, vfs: vfsMode, isNew: !seeded });
 }
 
@@ -248,7 +263,9 @@ function opQuery(msg) {
 
 async function opCompact() {
   if (!db) throw new Error('db not open');
-  db.exec('VACUUM;');
+  // M7: secure_delete already zeroed the deleted content; hand the free pages
+  // back without a full rewrite.
+  db.exec('PRAGMA incremental_vacuum;');
   await flushIdbSnapshot();
 }
 
@@ -290,6 +307,7 @@ async function opImportDb(msg) {
     await sqlite3Api.opfs.importDb(DB_FILENAME, u8);
     db = new sqlite3Api.oo1.DB({ filename: DB_FILENAME, flags: 'ct', vfs: SAHPOOL_VFS });
     applyKeyAndScheme(msg.keyHex);
+    applyStoragePolicy();
     return {};
   }
 
@@ -306,6 +324,7 @@ async function opImportDb(msg) {
     BigInt(u8.byteLength), BigInt(u8.byteLength), 1 | 2,
   );
   if (rc !== 0) { wasm.dealloc(pData); throw new Error('import failed, rc=' + rc); }
+  applyStoragePolicy();
   await flushIdbSnapshot();
   return {};
 }

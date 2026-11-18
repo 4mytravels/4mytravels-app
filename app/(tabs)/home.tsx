@@ -9,10 +9,11 @@ import {
 } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { SettingsGear } from '../../src/components/HeaderIconButton';
 import { AppLogo } from '../../src/components/AppLogo';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles, tabularNums } from '../../src/theme/theme';
 import { Pill, Button } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
 import { ExpenseRow } from '../../src/components/ExpenseRow';
@@ -181,12 +182,10 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            <AppLogo size={36} />
+            <AppLogo size={30} />
             <Text style={styles.appTitle}>4 My Travels</Text>
           </View>
-          <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
-            <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-          </Pressable>
+          <SettingsGear />
         </View>
 
         {/* Web/PWA notices (storage health + install nudge) under the app title. */}
@@ -257,7 +256,6 @@ export default function HomeScreen() {
               expense={entry.expense}
               homeCurrency={displayCurrency}
               splitShare={entry.splitShare}
-              background={colors.primary12}
               dense
               onPress={openTodayExpense}
             />
@@ -327,17 +325,10 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  settingsIcon: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceMedium,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   // Spacing wrapper for the shared TripCard (the card owns its own layout).
   tripCard: {
@@ -356,7 +347,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   todayLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans },
   todayRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: spacing.xs },
-  todayAmount: { color: colors.foreground, fontSize: fontSize['3xl'], fontWeight: '800', fontFamily: fontFamily.heading },
+  todayAmount: { color: colors.foreground, fontSize: fontSize['3xl'], fontWeight: '800', fontFamily: fontFamily.heading, ...tabularNums },
   todayBudget: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
   todayTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.surfaceStrong, overflow: 'hidden' },
   todayFill: { height: '100%', borderRadius: radius.full },
@@ -368,7 +359,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   sectionTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
-  sectionTotal: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },
+  sectionTotal: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans, ...tabularNums },
   emptyCard: {
     backgroundColor: colors.card,
     borderRadius: radius.xl,

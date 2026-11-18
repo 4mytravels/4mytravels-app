@@ -10,7 +10,7 @@ import { useExpenses, useExpenseStore } from '../../../src/store/expenseStore';
 import { expensesOfTrip } from '../../../src/utils/expenseList';
 import type { Expense } from '../../../src/types';
 import { groupByDaySplitAware } from '../../../src/utils/days';
-import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles, tabularNums } from '../../../src/theme/theme';
 import { SectionTitle, Button, IconCircle } from '../../../src/components/ui';
 import { TripCard } from '../../../src/components/TripCard';
 import { TripActionsMenu } from '../../../src/components/TripActionsMenu';
@@ -209,7 +209,6 @@ export default function TripDetailScreen() {
             expense={item.expense}
             homeCurrency={trip.homeCurrency}
             splitShare={item.splitShare}
-            background={colors.primary12}
             dense
             onPress={openExpenseForEdit}
           />
@@ -312,6 +311,7 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingLeft: spacing.xl,
   },
   dayTotal: {
+    ...tabularNums,
     color: colors.foreground,
     fontSize: fontSize.md,
     fontWeight: '700',

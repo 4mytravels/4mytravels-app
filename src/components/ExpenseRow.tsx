@@ -13,7 +13,7 @@ import { IconCircle } from './ui';
 import { categoryIcon } from '../utils/categoryIcons';
 import { countryName } from '../data/countries';
 import { formatMoney, toHomeCurrency } from '../utils/currency';
-import { colors, fontFamily, fontSize, spacing, themedStyles } from '../theme/theme';
+import { colors, fontFamily, fontSize, spacing, tabularNums, themedStyles } from '../theme/theme';
 import type { Expense } from '../types';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -36,24 +36,11 @@ function ExpenseRowImpl({
   homeCurrency,
   onPress,
   splitShare = null,
-  /** Row background (e.g. the selected/tinted state). Defaults to transparent. */
-  background = 'transparent',
-  bordered = true,
-  /**
-   * Cancel the screen's horizontal padding so the row (and its tint/border)
-   * spans edge to edge. Both hosts — the Expenses SectionList and the trip
-   * detail SectionList — already carry `paddingHorizontal: spacing.xl` on their
-   * content container, so without this the row's own padding was DOUBLED and
-   * every row started a couple of centimetres in from the edge. The row then
-   * applies its own `spacing.xl`, landing the text exactly on the screen edge.
-   */
-  fullBleed = true,
+  /** Card fill. Defaults to the shared card surface. */
+  background,
   /**
    * Tighter vertical rhythm, used by EVERY expense list (Expenses tab, Home
-   * today list, trip detail) so all three look identical. Only the
-   * padding changes — plus the separator collapses to ONE hairline between two
-   * adjacent rows (top border off) instead of two stacked 1px rules, which
-   * otherwise read as a 2px line.
+   * today list, trip detail) so all three look identical.
    */
   dense = false,
 }: {
@@ -64,9 +51,6 @@ function ExpenseRowImpl({
   /** Set when this row is one day of a multi-day split: shows the share. */
   splitShare?: number | null;
   background?: string;
-  /** Draw the separator above AND below the row. */
-  bordered?: boolean;
-  fullBleed?: boolean;
   dense?: boolean;
 }) {
   const isSplitDay = splitShare != null;
@@ -78,21 +62,18 @@ function ExpenseRowImpl({
   const displayCurrency = expense.currency;
   const homeAmount = isSplitDay ? (splitShare as number) : toHomeCurrency(expense);
 
-  // Subtitle: "Land - card" / "Land - cash". Never the category: the title
+  // Subtitle: "Land · card" / "Land · cash". Never the category: the title
   // already falls back to the category, so repeating it told the user nothing.
   const detail = isSplitDay
     ? `${shortDateRange(expense.multiDaySplit!.splitStart, expense.multiDaySplit!.splitEnd)} · ${payLabel(expense.paymentMethod)}`
-    : `${expense.country ? countryName(expense.country) : '—'} - ${payLabel(expense.paymentMethod)}`;
+    : `${expense.country ? countryName(expense.country) : '—'} · ${payLabel(expense.paymentMethod)}`;
 
   return (
     <Pressable
       style={[
         styles.row,
-        fullBleed && styles.rowFullBleed,
         dense && styles.rowDense,
-        { backgroundColor: background },
-        bordered && styles.border,
-        bordered && dense && styles.borderDense,
+        background != null && { backgroundColor: background },
       ]}
       onPress={() => onPress(expense)}
     >
@@ -118,40 +99,28 @@ function payLabel(m: string): string {
 }
 
 const styles = themedStyles(() => StyleSheet.create({
+  // Each expense is its own card (design 2026-11): 14px radius, 1px border,
+  // 8px gap between cards (4px above + 4px below). The host list already pads
+  // its content by spacing.xl, so the card sits on the screen inset — no
+  // full-bleed negative margin and no separator rules any more.
   row: {
     flexDirection: 'row',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
     alignItems: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    marginVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
   },
-  // Pulls the row back out over the host container's own horizontal padding, so
-  // the tint and the bottom border reach both screen edges while the text stays
-  // on the same padding as every other screen element.
-  rowFullBleed: {
-    marginHorizontal: -spacing.xl,
-  },
-  // 1px on both edges, not 2px — at 2px the rule read as a heavy block around
-  // every entry. The day header no longer draws its own rule, so this is the
-  // only separator above a group.
-  border: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  // Dense (Expenses tab): 8px top/bottom instead of 16px, and the 40px icon
-  // circle no longer floats in a 72px box. Two adjacent rows used to show TWO
-  // 1px rules (borderBottom + borderTop) = a 2px line; in dense mode the top
-  // rule is dropped so the pair collapses to one hairline. The first row of a
-  // day then relies on the day header above it, which is exactly the intent.
-  rowDense: { paddingVertical: spacing.sm },
-  borderDense: { borderTopWidth: 0 },
+  rowDense: { paddingVertical: spacing.md },
   details: { flex: 1, marginLeft: spacing.md },
   rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
   metaText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: 2 },
   priceCol: { alignItems: 'flex-end' },
-  priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
-  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
+  priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans, ...tabularNums },
+  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2, ...tabularNums },
 }));
 
 // Q6: memoised — a list re-render (search keystroke, focus reload with equal

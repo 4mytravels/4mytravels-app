@@ -12,7 +12,7 @@ import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
 import { countryName } from '../../src/data/countries';
-import { colors, fontFamily, fontSize, radius, spacing, navShadow, themedStyles } from '../../src/theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, navShadow, themedStyles, tabularNums } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 import { TimeChart } from '../../src/components/TimeChart';
 
@@ -268,7 +268,7 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingHorizontal: spacing.md,
     alignItems: 'center',
   },
-  statValue: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '800', fontFamily: fontFamily.heading },
+  statValue: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '800', fontFamily: fontFamily.heading, ...tabularNums },
   statLabel: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: 2 },
   summaryCard: {
     flexDirection: 'row',
@@ -389,5 +389,5 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: 6,
   },
   barFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primary },
-  topValue: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700', minWidth: 78, textAlign: 'right' },
+  topValue: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700', minWidth: 78, textAlign: 'right', ...tabularNums },
 }));

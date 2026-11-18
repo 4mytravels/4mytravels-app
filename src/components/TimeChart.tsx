@@ -23,7 +23,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatMoney } from '../utils/currency';
 import type { TimePeriod, TimeRow } from '../utils/timeStats';
-import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles, tabularNums } from '../theme/theme';
 
 const AXIS_W = 38;
 const TOOLTIP_W = 96;
@@ -301,5 +301,5 @@ const styles = themedStyles(() => StyleSheet.create({
     minWidth: 96,
   },
   tooltipLabel: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, textAlign: 'center' },
-  tooltipValue: { color: colors.foreground, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans },
+  tooltipValue: { color: colors.foreground, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans, ...tabularNums },
 }));

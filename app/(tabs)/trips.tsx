@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { AppLogo } from '../../src/components/AppLogo';
+import { SettingsGear } from '../../src/components/HeaderIconButton';
 import { TripCard } from '../../src/components/TripCard';
 import { TripActionsMenu } from '../../src/components/TripActionsMenu';
 import { useNavigation, useRouter } from 'expo-router';
@@ -54,7 +54,6 @@ export default function TripsScreen() {
   if (!hydrated) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header />
         <View style={styles.empty}>
           <ActivityIndicator color={colors.primaryText} accessibilityLabel="Loading trips" />
         </View>
@@ -65,7 +64,6 @@ export default function TripsScreen() {
   if (trips.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header />
         <WebNotices />
         <View style={styles.empty}>
           <Ionicons name="airplane-outline" size={48} color={colors.mutedForeground} />
@@ -87,7 +85,6 @@ export default function TripsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header />
       <WebNotices />
       <FlatList
         data={visible}
@@ -100,7 +97,10 @@ export default function TripsScreen() {
           <>
             <View style={styles.titleRow}>
               <Text style={styles.screenTitle}>Trips</Text>
-              <Button label="New trip" icon="add" size="sm" onPress={() => router.push('/trips/new')} />
+              <View style={styles.titleActions}>
+                <Button label="New trip" icon="add" size="sm" onPress={() => router.push('/trips/new')} />
+                <SettingsGear />
+              </View>
             </View>
             <ScrollView
               horizontal
@@ -143,33 +143,10 @@ export default function TripsScreen() {
   );
 }
 
-function Header() {
-  const router = useRouter();
-  return (
-    <View style={styles.header}>
-      <View style={[styles.logoRow, { gap: 12 }]}>
-        <AppLogo size={36} />
-        <Text style={styles.appTitle}>4 My Travels</Text>
-      </View>
-      <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
-        <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-      </Pressable>
-    </View>
-  );
-}
 
 const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  settingsIcon: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceMedium,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
+  titleActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   list: { paddingHorizontal: spacing.xl, paddingBottom: 106 },
   // Spacing between the shared TripCards in this list (the card itself is
   // src/components/TripCard.tsx, shared with the trip detail screen).

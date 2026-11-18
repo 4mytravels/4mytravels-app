@@ -12,7 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { AppLogo } from '../../src/components/AppLogo';
+import { SettingsGear } from '../../src/components/HeaderIconButton';
 import { useTripStore } from '../../src/store/tripStore';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { colors, fontFamily, radius, fontSize, spacing, donutPalette, themedStyles } from '../../src/theme/theme';
@@ -71,15 +71,6 @@ export default function StatisticsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.logoRow}>
-          <AppLogo size={36} />
-          <Text style={styles.appTitle}>4 My Travels</Text>
-        </View>
-        <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
-          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
-      </View>
       <View style={styles.titleWrap}>
         <View style={styles.titleTextWrap}>
           <Text style={styles.screenTitle}>Stats</Text>
@@ -91,6 +82,7 @@ export default function StatisticsScreen() {
           onToggle={useTripFilterStore.getState().toggle}
           onClear={useTripFilterStore.getState().clear}
         />
+        <SettingsGear />
       </View>
 
       {/* Web/PWA notices (storage health + install nudge) under the screen title. */}
@@ -163,29 +155,12 @@ const styles = themedStyles(() => StyleSheet.create({
   cols: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
   col: { flex: 1, minWidth: 0 },
   container: { flex: 1, backgroundColor: colors.background },
-  settingsIcon: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceMedium,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   titleWrap: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
   },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },

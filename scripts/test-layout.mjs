@@ -41,7 +41,7 @@ assert(JSON.stringify(labels) === JSON.stringify(['Home', 'Trips', 'Expenses', '
 assert(/also: \['\/trip'\]/.test(nav), 'trip detail keeps the Trips tab lit');
 for (const f of ['home', 'trips', 'expenses', 'statistics']) {
   const src = readFileSync(join(root, `app/(tabs)/${f}.tsx`), 'utf8');
-  assert(src.includes("router.push('/settings')"), `${f}: ⚙ header shortcut to Settings`);
+  assert(src.includes('<SettingsGear />'), `${f}: ⚙ header shortcut to Settings (shared SettingsGear)`);
   assert(!src.includes("router.push('/trips/new');\n          }") && !/fab[\s\S]{0,400}trips\/new/.test(src), `${f}: the FAB never opens New trip`);
 }
 assert(!stats.includes('Export CSV'), 'Stats has no Export button (export = Settings + trip ⋯ menu)');

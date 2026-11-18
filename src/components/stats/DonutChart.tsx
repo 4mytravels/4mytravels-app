@@ -3,7 +3,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Path, G } from 'react-native-svg';
-import { colors, fontFamily, fontSize, themedStyles } from '../../theme/theme';
+import { colors, fontFamily, fontSize, themedStyles, tabularNums } from '../../theme/theme';
 import { formatMoney } from '../../utils/currency';
 import { categoryIcon } from '../../utils/categoryIcons';
 import { donutSlicePath, labelPos, type DonutSlice } from '../../utils/stats/breakdown';
@@ -107,5 +107,5 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: 'transparent',
   },
   donutCenterLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginBottom: 2 },
-  donutCenterValue: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '800', fontFamily: fontFamily.heading },
+  donutCenterValue: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '800', fontFamily: fontFamily.heading, ...tabularNums },
 }));

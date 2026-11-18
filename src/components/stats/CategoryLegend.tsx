@@ -2,7 +2,7 @@
 // into indented sub-rows (moved out of statistics.tsx).
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, fontSize, spacing, themedStyles } from '../../theme/theme';
+import { colors, fontFamily, fontSize, spacing, themedStyles, tabularNums } from '../../theme/theme';
 import { formatMoney } from '../../utils/currency';
 import { categoryIcon } from '../../utils/categoryIcons';
 import { MAX_SLICES, type DonutSlice } from '../../utils/stats/breakdown';
@@ -70,9 +70,9 @@ const styles = themedStyles(() => StyleSheet.create({
     minWidth: 32,
     textAlign: 'right',
   },
-  legendValue: { color: colors.foreground, fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans, minWidth: 72, textAlign: 'right' },
+  legendValue: { color: colors.foreground, fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans, minWidth: 72, textAlign: 'right', ...tabularNums },
   legendSubRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3, paddingLeft: 32, gap: 6 },
   legendSubLabel: { flex: 1, color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginLeft: spacing.xs },
   legendSubPct: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, minWidth: 28, textAlign: 'right' },
-  legendSubValue: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, minWidth: 60, textAlign: 'right' },
+  legendSubValue: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, minWidth: 60, textAlign: 'right', ...tabularNums },
 }));

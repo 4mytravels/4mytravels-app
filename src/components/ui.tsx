@@ -25,6 +25,7 @@ import {
   touchTarget,
   focusShadow,
   themedStyles,
+  tabularNums,
 } from '../theme/theme';
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../types';
 import { categoryIcon } from '../utils/categoryIcons';
@@ -375,6 +376,7 @@ export const textVariants: Record<TextVariant, TextStyle> = themedStyles((): Rec
   section: { fontFamily: fontFamily.heading, fontSize: typeScale.bodyLg, fontWeight: '700', color: colors.foreground },
   body: { fontFamily: fontFamily.sans, fontSize: typeScale.body, color: colors.foreground },
   amount: {
+    ...tabularNums,
     fontFamily: fontFamily.sans,
     fontSize: typeScale.bodyLg,
     fontWeight: '700',
@@ -445,6 +447,7 @@ export function StatBox({
           fontSize: fontSize.lg,
           fontWeight: '700',
           fontFamily: fontFamily.sans,
+          ...tabularNums,
         }}
       >
         {value}

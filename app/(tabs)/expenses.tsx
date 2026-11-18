@@ -11,14 +11,14 @@ import {
 } from 'react-native';
 import { showStatus } from '../../src/utils/statusDialog';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { AppLogo } from '../../src/components/AppLogo';
+import { SettingsGear, HeaderIconButton } from '../../src/components/HeaderIconButton';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { loadExpense } from '../../src/db/expenseRepo';
 import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
-import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles } from '../../src/theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles, tabularNums } from '../../src/theme/theme';
 import { IconCircle, Button, StatBox } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
@@ -267,20 +267,6 @@ export default function ExpensesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.logoRow}>
-          <AppLogo size={36} />
-          <Text style={styles.appTitle}>4 My Travels</Text>
-        </View>
-        <Pressable style={styles.settingsIcon} accessibilityLabel="Settings" onPress={() => router.push('/settings')}>
-          <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
-        </Pressable>
-      </View>
-
-      {/* Web/PWA notices (storage health + install nudge) under the app title. */}
-      <WebNotices />
-
       {/* Title row: filter label under the title (same as Statistics), then the
           search + trip-filter actions. */}
       <View style={styles.titleRow}>
@@ -289,15 +275,17 @@ export default function ExpensesScreen() {
         </View>
         <View style={styles.titleActions}>
           {!searchOpen && (
-            <Pressable onPress={() => setSearchOpen(true)} style={styles.iconButtonLarge}>
-              <Ionicons name="search-outline" size={28} color={colors.mutedForeground} />
-            </Pressable>
+            <HeaderIconButton icon="search-outline" accessibilityLabel="Search" onPress={() => setSearchOpen(true)} />
           )}
           {/* M10: the shared TripFilter. Expenses keeps its OWN selection,
               seeded with the current trip on open (pattern 45). */}
           <TripFilter trips={trips} selected={activeTripIds} onToggle={toggleTrip} onClear={() => setTripFilter([])} />
+          <SettingsGear />
         </View>
       </View>
+
+      {/* Web/PWA notices (storage health + install nudge) under the screen title. */}
+      <WebNotices />
 
       {/* Stats: daily avg / budget only for a single trip (a budget is per trip);
           the total always applies to whatever is currently shown. */}
@@ -379,7 +367,6 @@ export default function ExpensesScreen() {
             expense={item.expense}
             homeCurrency={homeCurrency}
             splitShare={item.splitShare}
-            background={colors.primary12}
             dense
             // Full row (incl. the receipt) before the form opens — see
             // openExpenseForEdit. Stable callback so memo(ExpenseRow) holds (Q6).
@@ -463,16 +450,6 @@ export default function ExpensesScreen() {
 
 const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -483,20 +460,13 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   addButtonText: { color: colors.primaryForeground, fontWeight: '700', fontSize: fontSize.md },
-  settingsIcon: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceMedium,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   tripSelectorText: { flex: 1, color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
   },
   titleTextWrap: { flex: 1 },
@@ -530,20 +500,8 @@ const styles = themedStyles(() => StyleSheet.create({
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   titleActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  iconButton: {
-    padding: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceMedium,
-  },
-  iconButtonLarge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surfaceMedium,
-    justifyContent: 'center',
     alignItems: 'center',
+    gap: spacing.xs,
   },
   tripSelector: {
     flexDirection: 'row',
@@ -634,13 +592,14 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingLeft: spacing.xl,
   },
   dayTotal: {
+    ...tabularNums,
     color: colors.foreground,
     fontSize: fontSize.md,
     fontWeight: '700',
     fontFamily: fontFamily.sans,
     paddingRight: spacing.xl,
   },
-  totalText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.md },
+  totalText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.md, ...tabularNums },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',

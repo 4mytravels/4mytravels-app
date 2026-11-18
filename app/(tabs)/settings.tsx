@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { AppLogo } from '../../src/components/AppLogo';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
 import * as Sharing from 'expo-sharing';
@@ -344,10 +343,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.logoRow}>
-          <AppLogo size={36} />
-          <Text style={styles.appTitle}>4 My Travels</Text>
-        </View>
+        <Text style={styles.screenTitle}>Settings</Text>
       </View>
       {/* Web/PWA notices (storage health + install nudge) under the app title. */}
       <WebNotices />
@@ -671,8 +667,7 @@ export default function SettingsScreen() {
 const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.lg },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  appTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading },
+  screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   // Padding-bottom lives on the ScrollView's contentContainer (insets.bottom +
   // 106, sized to the floating nav) — never here as well.
   body: { flex: 1, paddingHorizontal: spacing.xl },

@@ -14,7 +14,7 @@ import { TripFilter } from '../../src/components/TripFilter';
 import { useTripFilterStore } from '../../src/store/tripFilterStore';
 import { categoryIcon } from '../../src/utils/categoryIcons';
 import { formatMoney } from '../../src/utils/currency';
-import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../../src/theme/theme';
+import { colors, fontFamily, fontSize, radius, spacing, themedStyles, tabularNums } from '../../src/theme/theme';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
 
 const PRESETS: PeriodPreset[] = ['all', 'ytd', 'last12', 'custom'];
@@ -441,6 +441,6 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   barFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primary },
   rowRight: { alignItems: 'flex-end', minWidth: 78 },
-  rowAmount: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700' },
+  rowAmount: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, fontWeight: '700', ...tabularNums },
   rowPct: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans },
 }));

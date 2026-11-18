@@ -330,6 +330,9 @@ export const iconSize = {
 
 export const touchTarget = 44;
 
+/** Spread into every money/amount text style so digits line up in columns. */
+export const tabularNums = { fontVariant: ['tabular-nums'] as ('tabular-nums')[] };
+
 // Shadow tokens (refined design)
 export const fabShadow = {
   shadowColor: '#6366F1',

@@ -9,7 +9,7 @@ import { useId, useMemo, useRef } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow, themedStyles, IMAGE_SCRIM } from '../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow, themedStyles, IMAGE_SCRIM, tabularNums } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
 import { computeTripStats, hasDailyBudget } from '../utils/tripStats';
@@ -390,6 +390,6 @@ const styles = themedStyles(() => StyleSheet.create({
   stat: { flex: 1 },
   statRight: { flex: 1, alignItems: 'flex-end' },
   statLabel: { fontFamily: fontFamily.sans, fontSize: 12, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
-  statValue: { fontFamily: fontFamily.sans, fontSize: fontSize.lg, fontWeight: '700', color: colors.foreground },
-  statOf: { fontFamily: fontFamily.sans, fontSize: fontSize.base, fontWeight: '500', color: colors.mutedForeground },
+  statValue: { fontFamily: fontFamily.sans, fontSize: fontSize.lg, fontWeight: '700', color: colors.foreground, ...tabularNums },
+  statOf: { fontFamily: fontFamily.sans, fontSize: fontSize.base, fontWeight: '500', color: colors.mutedForeground, ...tabularNums },
 }));

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../theme/theme';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles, tabularNums } from '../../theme/theme';
 import { formatMoney } from '../../utils/currency';
 import { paymentSplit } from '../../utils/stats/breakdown';
 
@@ -121,7 +121,7 @@ const styles = themedStyles(() => StyleSheet.create({
   barContent: { flex: 1 },
   barLine1: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   barLabel: { color: colors.foreground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  barValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  barValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, ...tabularNums },
   barTrack: { height: 10, backgroundColor: colors.surfaceStrong, borderRadius: 5, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 5 },
   splitBarContainer: { marginTop: spacing.sm },
@@ -131,5 +131,5 @@ const styles = themedStyles(() => StyleSheet.create({
   splitBarFillLeft: { height: '100%', borderTopLeftRadius: radius.full, borderBottomLeftRadius: radius.full },
   splitBarFillRight: { height: '100%', borderTopRightRadius: radius.full, borderBottomRightRadius: radius.full },
   splitBarValues: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
-  splitBarValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  splitBarValue: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, ...tabularNums },
 }));

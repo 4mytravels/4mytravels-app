@@ -276,7 +276,7 @@ export default function ExpensesScreen() {
           search + trip-filter actions. */}
       <View style={styles.titleRow}>
         <View style={styles.titleTextWrap}>
-          <Text style={styles.screenTitle}>Expenses</Text>
+          <Text style={styles.screenTitle} numberOfLines={1}>Expenses</Text>
         </View>
         <View style={styles.titleActions}>
           {!searchOpen && (
@@ -284,7 +284,7 @@ export default function ExpensesScreen() {
           )}
           {/* M10: the shared TripFilter. Expenses keeps its OWN selection,
               seeded with the current trip on open (pattern 45). */}
-          <TripFilter trips={trips} selected={activeTripIds} onToggle={toggleTrip} onClear={() => setTripFilter([])} />
+          <TripFilter trips={trips} selected={activeTripIds} onToggle={toggleTrip} onClear={() => setTripFilter([])} style={styles.tripChip} />
           <SettingsGear />
         </View>
       </View>
@@ -567,7 +567,9 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
   },
-  titleTextWrap: { flex: 1 },
+  // Title never wraps; a long trip name in the chip truncates instead.
+  titleTextWrap: { flexShrink: 0, marginRight: spacing.sm },
+  tripChip: { flexShrink: 1, minWidth: 0 },
   // Which trips the list below is showing ("All trips" / one name / "3 trips").
   // Same treatment as the Statistics tab.
   filterLabel: {
@@ -597,6 +599,9 @@ const styles = themedStyles(() => StyleSheet.create({
   pickerDoneWrap: { marginTop: spacing.lg },
   screenTitle: { color: colors.foreground, fontSize: fontSize['4xl'], fontWeight: '800', fontFamily: fontFamily.heading },
   titleActions: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'flex-end',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,

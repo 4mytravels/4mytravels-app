@@ -2,7 +2,7 @@
 // (dark theme, large amount input, currency pill, category grid, save button).
 // Builds a full Expense with a Frankfurter rate snapshot at entry time (§2.2).
 // Supports edit mode (initialExpense) and a manual rate override (acceptance §2.5).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -42,7 +42,11 @@ import {
 } from '../types';
 import { allocateSplit } from '../utils/pace';
 import { localDateTimeISO, localNoon, localTimeHM } from '../utils/days';
-import { CategoryChip, Button, IconButton } from './ui';
+import { Button } from './ui';
+import { categoryColor, categoryIcon } from '../utils/categoryIcons';
+import { categoriesByUsage, visibleCategories } from '../utils/categoryOrder';
+import { formatMoney } from '../utils/currency';
+import { useExpenseStore } from '../store/expenseStore';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { getRate } from '../services/frankfurter';
 import { useSettingsStore, getManualRate } from '../store/settingsStore';
@@ -112,18 +116,6 @@ export function ExpenseForm({
   // evenly across [date … endDate] in budget statistics (§2.2 allocateSplit).
   const [endDate, setEndDate] = useState(initialExpense?.multiDaySplit?.splitEnd ?? '');
   const [splitOpen, setSplitOpen] = useState(false);
-  // M8: progressive disclosure. Trip, amount/currency, category and Save are
-  // always visible; payment, note, country, receipt, date and split sit behind
-  // "More details". Editing opens it when any of those fields carries data.
-  const [detailsOpen, setDetailsOpen] = useState(
-    () =>
-      !!initialExpense &&
-      (!!initialExpense.notes ||
-        !!initialExpense.receiptPhoto ||
-        !!initialExpense.multiDaySplit ||
-        !!initialExpense.country ||
-        initialExpense.paymentMethod !== 'card'),
-  );
   // Native date pickers (calendar icon buttons). 'date' = start date,
   // 'end' = multi-day split end date.
   // The picker's initial Date is pinned in STATE at open time: passing a fresh
@@ -263,6 +255,9 @@ export function ExpenseForm({
   };
   const [rate, setRate] = useState<number | null>(initialExpense ? initialExpense.rateToHome : null);
   const [rateError, setRateError] = useState<string | null>(null);
+  // Where the shown rate came from — rendered in the hero's rate line so the
+  // user can tell an exact manual rate from a stale cached one.
+  const [rateSource, setRateSource] = useState<string | null>(null);
 
   // Rate resolution order (instant-only at open, per user request):
   //   1. Manual override (Settings) — exact, no waiting.
@@ -281,11 +276,13 @@ export function ExpenseForm({
     if (manualOverride != null) {
       setRate(manualOverride);
       setRateError(null);
+      setRateSource('manual');
       return;
     }
     if (currency === homeCurrency) {
       setRate(1);
       setRateError(null);
+      setRateSource(null);
       return;
     }
     let cancelled = false;
@@ -298,13 +295,16 @@ export function ExpenseForm({
         if (!cancelled && quoteRate && quoteRate > 0) {
           setRate(1 / quoteRate);
           setRateError(null);
+          setRateSource(cache?.date ? `ECB, cached ${cache.date}` : 'ECB, cached');
           return;
         }
         const lastKnown = await useSettingsStore.getState().getLastKnownRate(currency, homeCurrency);
         if (!cancelled && lastKnown && lastKnown > 0) {
           setRate(lastKnown);
           setRateError(null);
+          setRateSource('last used');
         } else if (!cancelled) {
+          setRateSource(null);
           setRate(null);
           setRateError('No cached rate yet');
         }
@@ -420,340 +420,357 @@ export function ExpenseForm({
 
   const canSave = Number.isFinite(amountNum) && amountNum > 0;
 
+  // Category grid: most used first (counted from the shared expense store),
+  // 11 tiles + "More…". The selected category always occupies a visible slot.
+  const allExpenses = useExpenseStore((s) => s.expenses);
+  const orderedCategories = useMemo(
+    () => categoriesByUsage(allExpenses, EXPENSE_CATEGORIES),
+    [allExpenses],
+  );
+  const gridCategories = visibleCategories(orderedCategories, category, 11);
+  const [moreCatsOpen, setMoreCatsOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+
+  // Hero rate line. Rate shown as "<currency> per 1 <home>" (how ECB quotes it).
+  const ratePerHome = rate && rate > 0 ? 1 / rate : null;
+  const rateLabel =
+    currency === homeCurrency
+      ? null
+      : ratePerHome != null
+        ? `rate ${ratePerHome.toLocaleString('en-US', { maximumFractionDigits: ratePerHome >= 100 ? 2 : 4 })}${
+            isEdit ? ' (locked to entry date)' : rateSource ? ` (${rateSource})` : ''
+          }`
+        : null;
+  const heroLine =
+    amountNum > 0 && homeAmount != null && currency !== homeCurrency
+      ? [`≈ ${formatMoney(homeAmount, homeCurrency)}`, rateLabel].filter(Boolean).join(' · ')
+      : rateLabel
+        ? `1 ${homeCurrency} = ${ratePerHome!.toLocaleString('en-US', { maximumFractionDigits: 4 })} ${currency}${
+            isEdit ? ' (locked to entry date)' : rateSource ? ` (${rateSource})` : ''
+          }`
+        : null;
+
+  // Sticky footer: lifted above the keyboard on Android + web (iOS uses the
+  // KeyboardAvoidingView padding). Insets come from the SafeAreaView edges.
+  const footerKeyboardPad = Platform.OS !== 'ios' && keyboardHeight > 0 ? { marginBottom: keyboardHeight } : null;
+  const pickersOpen = showCurrencies || countryOpen || moreCatsOpen;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{isEdit ? 'Edit expense' : 'Add expense'}</Text>
-            <Text style={styles.subtitle}>Quickly log a travel spend.</Text>
-            {/* Q15: show which trip this expense is filed under — formTrip is
-                picked implicitly (filter or active trip) and was invisible. */}
-            {tripName ? (
-              <View style={styles.tripChip} accessibilityLabel={`Trip: ${tripName}`}>
-                <Ionicons name="airplane-outline" size={14} color={colors.primaryText} />
-                <Text style={styles.tripChipText} numberOfLines={1}>{tripName}</Text>
-              </View>
-            ) : null}
+          {/* side slots of equal width keep the title optically centred */}
+          <View style={styles.headerSide} />
+          <Text style={styles.title} numberOfLines={1}>{isEdit ? 'Edit expense' : 'Add expense'}</Text>
+          <View style={[styles.headerSide, { alignItems: 'flex-end' }]}>
+            {onClose && (
+              <Pressable style={styles.closeButton} onPress={onClose} accessibilityLabel="Close" hitSlop={8}>
+                <Ionicons name="close" size={24} color={colors.mutedForeground} />
+              </Pressable>
+            )}
           </View>
-          {onClose && (
-            <Pressable style={styles.closeButton} onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.mutedForeground} />
-            </Pressable>
-          )}
         </View>
-
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          {/* Amount + currency */}
-          <View style={styles.section}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Amount</Text>
-              <Text style={styles.label}>Currency</Text>
-            </View>
-            <View style={styles.amountRow}>
-              <TextInput
-                style={styles.amountInput}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={colors.white35}
-              />
-              <Pressable style={styles.currencyButton} onPress={() => setShowCurrencies(true)}>
-                <Text style={styles.currencyText}>
-                  {currencyInfo(currency).flag ? currencyInfo(currency).flag + ' ' : ''}
-                  {currency}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
-              </Pressable>
-              {/* M8: receipt shortcut — open form → 📷 → pick = 3 taps. */}
-              <IconButton
-                icon={receiptPreview ? 'checkmark-circle' : 'camera-outline'}
-                label={receiptPreview ? 'Receipt attached — replace' : 'Add receipt photo'}
-                color={receiptPreview ? colors.success : undefined}
-                onPress={() => { void pickReceipt(); }}
-              />
-            </View>
-            {/* Currency selection. PickerSheet keeps the backdrop and the sheet
-                as SIBLINGS, so a tap on the search field can never bubble into
-                "close" — the old nested-Pressable version made the field
-                unfocusable on the PWA. */}
-            <PickerSheet
-              visible={showCurrencies}
-              onClose={() => setShowCurrencies(false)}
-              title="Select currency"
-              query={currencyQuery}
-              onQueryChange={(v) => { setCurrencyQuery(v); }}
-              queryPlaceholder="Search currency"
-              maxListHeight={380}
-            >
-              {SHARED_CURRENCIES.filter(
-                (c) =>
-                  c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
-                  c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
-              ).map((c) => (
-                <PickerRow
-                  key={c.code}
-                  label={`${c.flag} ${c.code} — ${c.name}`}
-                  active={currency === c.code}
-                  onPress={() => {
-                    setCurrency(c.code);
-                    setShowCurrencies(false);
-                    setCurrencyQuery('');
-                  }}
-                />
-              ))}
-            </PickerSheet>
-            {/* rate line */}
-            <View style={styles.rateRow}>
-              {isEdit ? (
-                <Text style={styles.rateLocked}>Rate locked to entry date — not changed on edit.</Text>
-              ) : rateError ? (
-                <Text style={styles.rateError}>{rateError}</Text>
-              ) : rate != null ? (
-                <Text style={styles.rateText}>
-                  ≈ {homeAmount?.toLocaleString('en-US', { maximumFractionDigits: 2 })} {homeCurrency}
-                </Text>
-              ) : null}
-            </View>
-            {/* global rate override indicator (set in Settings) */}
-            {manualOverride != null && (
-              <Text style={styles.overrideNote}>
-                Using your manual {currency}→{homeCurrency} rate from Settings
-              </Text>
-            )}
+        {/* Q15: which trip this expense is filed under. */}
+        {tripName ? (
+          <View style={styles.tripChip} accessibilityLabel={`Trip: ${tripName}`}>
+            <Ionicons name="airplane-outline" size={14} color={colors.primaryText} />
+            <Text style={styles.tripChipText} numberOfLines={1}>{tripName}</Text>
           </View>
+        ) : null}
 
-          {/* Category grid — 3 per row (last row holds the remainder) */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Category</Text>
-            <View style={styles.categoryGrid}>
-              {chunk(
-                [
-                  ...EXPENSE_CATEGORIES.filter((c) => c !== 'Accommodation'),
-                  'Accommodation' as ExpenseCategory, // last → gets the wider final cell
-                ],
-                3,
-              ).map((row, ri) => (
-                <View key={ri} style={styles.categoryRow}>
-                  {row.map((cat) => (
-                    <CategoryChip
-                      key={cat}
-                      category={cat}
-                      selected={category === cat}
-                      onSelect={pickCategory}
-                      stretch
-                    />
-                  ))}
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* M8: everything below is optional detail. */}
-          <Pressable
-            style={styles.detailsToggle}
-            onPress={() => setDetailsOpen((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: detailsOpen }}
-          >
-            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Fewer details' : 'More details'}</Text>
-            <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
-            {!detailsOpen && (
-              <Text style={styles.detailsSummary} numberOfLines={1}>
-                {[paymentMethod === 'card' ? 'Card' : 'Cash', country || null, date, time].filter(Boolean).join(' · ')}
-              </Text>
-            )}
-          </Pressable>
-
-          {detailsOpen ? (<>
-          {/* Payment method */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Payment</Text>
-            <View style={styles.payRow}>
-              {PAYMENT_METHODS.map((m) => (
-                <Pressable
-                  key={m}
-                  style={[styles.payChip, paymentMethod === m && styles.payChipActive]}
-                  onPress={() => setPaymentMethod(m)}
-                >
-                  <Ionicons
-                    name={m === 'card' ? 'card-outline' : 'cash-outline'}
-                    size={18}
-                    color={paymentMethod === m ? colors.primaryForeground : colors.mutedForeground}
-                  />
-                  <Text style={[styles.payText, paymentMethod === m && styles.payTextActive]}>
-                    {m === 'card' ? 'Card' : 'Cash'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Note */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Note</Text>
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Amount hero */}
+          <View style={styles.hero}>
             <TextInput
-              style={styles.noteInput}
-              value={note}
-              onChangeText={setNote}
-              placeholder="What was it for?"
-              placeholderTextColor={colors.mutedForeground}
+              style={styles.amountHero}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              placeholder="0"
+              placeholderTextColor={colors.white35}
+              autoFocus={!isEdit}
+              textAlign="center"
+              accessibilityLabel="Amount"
             />
-          </View>
-
-          {/* Country — same full-width input style as the other fields */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Country</Text>
-            <Pressable style={styles.input} onPress={() => setCountryOpen(true)}>
-              <Text style={[styles.pickerValue, !country && { color: colors.mutedForeground }]} numberOfLines={1}>
-                {country ? countryLabel(country) : 'Select a country'}
+            <Pressable style={styles.currencyChip} onPress={() => setShowCurrencies(true)} accessibilityLabel="Currency">
+              <Text style={styles.currencyText}>
+                {currencyInfo(currency).flag ? currencyInfo(currency).flag + ' ' : ''}
+                {currency}
               </Text>
-              {country ? (
-                <Pressable
-                  hitSlop={8}
-                  onPress={() => setCountry('')}
-                  style={{ paddingHorizontal: spacing.xs }}
-                >
-                  <Ionicons name="close-circle" size={20} color={colors.destructive} />
-                </Pressable>
-              ) : null}
-              <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
+              <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
             </Pressable>
+            <View style={styles.rateRow}>
+              {heroLine ? (
+                <Text style={styles.rateText} numberOfLines={2}>{heroLine}</Text>
+              ) : rateError && !isEdit ? (
+                <Text style={styles.rateText}>{rateError}</Text>
+              ) : null}
+            </View>
           </View>
+          {/* Currency selection (search). Siblings backdrop/sheet — pattern 23. */}
+          <PickerSheet
+            visible={showCurrencies}
+            onClose={() => setShowCurrencies(false)}
+            title="Select currency"
+            query={currencyQuery}
+            onQueryChange={(v) => { setCurrencyQuery(v); }}
+            queryPlaceholder="Search currency"
+            maxListHeight={380}
+          >
+            {SHARED_CURRENCIES.filter(
+              (c) =>
+                c.code.toLowerCase().includes(currencyQuery.toLowerCase()) ||
+                c.name.toLowerCase().includes(currencyQuery.toLowerCase()),
+            ).map((c) => (
+              <PickerRow
+                key={c.code}
+                label={`${c.flag} ${c.code} — ${c.name}`}
+                active={currency === c.code}
+                onPress={() => {
+                  setCurrency(c.code);
+                  setShowCurrencies(false);
+                  setCurrencyQuery('');
+                }}
+              />
+            ))}
+          </PickerSheet>
 
-          {/* Receipt photo */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Receipt photo (optional)</Text>
-            {receiptPreview ? (
-              <View style={styles.receiptRow}>
-                {/* tap thumbnail → fullscreen viewer */}
-                <Pressable onPress={() => setReceiptViewerOpen(true)}>
-                  <Image source={{ uri: receiptPreview }} style={styles.receiptThumb} />
-                </Pressable>
-                <View style={styles.receiptActions}>
-                  <Button label="Replace" icon="refresh-outline" size="sm" variant="secondary" onPress={pickReceipt} />
-                  <Button
-                    label="Remove"
-                    icon="trash-outline"
-                    size="sm"
-                    variant="destructive"
-                    onPress={() => { setReceiptBytes(null); setReceiptPreview(null); }}
-                  />
-                </View>
+          {/* Category grid — 4 columns, 11 tiles + More… */}
+          <View style={styles.catGrid}>
+            {chunk<ExpenseCategory | 'more'>([...gridCategories, 'more'], 4).map((row, ri) => (
+              <View key={ri} style={styles.catRow}>
+                {row.map((cat) => {
+                  const isMore = cat === 'more';
+                  const sel = !isMore && category === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      style={[styles.catTile, sel && styles.catTileActive]}
+                      onPress={() => (isMore ? setMoreCatsOpen(true) : pickCategory(cat))}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: sel }}
+                      accessibilityLabel={isMore ? 'More categories' : cat}
+                    >
+                      <View style={[styles.catCircle, { backgroundColor: isMore ? colors.surfaceStrong : categoryColor(cat) }]}>
+                        <Ionicons
+                          name={isMore ? 'ellipsis-horizontal' : categoryIcon(cat)}
+                          size={16}
+                          color={isMore ? colors.mutedForeground : '#FFFFFF'}
+                        />
+                      </View>
+                      <Text style={[styles.catLabel, sel && styles.catLabelActive]} numberOfLines={1}>
+                        {isMore ? 'More…' : cat}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                {/* keep tile widths equal on a short last row */}
+                {Array.from({ length: 4 - row.length }).map((_, i) => (
+                  <View key={`pad${i}`} style={[styles.catTile, { borderColor: 'transparent' }]} />
+                ))}
               </View>
-            ) : (
-              <Pressable style={styles.receiptAdd} onPress={pickReceipt}>
-                <Ionicons name="camera-outline" size={20} color={colors.mutedForeground} />
-                <Text style={styles.receiptAddText}>Add receipt photo</Text>
-              </Pressable>
-            )}
-            <Text style={styles.receiptHint}>Stored encrypted locally. GPS/EXIF location is never saved.</Text>
+            ))}
           </View>
+          <PickerSheet visible={moreCatsOpen} onClose={() => setMoreCatsOpen(false)} title="All categories">
+            {orderedCategories.map((c) => (
+              <PickerRow
+                key={c}
+                label={c}
+                icon={categoryIcon(c)}
+                active={category === c}
+                onPress={() => {
+                  pickCategory(c);
+                  setMoreCatsOpen(false);
+                }}
+              />
+            ))}
+          </PickerSheet>
 
-          {/* Date + time (+ optional multi-day split) */}
-          <View style={styles.section}>
-            <Text style={styles.label}>Date & time</Text>
-            <View style={styles.dateTimeRow}>
-              {/* Date field: type directly, or tap the calendar icon for the picker.
-                  The input is NOT wrapped in the Pressable so typing isn't hijacked.
-                  On web the icon is WebDateButton (browser-native date picker); the
-                  visible text field is rendered on BOTH platforms — web must show it
-                  too, otherwise only a bare calendar icon appears. */}
-              <View style={styles.dateContainer}>
+          {/* Compact detail rows */}
+          <View style={styles.list}>
+            {/* Payment — tap toggles card/cash */}
+            <Pressable
+              style={styles.listRow}
+              onPress={() => setPaymentMethod((m) => (m === 'card' ? 'cash' : 'card'))}
+              accessibilityRole="button"
+              accessibilityLabel={`Payment: ${paymentMethod}. Tap to switch.`}
+            >
+              <Text style={styles.listLabel}>Payment</Text>
+              <View style={styles.listValueWrap}>
+                <Ionicons name={paymentMethod === 'card' ? 'card-outline' : 'cash-outline'} size={16} color={colors.foreground} />
+                <Text style={styles.listValue}>{paymentMethod === 'card' ? 'Card' : 'Cash'}</Text>
+                <Ionicons name="swap-horizontal" size={16} color={colors.mutedForeground} />
+              </View>
+            </Pressable>
+
+            {/* Country */}
+            <Pressable style={styles.listRow} onPress={() => setCountryOpen(true)} accessibilityRole="button">
+              <Text style={styles.listLabel}>Country</Text>
+              <View style={styles.listValueWrap}>
+                <Text style={[styles.listValue, !country && styles.listPlaceholder]} numberOfLines={1}>
+                  {country ? countryLabel(country) : 'Select'}
+                </Text>
+                {country ? (
+                  <Pressable hitSlop={8} onPress={() => setCountry('')} accessibilityLabel="Clear country">
+                    <Ionicons name="close-circle" size={16} color={colors.mutedForeground} />
+                  </Pressable>
+                ) : null}
+                <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+              </View>
+            </Pressable>
+
+            {/* Date + time. Text fields stay real inputs on BOTH platforms
+                (pattern 13b); the calendar trigger sits beside them. */}
+            <View style={styles.listRow}>
+              <Text style={styles.listLabel}>Date</Text>
+              <View style={styles.listValueWrap}>
                 <TextInput
-                  style={styles.dateInput}
+                  style={[styles.inlineInput, { width: 104 }]}
                   value={date}
                   onChangeText={setDate}
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={colors.mutedForeground}
+                  accessibilityLabel="Date"
+                />
+                <TextInput
+                  style={[styles.inlineInput, { width: 52 }]}
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="HH:MM"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="numbers-and-punctuation"
+                  accessibilityLabel="Time"
                 />
                 {Platform.OS === 'web' ? (
                   <WebDateButton value={date} onChange={setDate} />
                 ) : (
-                  <Pressable hitSlop={8} onPress={() => openDatePicker('date')}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={20}
-                      color={colors.mutedForeground}
-                      style={{ paddingHorizontal: spacing.lg }}
-                    />
+                  <Pressable hitSlop={8} onPress={() => openDatePicker('date')} accessibilityLabel="Pick date">
+                    <Ionicons name="calendar-outline" size={18} color={colors.mutedForeground} />
                   </Pressable>
                 )}
               </View>
-              <TextInput
-                style={styles.timeInput}
-                value={time}
-                onChangeText={setTime}
-                placeholder="HH:MM"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="numbers-and-punctuation"
-              />
             </View>
 
-            {/* Multi-day split: spread this amount across a date range */}
+            {/* Multi-day split */}
             {splitOpen || endDate ? (
-              <View style={{ marginTop: spacing.md }}>
-                <Text style={styles.label}>Spread until (end date)</Text>
-                <View style={styles.dateContainer}>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={endDate}
-                    onChangeText={setEndDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                  {Platform.OS === 'web' ? (
-                    <WebDateButton value={endDate} onChange={setEndDate} />
-                  ) : (
-                    <Pressable hitSlop={8} onPress={() => openDatePicker('end')}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={20}
-                        color={colors.mutedForeground}
-                        style={{ paddingHorizontal: spacing.lg }}
-                      />
+              <View style={[styles.listRow, styles.listRowColumn]}>
+                <View style={styles.listRowInner}>
+                  <Text style={styles.listLabel}>Spread until</Text>
+                  <View style={styles.listValueWrap}>
+                    <TextInput
+                      style={[styles.inlineInput, { width: 104 }]}
+                      value={endDate}
+                      onChangeText={setEndDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.mutedForeground}
+                      accessibilityLabel="Spread until"
+                    />
+                    {Platform.OS === 'web' ? (
+                      <WebDateButton value={endDate} onChange={setEndDate} />
+                    ) : (
+                      <Pressable hitSlop={8} onPress={() => openDatePicker('end')} accessibilityLabel="Pick end date">
+                        <Ionicons name="calendar-outline" size={18} color={colors.mutedForeground} />
+                      </Pressable>
+                    )}
+                    <Pressable hitSlop={8} onPress={() => { setEndDate(''); setSplitOpen(false); }} accessibilityLabel="Remove split">
+                      <Ionicons name="close-circle" size={16} color={colors.destructive} />
                     </Pressable>
-                  )}
+                  </View>
                 </View>
-                {(() => {
-                  if (!endDate || endDate <= date) return null;
-                  const days = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(date).getTime()) / 86_400_000) + 1);
+                {endDate && endDate > date ? (() => {
                   const perDay = allocateSplit(amountNum, date, endDate);
                   return (
                     <Text style={styles.splitHint}>
                       {perDay.days} days · ≈ {perDay.perDay.toFixed(2)} per day{perDay.finalDayExtra ? ` (+${perDay.finalDayExtra.toFixed(2)} last day)` : ''}
                     </Text>
                   );
-                })()}
-                <Pressable onPress={() => { setEndDate(''); setSplitOpen(false); }} hitSlop={8}>
-                  <Text style={{ color: colors.destructive, fontSize: fontSize.sm, marginTop: spacing.sm, fontFamily: fontFamily.sans }}>
-                    Remove split (single day)
-                  </Text>
-                </Pressable>
+                })() : null}
               </View>
             ) : (
-              <Pressable onPress={() => setSplitOpen(true)} hitSlop={8}>
-                <Text style={styles.splitHint}>+ Spread over multiple days</Text>
+              <Pressable style={styles.listRow} onPress={() => setSplitOpen(true)} accessibilityRole="button">
+                <Text style={styles.listLabel}>Spread over days</Text>
+                <View style={styles.listValueWrap}>
+                  <Text style={[styles.listValue, styles.listPlaceholder]}>Off</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+                </View>
               </Pressable>
             )}
-          </View>
-          </>) : null}
-        </ScrollView>
 
-        <View style={styles.footer}>
-          <Button label={isEdit ? 'Save changes' : 'Save expense'} disabled={!canSave} onPress={save} />
-          {isEdit && onDelete && initialExpense && !showCurrencies && !countryOpen && (
-            <View style={{ marginTop: spacing.md }}>
+            {/* Note — collapsed shows the value, tap expands an inline field */}
+            {noteOpen ? (
+              <View style={[styles.listRow, styles.listRowColumn]}>
+                <Text style={styles.listLabel}>Note</Text>
+                <TextInput
+                  style={styles.noteInput}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="What was it for?"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoFocus
+                  onBlur={() => setNoteOpen(false)}
+                  accessibilityLabel="Note"
+                />
+              </View>
+            ) : (
+              <Pressable style={styles.listRow} onPress={() => setNoteOpen(true)} accessibilityRole="button">
+                <Text style={styles.listLabel}>Note</Text>
+                <View style={styles.listValueWrap}>
+                  <Text style={[styles.listValue, !note && styles.listPlaceholder]} numberOfLines={1}>
+                    {note || 'Add'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+                </View>
+              </Pressable>
+            )}
+
+            {/* Receipt */}
+            <View style={[styles.listRow, styles.listRowLast]}>
+              <Text style={styles.listLabel}>Receipt</Text>
+              {receiptPreview ? (
+                <View style={styles.listValueWrap}>
+                  <Pressable onPress={() => setReceiptViewerOpen(true)} accessibilityLabel="View receipt">
+                    <Image source={{ uri: receiptPreview }} style={styles.receiptThumb} />
+                  </Pressable>
+                  <Pressable hitSlop={8} onPress={() => { void pickReceipt(); }} accessibilityLabel="Replace receipt">
+                    <Ionicons name="refresh-outline" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => { setReceiptBytes(null); setReceiptPreview(null); }}
+                    accessibilityLabel="Remove receipt"
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.destructive} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable style={styles.listValueWrap} onPress={() => { void pickReceipt(); }} accessibilityRole="button">
+                  <Ionicons name="camera-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.listValue, styles.listPlaceholder]}>Add photo</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              )}
+            </View>
+          </View>
+          <Text style={styles.receiptHint}>Receipts are stored encrypted on this device. GPS/EXIF is never saved.</Text>
+
+          {/* Edit: Delete lives in the scroll area so the sticky footer stays one
+              button high; hidden while a picker is open (pattern 12). */}
+          {isEdit && onDelete && initialExpense && !pickersOpen && (
+            <View style={{ marginTop: spacing.lg }}>
               <Button
                 label="Delete expense"
                 icon="trash-outline"
                 variant="ghost"
                 onPress={async () => {
-                  // Q7: Alert.alert with buttons is a no-op on web — Delete did
-                  // nothing on the PWA. confirmDestructive renders on both.
+                  // Alert.alert is a no-op on web — confirmDestructive renders on both.
                   const ok = await confirmDestructive({
                     title: 'Delete expense',
                     message: `${initialExpense.notes || initialExpense.category} — ${initialExpense.amount} ${initialExpense.currency}?`,
@@ -763,6 +780,25 @@ export function ExpenseForm({
               />
             </View>
           )}
+        </ScrollView>
+
+        {/* Sticky save — always above the keyboard and the bottom inset. */}
+        <View style={[styles.footer, footerKeyboardPad]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.saveButton,
+              !canSave && styles.saveButtonDisabled,
+              pressed && canSave && { opacity: 0.85 },
+            ]}
+            disabled={!canSave}
+            onPress={save}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canSave }}
+          >
+            <Text style={[styles.saveText, !canSave && styles.saveTextDisabled]}>
+              {isEdit ? 'Save changes' : 'Save expense'}
+            </Text>
+          </Pressable>
         </View>
       </View>
 
@@ -847,10 +883,89 @@ const styles = themedStyles(() => StyleSheet.create({
     alignSelf: 'center',
     marginBottom: spacing.lg,
   },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
-  title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  headerSide: { width: 40 },
+  title: { flex: 1, textAlign: 'center', fontSize: fontSize.xl, fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
+  hero: { alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.xl },
+  amountHero: {
+    alignSelf: 'stretch',
+    minWidth: 0,
+    textAlign: 'center',
+    fontSize: 44,
+    fontWeight: '700',
+    color: colors.foreground,
+    fontFamily: fontFamily.heading,
+    paddingVertical: spacing.sm,
+    fontVariant: ['tabular-nums'],
+  },
+  currencyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+  },
+  catGrid: { gap: spacing.sm, marginBottom: spacing.xl },
+  catRow: { flexDirection: 'row', gap: spacing.sm },
+  catTile: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  catTileActive: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
+  catCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  catLabel: { fontSize: fontSize.xs, color: colors.mutedForeground, fontFamily: fontFamily.sans, maxWidth: '100%' },
+  catLabelActive: { color: colors.foreground, fontWeight: '600' },
+  list: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  listRowColumn: { flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center' },
+  listRowInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  listRowLast: {},
+  listLabel: { fontSize: fontSize.md, color: colors.mutedForeground, fontFamily: fontFamily.sans, flexShrink: 0 },
+  listValueWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1, minWidth: 0, justifyContent: 'flex-end' },
+  listValue: { fontSize: fontSize.md, color: colors.foreground, fontFamily: fontFamily.sans, flexShrink: 1, textAlign: 'right' },
+  listPlaceholder: { color: colors.mutedForeground },
+  inlineInput: {
+    minWidth: 0,
+    flexShrink: 0,
+    paddingVertical: 4,
+    fontSize: fontSize.md,
+    color: colors.foreground,
+    fontFamily: fontFamily.sans,
+    textAlign: 'right',
+  },
+  saveButton: {
+    minHeight: 52,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySolid,
+    borderWidth: 1,
+    borderColor: colors.primarySolid,
+  },
+  saveButtonDisabled: { backgroundColor: 'transparent', borderColor: colors.primaryBorder },
+  saveText: { color: colors.primaryForeground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.sans },
+  saveTextDisabled: { color: colors.mutedForeground },
   subtitle: { fontSize: fontSize.md, color: colors.mutedForeground, fontFamily: fontFamily.sans, marginTop: 2 },
-  tripChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.primary12, borderWidth: 1, borderColor: colors.primaryBorder, maxWidth: '100%' },
+  tripChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', gap: 6, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.primary12, borderWidth: 1, borderColor: colors.primaryBorder, maxWidth: '100%' },
   tripChipText: { fontSize: fontSize.sm, color: colors.primaryText, fontFamily: fontFamily.sans, fontWeight: '600', flexShrink: 1 },
   closeButton: { padding: spacing.xs },
   scroll: { paddingBottom: spacing.lg },
@@ -906,17 +1021,8 @@ const styles = themedStyles(() => StyleSheet.create({
   currencyText: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
   currencyScroll: { marginTop: spacing.md },
   currencyRow: { gap: spacing.sm, paddingRight: spacing.lg },
-  currencyChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  currencyChipActive: { backgroundColor: colors.primarySolid, borderColor: colors.primary },
-  currencyChipText: { color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans },
   rateRow: { marginTop: spacing.sm, minHeight: 20 },
-  rateText: { color: colors.success, fontSize: fontSize.md, fontFamily: fontFamily.sans },
+  rateText: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, textAlign: 'center' },
   rateLocked: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   rateError: { color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   overrideRow: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },

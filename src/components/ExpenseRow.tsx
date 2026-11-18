@@ -23,7 +23,7 @@ import { colors, fontFamily, fontSize, spacing, tabularNums, themedStyles } from
 import type { Expense } from '../types';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const ICON = 40;
+const ICON = 36;
 const BLOCK_RADIUS = 16;
 
 export type BlockPosition = 'only' | 'first' | 'middle' | 'last';
@@ -111,12 +111,11 @@ function ExpenseRowImpl({
         backgroundColor={categoryColor(expense.category)}
       />
       <View style={styles.details}>
-        <Text style={styles.category} numberOfLines={1}>{expense.category}</Text>
         <Text style={styles.rowTitle} numberOfLines={1}>{title}</Text>
         <View style={styles.metaRow}>
           <Ionicons
             name={expense.paymentMethod === 'card' ? 'card-outline' : 'cash-outline'}
-            size={13}
+            size={12}
             color={colors.mutedForeground}
           />
           <Text style={styles.metaText} numberOfLines={1}>{metaParts.join(' · ')}</Text>
@@ -139,7 +138,7 @@ const styles = themedStyles(() => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginVertical: 4,
     borderRadius: 14,
@@ -175,12 +174,12 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   details: { flex: 1, marginLeft: spacing.md, minWidth: 0 },
   category: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
-  rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans, marginTop: 1 },
+  rowTitle: { color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans, marginTop: 1 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   metaText: { flexShrink: 1, color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
   priceCol: { alignItems: 'flex-end', marginLeft: spacing.sm },
-  priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans, ...tabularNums },
-  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2, ...tabularNums },
+  priceMain: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
+  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
 }));
 
 // Q6: memoised — a list re-render no longer re-renders every unchanged row.

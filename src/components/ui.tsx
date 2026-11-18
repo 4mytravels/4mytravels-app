@@ -306,6 +306,7 @@ export function FilterChip({
         maxFontSizeMultiplier={1.3}
         numberOfLines={1}
         style={{
+          flexShrink: 1,
           color: selected ? colors.foreground : colors.mutedForeground,
           fontSize: fontSize.md,
           fontWeight: selected ? '600' : '500',

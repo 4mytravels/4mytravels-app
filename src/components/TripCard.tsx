@@ -7,12 +7,12 @@
 // BELOW the photo, so the image never runs behind the numbers.
 import { useId, useMemo, useRef } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextShadow, themedStyles, IMAGE_SCRIM, tabularNums } from '../theme/theme';
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
-import { computeTripStats, hasDailyBudget } from '../utils/tripStats';
+import { computeTripStats, hasDailyBudget, todayBudgetLeft, budgetRingRatio } from '../utils/tripStats';
 import { dayProgressRatio, formatDayProgress } from '../utils/pace';
 import { formatDateRange } from '../utils/days';
 import { formatMoney, formatMoneyWhole } from '../utils/currency';
@@ -35,6 +35,9 @@ export function TripCard({
   onManage,
   pressLabel,
   style,
+  variant = 'default',
+  todaySpent,
+  todayCurrency,
 }: {
   trip: Trip;
   expenses: Expense[];
@@ -44,7 +47,14 @@ export function TripCard({
   /** Screen-reader label for onPress when it is not "open trip" (M9: trip detail → change photo). */
   pressLabel?: string;
   style?: object;
+  /** 'home' = journey card: stronger scrim, budget ring, "Today … left" footer. */
+  variant?: 'default' | 'home';
+  /** Home only: the SAME split-aware today total as Home's "Expenses today" header. */
+  todaySpent?: number;
+  /** Currency of todaySpent (Home's display currency). */
+  todayCurrency?: string;
 }) {
+  const isHome = variant === 'home';
   const status = deriveTripStatus(trip);
   const badge = BADGE[status];
   // SAME helper as every other screen → the numbers can never disagree.
@@ -73,6 +83,13 @@ export function TripCard({
   // (user request: "maak de blauwe lijn doorzichtig zodat de afbeelding er
   // achter beter zichtbaar wordt"). A solid fill hid the photo underneath.
   const fill = status === 'past' ? colors.mutedBar : colors.primaryBar;
+
+  // Home journey card: ring = share of the FULL trip budget spent; two colours
+  // only (pattern 36) — primary on track, muted otherwise, never red.
+  const ringRatio = isHome && showBudgetStatus ? budgetRingRatio(stats.totalSpend, budget) : null;
+  const ringColor = overBudget || paceOver || status === 'past' ? colors.mutedForeground : colors.primary;
+  const today = isHome && status === 'active' && todaySpent != null ? todayBudgetLeft(trip.dailyBudget, todaySpent) : null;
+  const todayCur = todayCurrency ?? trip.homeCurrency;
 
   // M4: the card draws the ~40 KB thumbnail. The full cover is only a
   // fallback for the moment between a restore and its thumbnail backfill.
@@ -114,7 +131,7 @@ export function TripCard({
         {/* A past trip steps back: the veil dims the photo, never the text. */}
         {status === 'past' && <View style={[StyleSheet.absoluteFill, styles.pastVeil]} />}
 
-        <CardScrim />
+        <CardScrim strong={isHome} />
 
         {/* Top row: status badge left, a quiet manage action right. */}
         <View style={styles.cardTop}>
@@ -133,7 +150,22 @@ export function TripCard({
           )}
         </View>
 
-        {/* On the photo: name → dates → the day bar → verdict + day counter. */}
+        {isHome ? (
+          // Home journey card: name + dates sit low on the scrim, budget ring
+          // bottom-right. No day bar / verdict on the photo (user request).
+          <View style={styles.homeBottom}>
+            <View style={styles.homeTitles}>
+              <Text style={styles.tripName} numberOfLines={1}>
+                {trip.name}
+              </Text>
+              <Text style={[styles.dates, styles.homeDates]} numberOfLines={1}>
+                {formatDateRange(trip.startDate, trip.endDate)}
+              </Text>
+            </View>
+            {ringRatio != null && <BudgetRing ratio={ringRatio} color={ringColor} />}
+          </View>
+        ) : (
+        /* On the photo: name → dates → the day bar → verdict + day counter. */
         <View style={styles.cardBottom}>
           <Text style={styles.tripName} numberOfLines={1}>
             {trip.name}
@@ -164,22 +196,39 @@ export function TripCard({
             </Text>
           </View>
         </View>
+        )}
       </View>
 
       {/* Footer: flat card surface, NO photo behind it — daily pace left, trip
           total right, same numbers as the detail screen. */}
       <View style={styles.footer}>
-        <View style={styles.footerGrid}>
+        {today && (
+          <View style={styles.todayBlock}>
+            {today.isOver ? (
+              <Text style={[styles.todayMain, styles.todayOver]} numberOfLines={1}>
+                {formatMoney(today.over, todayCur)} over today
+              </Text>
+            ) : (
+              <Text style={styles.todayMain} numberOfLines={1}>
+                Today {formatMoney(today.left, todayCur)} left
+              </Text>
+            )}
+            <Text style={styles.todaySub} numberOfLines={1}>
+              {formatMoney(today.spent, todayCur)} of {formatMoney(today.budget, todayCur)} daily budget spent
+            </Text>
+          </View>
+        )}
+        <View style={[styles.footerGrid, today && styles.footerGridSecondary]}>
           <View style={styles.stat}>
             <Text style={styles.statLabel}>Daily avg</Text>
-            <Text style={styles.statValue} numberOfLines={1}>
+            <Text style={[styles.statValue, today && styles.statValueSmall]} numberOfLines={1}>
               {formatMoney(stats.dailyAverage, trip.homeCurrency)}
               <Text style={styles.statOf}> / {formatMoney(trip.dailyBudget, trip.homeCurrency)}</Text>
             </Text>
           </View>
           <View style={styles.statRight}>
             <Text style={styles.statLabel}>Total</Text>
-            <Text style={styles.statValue} numberOfLines={1}>
+            <Text style={[styles.statValue, today && styles.statValueSmall]} numberOfLines={1}>
               {formatMoneyWhole(stats.totalSpend, trip.homeCurrency)}
               <Text style={styles.statOf}> / {formatMoneyWhole(budget, trip.homeCurrency)}</Text>
             </Text>
@@ -207,7 +256,7 @@ export function TripCard({
  * bottom for the text) instead of stacked translucent Views: plain alpha layers
  * band visibly on Android and in the PWA — same reason FadeScrim is SVG.
  */
-function CardScrim() {
+function CardScrim({ strong = false }: { strong?: boolean }) {
   // Per-instance gradient ids. The tab navigator keeps every visited screen
   // mounted, so several cards share one document on web; with fixed ids every
   // url(#…) resolved to the FIRST definition, which can sit in a hidden screen
@@ -223,18 +272,47 @@ function CardScrim() {
     >
       <Defs>
         <LinearGradient id={`tripScrimTop${uid}`} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={SCRIM} stopOpacity="0.38" />
+          <Stop offset="0" stopColor={SCRIM} stopOpacity={strong ? '0.55' : '0.38'} />
           <Stop offset="1" stopColor={SCRIM} stopOpacity="0" />
         </LinearGradient>
         <LinearGradient id={`tripScrimBottom${uid}`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={SCRIM} stopOpacity="0" />
-          <Stop offset="0.45" stopColor={SCRIM} stopOpacity="0.72" />
-          <Stop offset="1" stopColor={SCRIM} stopOpacity="0.92" />
+          <Stop offset="0.45" stopColor={SCRIM} stopOpacity={strong ? '0.82' : '0.72'} />
+          <Stop offset="1" stopColor={SCRIM} stopOpacity={strong ? '0.96' : '0.92'} />
         </LinearGradient>
       </Defs>
       <Rect x="0" y="0" width="100" height="45" fill={`url(#tripScrimTop${uid})`} />
-      <Rect x="0" y="38" width="100" height="62" fill={`url(#tripScrimBottom${uid})`} />
+      <Rect x="0" y={strong ? '30' : '38'} width="100" height={strong ? '70' : '62'} fill={`url(#tripScrimBottom${uid})`} />
     </Svg>
+  );
+}
+
+/** Home journey card: SVG ring = share of the full trip budget, % in the centre. */
+const RING = 56;
+const RING_STROKE = 5;
+function BudgetRing({ ratio, color }: { ratio: number; color: string }) {
+  const r = (RING - RING_STROKE) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.round(ratio * 100);
+  return (
+    <View style={styles.ring} accessibilityLabel={`${pct}% of trip budget spent`}>
+      <Svg width={RING} height={RING} pointerEvents="none">
+        <Circle cx={RING / 2} cy={RING / 2} r={r} stroke={colors.onImageTrack} strokeWidth={RING_STROKE} fill="none" />
+        <Circle
+          cx={RING / 2}
+          cy={RING / 2}
+          r={r}
+          stroke={color}
+          strokeWidth={RING_STROKE}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${c} ${c}`}
+          strokeDashoffset={c * (1 - ratio)}
+          transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+        />
+      </Svg>
+      <Text style={styles.ringText}>{pct}%</Text>
+    </View>
   );
 }
 
@@ -392,4 +470,31 @@ const styles = themedStyles(() => StyleSheet.create({
   statLabel: { fontFamily: fontFamily.sans, fontSize: 12, fontWeight: '700', letterSpacing: 0.9, textTransform: 'uppercase', color: colors.mutedForeground, marginBottom: 4 },
   statValue: { fontFamily: fontFamily.sans, fontSize: fontSize.lg, fontWeight: '700', color: colors.foreground, ...tabularNums },
   statOf: { fontFamily: fontFamily.sans, fontSize: fontSize.base, fontWeight: '500', color: colors.mutedForeground, ...tabularNums },
+  // Home journey card.
+  homeBottom: {
+    position: 'absolute',
+    left: spacing.xl,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.md,
+  },
+  homeTitles: { flex: 1, minWidth: 0 },
+  homeDates: { marginBottom: 0, color: colors.foreground82 },
+  ring: { width: RING, height: RING, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  ringText: {
+    position: 'absolute',
+    fontFamily: fontFamily.sans,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    color: colors.white,
+    ...onImageTextShadow,
+  },
+  todayBlock: { marginBottom: spacing.md },
+  todayMain: { fontFamily: fontFamily.heading, fontSize: fontSize['2xl'], fontWeight: '700', color: colors.foreground },
+  todayOver: { color: colors.mutedForeground },
+  todaySub: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '500', color: colors.mutedForeground, marginTop: 2 },
+  statValueSmall: { fontSize: fontSize.base },
+  footerGridSecondary: { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
 }));

@@ -204,6 +204,9 @@ export default function HomeScreen() {
               expenses={expenses.filter((e) => e.tripId === heroTrip.id)}
               onPress={() => router.push(`/trip/${heroTrip.id}`)}
               onManage={() => setMenuTrip(heroTrip)}
+              variant="home"
+              todaySpent={todayTotal}
+              todayCurrency={displayCurrency}
             />
           </>
         ) : tripsHydrated ? (

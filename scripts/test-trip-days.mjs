@@ -52,7 +52,7 @@ try {
 }
 
 const { computePace, inclusiveDays, formatDayProgress, dayProgressRatio } = require(join(cache, 'utils', 'pace.js'));
-const { computeTripStats, hasDailyBudget } = require(join(cache, 'utils', 'tripStats.js'));
+const { computeTripStats, hasDailyBudget, todayBudgetLeft, budgetRingRatio } = require(join(cache, 'utils', 'tripStats.js'));
 const { formatMoney, formatMoneyWhole } = require(join(cache, 'utils', 'currency.js'));
 const {
   formatDateRange,
@@ -287,6 +287,20 @@ assert(splitLate.length === 1 && splitLate[0].day === '2026-10-17',
   assert(!isTripActiveOn({ startDate: '2026-10-18' }, day) && !isTripActiveOn({ startDate: '2026-10-01', endDate: '2026-10-16' }, day), 'future / ended trips are not active');
   const pick = pickActiveTrip([{ id: 'old', startDate: '2026-10-01' }, { id: 'new', startDate: '2026-10-10' }, { id: 'fut', startDate: '2026-11-01' }], day);
   assert(pick && pick.id === 'new', 'pickActiveTrip: most recently started running trip');
+}
+
+// ---- todayBudgetLeft / budgetRingRatio (Home journey card) ----
+{
+  const a = todayBudgetLeft(50, 12.5);
+  assert(a && a.left === 37.5 && a.spent === 12.5 && !a.isOver && a.over === 0, 'today left: 50 - 12.5 = 37.5');
+  const b = todayBudgetLeft(50, 65);
+  assert(b && b.left === 0 && b.isOver && b.over === 15, 'today over: 15 over, left clamped to 0');
+  const c = todayBudgetLeft(50, 50);
+  assert(c && c.left === 0 && !c.isOver, 'today exactly on budget is not over');
+  assert(todayBudgetLeft(0, 10) === null && todayBudgetLeft(undefined, 10) === null, 'no budget -> null');
+  assert(todayBudgetLeft(40, NaN).spent === 0, 'NaN spend -> 0');
+  assert(Math.abs(budgetRingRatio(862, 1000) - 0.862) < 1e-9, 'ring 862/1000 = 86%');
+  assert(budgetRingRatio(1500, 1000) === 1 && budgetRingRatio(10, 0) === null, 'ring clamps, null without budget');
 }
 
 rmSync(cache, { recursive: true, force: true });

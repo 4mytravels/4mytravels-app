@@ -32,6 +32,29 @@ export function hasDailyBudget(trip: Trip): boolean {
   return typeof trip.dailyBudget === 'number' && trip.dailyBudget > 0;
 }
 
+/**
+ * Home journey card footer: "Today €X left" / "€N over today".
+ * `spentToday` must be the SAME split-aware today total Home shows in its
+ * "Expenses today" header (display currency) — this helper only does the
+ * budget arithmetic so the card and the header can never disagree.
+ * Returns null without a daily budget (no budget → no "left" figure).
+ */
+export function todayBudgetLeft(
+  dailyBudget: number | null | undefined,
+  spentToday: number,
+): { spent: number; budget: number; left: number; over: number; isOver: boolean } | null {
+  if (typeof dailyBudget !== 'number' || !(dailyBudget > 0)) return null;
+  const spent = Number.isFinite(spentToday) && spentToday > 0 ? spentToday : 0;
+  const diff = dailyBudget - spent;
+  return { spent, budget: dailyBudget, left: Math.max(diff, 0), over: Math.max(-diff, 0), isOver: diff < 0 };
+}
+
+/** Budget ring: share of the FULL trip budget spent, clamped 0..1 (null = no budget). */
+export function budgetRingRatio(totalSpend: number, tripBudget: number): number | null {
+  if (!(tripBudget > 0)) return null;
+  return Math.min(Math.max(totalSpend / tripBudget, 0), 1);
+}
+
 export interface TripStats {
   /** Sum of every expense in the trip, converted to the trip home currency. */
   totalSpend: number;

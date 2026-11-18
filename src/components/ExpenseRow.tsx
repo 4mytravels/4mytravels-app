@@ -1,22 +1,39 @@
-// ExpenseRow — the ONE expense row used by BOTH the Expenses tab and the trip
-// detail screen.
+// ExpenseRow — the ONE expense row used by the Expenses tab, the trip detail
+// screen and the Home "expenses today" list. Anything that renders an expense
+// MUST use this so the three stay identical.
 //
-// Before this component the two screens each had their own row and drifted
-// apart (the trip-detail row repeated the category in the subtitle, the
-// Expenses row showed country + payment). Anything that renders an expense —
-// expenses list, trip detail, home "expenses today" — MUST use this so the three
-// stay identical.
+// Anatomy (design 2026-11, 02-uitgaven-voorstel): coloured category circle |
+// category (small, muted) / note — or the split range — as title / payment
+// icon + method (+ country only when it differs from the trip's primary
+// country) | expense currency on top, ≈ home currency below.
+//
+// Rows of one day sit inside ONE rounded block: the host passes
+// `blockPosition` and the row draws its own slice of the block border plus an
+// inset divider. Leave it undefined for a standalone card.
 
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { IconCircle } from './ui';
-import { categoryIcon } from '../utils/categoryIcons';
+import { categoryColor, categoryIcon } from '../utils/categoryIcons';
 import { countryName } from '../data/countries';
+import { countryDiffers } from '../utils/rowCountry';
 import { formatMoney, toHomeCurrency } from '../utils/currency';
 import { colors, fontFamily, fontSize, spacing, tabularNums, themedStyles } from '../theme/theme';
 import type { Expense } from '../types';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ICON = 40;
+const BLOCK_RADIUS = 16;
+
+export type BlockPosition = 'only' | 'first' | 'middle' | 'last';
+
+/** Position of item `index` in a day block of `count` rows. */
+export function blockPositionOf(index: number, count: number): BlockPosition {
+  if (count <= 1) return 'only';
+  if (index === 0) return 'first';
+  return index === count - 1 ? 'last' : 'middle';
+}
 
 function shortDateRange(start: string, end: string): string {
   const s = start.slice(0, 10);
@@ -36,13 +53,10 @@ function ExpenseRowImpl({
   homeCurrency,
   onPress,
   splitShare = null,
-  /** Card fill. Defaults to the shared card surface. */
   background,
-  /**
-   * Tighter vertical rhythm, used by EVERY expense list (Expenses tab, Home
-   * today list, trip detail) so all three look identical.
-   */
   dense = false,
+  blockPosition,
+  primaryCountry,
 }: {
   expense: Expense;
   homeCurrency: string;
@@ -51,43 +65,65 @@ function ExpenseRowImpl({
   /** Set when this row is one day of a multi-day split: shows the share. */
   splitShare?: number | null;
   background?: string;
+  /** Tighter vertical rhythm, used by every expense list. */
   dense?: boolean;
+  /** Slice of a day block this row draws (undefined = standalone card). */
+  blockPosition?: BlockPosition;
+  /** The trip's primary country: the row only prints a country that differs. */
+  primaryCountry?: string;
 }) {
   const isSplitDay = splitShare != null;
-  // The per-day share is stored in the trip home currency, so it is shown as-is;
-  // a full amount is converted once from its own currency.
-  const displayAmount = isSplitDay
-    ? (splitShare as number) / expense.rateToHome
-    : expense.amount;
-  const displayCurrency = expense.currency;
+  // The per-day share is stored in the trip home currency (pattern 1); convert
+  // back to the original currency only for display.
+  const displayAmount = isSplitDay ? (splitShare as number) / expense.rateToHome : expense.amount;
   const homeAmount = isSplitDay ? (splitShare as number) : toHomeCurrency(expense);
 
-  // Subtitle: "Land · card" / "Land · cash". Never the category: the title
-  // already falls back to the category, so repeating it told the user nothing.
-  const detail = isSplitDay
-    ? `${shortDateRange(expense.multiDaySplit!.splitStart, expense.multiDaySplit!.splitEnd)} · ${payLabel(expense.paymentMethod)}`
-    : `${expense.country ? countryName(expense.country) : '—'} · ${payLabel(expense.paymentMethod)}`;
+  const range = isSplitDay
+    ? shortDateRange(expense.multiDaySplit!.splitStart, expense.multiDaySplit!.splitEnd)
+    : null;
+  // Title: the note; a split without a note shows its date range; else category.
+  const title = expense.notes || range || expense.category;
+  const metaParts = [payLabel(expense.paymentMethod)];
+  if (range && expense.notes) metaParts.push(range);
+  if (countryDiffers(expense.country, primaryCountry)) metaParts.push(countryName(expense.country!));
+
+  const inBlock = blockPosition != null;
+  const isTop = blockPosition === 'only' || blockPosition === 'first';
+  const isBottom = blockPosition === 'only' || blockPosition === 'last';
 
   return (
     <Pressable
       style={[
         styles.row,
         dense && styles.rowDense,
+        inBlock && styles.rowInBlock,
+        inBlock && isTop && styles.blockTop,
+        inBlock && isBottom && styles.blockBottom,
         background != null && { backgroundColor: background },
       ]}
       onPress={() => onPress(expense)}
     >
-      <IconCircle icon={categoryIcon(expense.category)} size={40} color={colors.white} />
+      {inBlock && !isTop && <View style={styles.divider} pointerEvents="none" />}
+      <IconCircle
+        icon={categoryIcon(expense.category)}
+        size={ICON}
+        color={colors.white}
+        backgroundColor={categoryColor(expense.category)}
+      />
       <View style={styles.details}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {expense.notes || expense.category}
-        </Text>
-        <Text style={styles.metaText} numberOfLines={1}>
-          {detail}
-        </Text>
+        <Text style={styles.category} numberOfLines={1}>{expense.category}</Text>
+        <Text style={styles.rowTitle} numberOfLines={1}>{title}</Text>
+        <View style={styles.metaRow}>
+          <Ionicons
+            name={expense.paymentMethod === 'card' ? 'card-outline' : 'cash-outline'}
+            size={13}
+            color={colors.mutedForeground}
+          />
+          <Text style={styles.metaText} numberOfLines={1}>{metaParts.join(' · ')}</Text>
+        </View>
       </View>
       <View style={styles.priceCol}>
-        <Text style={styles.priceMain}>{formatMoney(displayAmount, displayCurrency)}</Text>
+        <Text style={styles.priceMain}>{formatMoney(displayAmount, expense.currency)}</Text>
         <Text style={styles.priceSub}>≈ {formatMoney(homeAmount, homeCurrency)}</Text>
       </View>
     </Pressable>
@@ -95,14 +131,11 @@ function ExpenseRowImpl({
 }
 
 function payLabel(m: string): string {
-  return m === 'card' ? 'card' : 'cash';
+  return m === 'card' ? 'Card' : 'Cash';
 }
 
 const styles = themedStyles(() => StyleSheet.create({
-  // Each expense is its own card (design 2026-11): 14px radius, 1px border,
-  // 8px gap between cards (4px above + 4px below). The host list already pads
-  // its content by spacing.xl, so the card sits on the screen inset — no
-  // full-bleed negative margin and no separator rules any more.
+  // Standalone: its own card. In a block: the row draws only its slice.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -115,14 +148,40 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: colors.card,
   },
   rowDense: { paddingVertical: spacing.md },
-  details: { flex: 1, marginLeft: spacing.md },
-  rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans },
-  metaText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: 2 },
-  priceCol: { alignItems: 'flex-end' },
-  priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans },
-  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2 },
+  rowInBlock: {
+    marginVertical: 0,
+    borderRadius: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+  },
+  blockTop: {
+    borderTopWidth: 1,
+    borderTopLeftRadius: BLOCK_RADIUS,
+    borderTopRightRadius: BLOCK_RADIUS,
+  },
+  blockBottom: {
+    borderBottomWidth: 1,
+    borderBottomLeftRadius: BLOCK_RADIUS,
+    borderBottomRightRadius: BLOCK_RADIUS,
+  },
+  // Inset hairline: starts under the text column, not under the icon.
+  divider: {
+    position: 'absolute',
+    top: 0,
+    left: spacing.lg + ICON + spacing.md,
+    right: spacing.lg,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+  },
+  details: { flex: 1, marginLeft: spacing.md, minWidth: 0 },
+  category: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  rowTitle: { color: colors.foreground, fontSize: fontSize.lg, fontWeight: '600', fontFamily: fontFamily.sans, marginTop: 1 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  metaText: { flexShrink: 1, color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  priceCol: { alignItems: 'flex-end', marginLeft: spacing.sm },
+  priceMain: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '600', fontFamily: fontFamily.sans, ...tabularNums },
+  priceSub: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans, marginTop: 2, ...tabularNums },
 }));
 
-// Q6: memoised — a list re-render (search keystroke, focus reload with equal
-// data) no longer re-renders every row whose props did not change.
+// Q6: memoised — a list re-render no longer re-renders every unchanged row.
 export const ExpenseRow = memo(ExpenseRowImpl);

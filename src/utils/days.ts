@@ -115,7 +115,9 @@ export function friendlyDayLabel(value?: string): string {
   const t = Date.parse(`${ymd}T12:00:00Z`);
   if (Number.isNaN(t)) return ymd;
   const d = new Date(t);
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  // Year only when it is not the current (local) year: "21 Nov" / "21 Nov 2025".
+  const yearPart = d.getUTCFullYear() === new Date().getFullYear() ? '' : ` ${d.getUTCFullYear()}`;
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}${yearPart}`;
 }
 
 /**

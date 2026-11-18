@@ -10,14 +10,17 @@ import { useExpenses, useExpenseStore } from '../../../src/store/expenseStore';
 import { expensesOfTrip } from '../../../src/utils/expenseList';
 import type { Expense } from '../../../src/types';
 import { groupByDaySplitAware } from '../../../src/utils/days';
-import { colors, fontFamily, radius, fontSize, spacing, themedStyles, tabularNums } from '../../../src/theme/theme';
-import { SectionTitle, Button, IconCircle } from '../../../src/components/ui';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../../src/theme/theme';
+import { SectionTitle, Button } from '../../../src/components/ui';
 import { TripCard } from '../../../src/components/TripCard';
 import { TripActionsMenu } from '../../../src/components/TripActionsMenu';
 import { ExpenseForm } from '../../../src/components/ExpenseForm';
 import { ModalHost } from '../../../src/components/ModalHost';
 import { formatMoney, toHomeCurrency } from '../../../src/utils/currency';
-import { ExpenseRow } from '../../../src/components/ExpenseRow';
+import { ExpenseRow, blockPositionOf } from '../../../src/components/ExpenseRow';
+import { DayHeader } from '../../../src/components/DayHeader';
+import { dominantCountry } from '../../../src/utils/rowCountry';
+import { localDayKey } from '../../../src/utils/tripStats';
 import { NavFadeScrim } from '../../../src/components/FadeScrim';
 import { WebNotices } from '../../../src/components/WebNotices';
 import { changeTripCover } from '../../../src/utils/tripActions';
@@ -57,6 +60,8 @@ export default function TripDetailScreen() {
         .some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [expenses, query]);
+  // Rows print a country only when it differs from this trip's primary one.
+  const primaryCountry = useMemo(() => dominantCountry(expenses), [expenses]);
   const sections = useMemo(
     () => (trip ? groupByDaySplitAware(visibleExpenses) : []),
     [trip, visibleExpenses],
@@ -188,28 +193,29 @@ export default function TripDetailScreen() {
           </>
         }
         renderSectionHeader={({ section }) => (
-          <View style={styles.dayHeader}>
-            <Text style={styles.dayLabel}>{section.label}</Text>
-            <Text style={styles.dayTotal}>
-              {formatMoney(
+          <DayHeader
+            label={section.label}
+            isToday={section.day === localDayKey()}
+            total={formatMoney(
                 section.data.reduce(
                   (s, entry) => s + (entry.splitShare ?? toHomeCurrency(entry.expense)),
                   0,
                 ),
                 trip.homeCurrency,
               )}
-            </Text>
-          </View>
+          />
         )}
-        renderSectionFooter={() => <View style={{ height: spacing.md }} />}
-        renderItem={({ item }) => (
-          // SHARED row component — identical to the Expenses tab, including the
-          // row tint and the edge-to-edge background.
+        renderSectionFooter={() => <View style={{ height: spacing.xs }} />}
+        renderItem={({ item, index, section }) => (
+          // SHARED row component — identical to the Expenses tab, grouped
+          // into one rounded block per day.
           <ExpenseRow
             expense={item.expense}
             homeCurrency={trip.homeCurrency}
             splitShare={item.splitShare}
             dense
+            blockPosition={blockPositionOf(index, section.data.length)}
+            primaryCountry={primaryCountry}
             onPress={openExpenseForEdit}
           />
         )}
@@ -284,40 +290,6 @@ const styles = themedStyles(() => StyleSheet.create({
   // minWidth 0: a flexed TextInput is an <input> on web and must be allowed to shrink (pattern 13a).
   searchInput: { flex: 1, minWidth: 0, color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, paddingVertical: 0 },
   placeholder: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.sm },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    marginTop: spacing.xs,
-    // No bottom border here: every row now carries its own top separator, so a
-    // rule here would render as a double line above the first entry.
-    marginBottom: spacing.xs,
-    // Pull the header out over the screen padding so it lines up with the rows
-    // below (which are full-bleed). The label/total then carry their own
-    // spacing.xl — identical to the Expenses tab.
-    marginHorizontal: -spacing.xl,
-    borderBottomWidth: 0,
-  },
-  dayLabel: {
-    flex: 1,
-    color: colors.mutedForeground,
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    fontFamily: fontFamily.heading,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingLeft: spacing.xl,
-  },
-  dayTotal: {
-    ...tabularNums,
-    color: colors.foreground,
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    fontFamily: fontFamily.sans,
-    paddingRight: spacing.xl,
-  },
   fab: {
     position: 'absolute',
     bottom: 118, // fallback; inline style overrides with insets.bottom + 94

@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles, tabularNums } from '../../src/theme/theme';
 import { Pill, Button } from '../../src/components/ui';
 import { TripCard } from '../../src/components/TripCard';
-import { ExpenseRow } from '../../src/components/ExpenseRow';
+import { ExpenseRow, blockPositionOf } from '../../src/components/ExpenseRow';
+import { dominantCountryByTrip } from '../../src/utils/rowCountry';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
 import { WebNotices } from '../../src/components/WebNotices';
@@ -92,6 +93,8 @@ export default function HomeScreen() {
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   // Memoize the expensive groupByDaySplitAware computation on expenses.
   const groupedToday = useMemo(() => groupByDaySplitAware(expenses), [expenses]);
+  // Rows print a country only when it differs from the trip's primary one.
+  const primaryCountries = useMemo(() => dominantCountryByTrip(expenses), [expenses]);
   // Split-aware "today": expand multi-day expenses so each covered day shows its
   // per-day share (mirrors the Expenses tab's Today section). The single Today
   // section gives both the cards (with shares) and the running today total.
@@ -253,13 +256,15 @@ export default function HomeScreen() {
           /* The SAME row as the Expenses tab (src/components/ExpenseRow.tsx):
              expense currency on top, home below, hairline separators, split
              shares handled inside the row. */
-          todayEntries.map((entry) => (
+          todayEntries.map((entry, i) => (
             <ExpenseRow
               key={`${entry.expense.id}@${entry.day}`}
               expense={entry.expense}
               homeCurrency={displayCurrency}
               splitShare={entry.splitShare}
               dense
+              blockPosition={blockPositionOf(i, todayEntries.length)}
+              primaryCountry={primaryCountries[entry.expense.tripId]}
               onPress={openTodayExpense}
             />
           ))

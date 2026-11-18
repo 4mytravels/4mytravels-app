@@ -19,7 +19,7 @@ import { useExpenses, useExpenseStore } from '../../src/store/expenseStore';
 import { useTripStore } from '../../src/store/tripStore';
 import type { Expense } from '../../src/types';
 import { colors, fontFamily, radius, fontSize, spacing, fabShadow, themedStyles, tabularNums } from '../../src/theme/theme';
-import { IconCircle, Button, StatBox } from '../../src/components/ui';
+import { Button } from '../../src/components/ui';
 import { ExpenseForm } from '../../src/components/ExpenseForm';
 import { ModalHost } from '../../src/components/ModalHost';
 import { EXPENSE_CATEGORIES } from '../../src/types';
@@ -30,7 +30,9 @@ import { computeTripStats } from '../../src/utils/tripStats';
 import { scrollTargetSection } from '../../src/utils/scrollTarget';
 import { filterExpensesByTrips, pruneTripIds } from '../../src/utils/tripFilter';
 import { TripFilter } from '../../src/components/TripFilter';
-import { ExpenseRow } from '../../src/components/ExpenseRow';
+import { ExpenseRow, blockPositionOf } from '../../src/components/ExpenseRow';
+import { DayHeader } from '../../src/components/DayHeader';
+import { dominantCountryByTrip } from '../../src/utils/rowCountry';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
 
@@ -251,7 +253,10 @@ export default function ExpensesScreen() {
     () => (singleTrip ? computeTripStats(singleTrip, filteredExpenses) : null),
     [singleTrip, filteredExpenses],
   );
-  const dailyAverage = stats?.dailyAverage ?? 0;
+  // Row metadata: a country is only printed when it differs from the trip's
+  // primary (most frequent) country — computed over the WHOLE store, not the
+  // search/category-filtered list, so filtering never flips it.
+  const primaryCountries = useMemo(() => dominantCountryByTrip(expenses), [expenses]);
 
   const hasTodaySection = todayIndex >= 0;
   const isAtToday = todayIndex === 0 && sections.length > 0 && sections[0].day === todayStr;
@@ -287,18 +292,16 @@ export default function ExpensesScreen() {
       {/* Web/PWA notices (storage health + install nudge) under the screen title. */}
       <WebNotices />
 
-      {/* Stats: daily avg / budget only for a single trip (a budget is per trip);
-          the total always applies to whatever is currently shown. */}
+      {/* Summary card (design 2026-11): avg / budget + bar only for ONE trip
+          (a budget is per trip); the total always. Trip figures come from
+          computeTripStats; under multi/all trips the total is the shown list. */}
       {(singleTrip || list.length > 0) && (
-        <View style={styles.statsRow}>
-          {singleTrip && (
-            <StatBox
-              label="Daily avg / budget"
-              value={`${formatMoney(dailyAverage, homeCurrency)} / ${formatMoney(singleTrip.dailyBudget, homeCurrency)}`}
-            />
-          )}
-          <StatBox label="Total spent" value={formatMoney(totalHome, homeCurrency)} />
-        </View>
+        <SummaryCard
+          dailyAverage={stats?.dailyAverage ?? null}
+          dailyBudget={singleTrip?.dailyBudget ?? 0}
+          total={stats ? stats.totalSpend : totalHome}
+          currency={homeCurrency}
+        />
       )}
 
 
@@ -309,12 +312,11 @@ export default function ExpensesScreen() {
         keyExtractor={(entry, index) => `${entry.expense.id}@${entry.day}@${index}`}
         onScrollToIndexFailed={onScrollToIndexFailed}
         renderSectionHeader={({ section }) => (
-          <View style={styles.dayHeader}>
-            <Text style={styles.dayLabel}>{section.label}</Text>
-            <Text style={styles.dayTotal}>
-              {formatMoney(section.dayTotal, homeCurrency)}
-            </Text>
-          </View>
+          <DayHeader
+            label={section.label}
+            total={formatMoney(section.dayTotal, homeCurrency)}
+            isToday={section.day === todayStr}
+          />
         )}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 80 }]}
         ListHeaderComponent={
@@ -362,12 +364,14 @@ export default function ExpensesScreen() {
             </ScrollView>
           </>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index, section }) => (
           <ExpenseRow
             expense={item.expense}
             homeCurrency={homeCurrency}
             splitShare={item.splitShare}
             dense
+            blockPosition={blockPositionOf(index, section.data.length)}
+            primaryCountry={primaryCountries[item.expense.tripId]}
             // Full row (incl. the receipt) before the form opens — see
             // openExpenseForEdit. Stable callback so memo(ExpenseRow) holds (Q6).
             onPress={openExpenseForEdit}
@@ -448,8 +452,102 @@ export default function ExpensesScreen() {
   );
 }
 
+/** Avg / budget (+ progress bar) | Total. No budget → "€X avg / day", no bar. */
+function SummaryCard({
+  dailyAverage,
+  dailyBudget,
+  total,
+  currency,
+}: {
+  dailyAverage: number | null;
+  dailyBudget: number;
+  total: number;
+  currency: string;
+}) {
+  const hasBudget = dailyAverage != null && dailyBudget > 0;
+  const over = hasBudget && (dailyAverage as number) > dailyBudget;
+  // Within budget: green fill = avg / budget. Over budget: the bar is FULL,
+  // green up to the budget share and RED for the excess — the overrun reads
+  // at a glance without losing how far over it is.
+  const greenFrac = !hasBudget
+    ? 0
+    : over
+      ? dailyBudget / (dailyAverage as number)
+      : Math.max(0, (dailyAverage as number) / dailyBudget);
+  return (
+    <View style={styles.summary}>
+      {dailyAverage != null && (
+        <>
+          <View style={styles.summaryIcon}>
+            <Ionicons name="wallet-outline" size={20} color={colors.success} />
+          </View>
+          <View style={styles.summaryMain}>
+            <Text style={styles.summaryAvg} numberOfLines={1}>
+              {formatMoney(dailyAverage, currency)}
+              <Text style={styles.summaryOf}>
+                {hasBudget ? ` avg / ${formatMoney(dailyBudget, currency)} budget` : ' avg / day'}
+              </Text>
+            </Text>
+            {hasBudget && (
+              <View
+                style={styles.summaryTrack}
+                accessibilityLabel={over ? 'Daily average over budget' : 'Daily average within budget'}
+              >
+                <View style={{ flex: greenFrac, backgroundColor: colors.success }} />
+                <View style={{ flex: 1 - greenFrac, backgroundColor: over ? colors.destructive : 'transparent' }} />
+              </View>
+            )}
+          </View>
+          <View style={styles.summaryDivider} />
+        </>
+      )}
+      <View style={dailyAverage != null ? undefined : styles.summaryTotalSolo}>
+        <Text style={styles.summaryTotalLabel}>Total</Text>
+        <Text style={styles.summaryTotalValue} numberOfLines={1}>{formatMoney(total, currency)}</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  summary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.xl,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    padding: spacing.lg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  summaryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: colors.successBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  summaryMain: { flex: 1, minWidth: 0 },
+  summaryAvg: { color: colors.foreground, fontSize: fontSize['2xl'], fontWeight: '700', fontFamily: fontFamily.heading, ...tabularNums },
+  summaryOf: { color: colors.mutedForeground, fontSize: fontSize.sm, fontWeight: '500', fontFamily: fontFamily.sans },
+  summaryTrack: {
+    flexDirection: 'row',
+    height: 6,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceStrong,
+    marginTop: spacing.sm,
+  },
+  summaryDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginHorizontal: spacing.md },
+  summaryTotalSolo: { flex: 1 },
+  summaryTotalLabel: { color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  summaryTotalValue: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.sans, marginTop: 2, ...tabularNums },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -566,39 +664,6 @@ const styles = themedStyles(() => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   list: { paddingHorizontal: spacing.xl },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    // Tightened for the dense list: the day label is a divider, not a block.
-    // (paddingTop 12 → 8, paddingBottom 8 → 4, margins 4/4 → 4/0.)
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-    marginTop: spacing.xs,
-    // No bottom border here: every row now carries its own separator, so a
-    // rule here would render as a double line above the first entry.
-    marginBottom: 0,
-    marginHorizontal: -spacing.xl,
-    borderBottomWidth: 0,
-  },
-  dayLabel: {
-    flex: 1,
-    color: colors.mutedForeground,
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    fontFamily: fontFamily.heading,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingLeft: spacing.xl,
-  },
-  dayTotal: {
-    ...tabularNums,
-    color: colors.foreground,
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    fontFamily: fontFamily.sans,
-    paddingRight: spacing.xl,
-  },
   totalText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans, marginTop: spacing.md, ...tabularNums },
   searchBar: {
     flexDirection: 'row',

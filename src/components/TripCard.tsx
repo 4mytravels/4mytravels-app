@@ -13,7 +13,7 @@ import { colors, fontFamily, radius, fontSize, spacing, cardShadow, onImageTextS
 import type { Expense, Trip, TripStatus } from '../types';
 import { deriveTripStatus } from '../store/tripStore';
 import { computeTripStats, hasDailyBudget, todayBudgetLeft, budgetRingRatio } from '../utils/tripStats';
-import { dayProgressRatio, formatDayProgress } from '../utils/pace';
+import { formatDayProgress } from '../utils/pace';
 import { formatDateRange } from '../utils/days';
 import { formatMoney, formatMoneyWhole } from '../utils/currency';
 import { bytesToDataUri, tripCoverStageSize } from '../utils/image';
@@ -61,33 +61,21 @@ export function TripCard({
   const stats = useMemo(() => computeTripStats(trip, expenses), [trip, expenses]);
   const budget = stats.tripBudget;
 
-  // The bar shows the DAY you are on, not the money spent: day 7 of 14 → half
-  // full. Finished trips are always full (daysElapsed == totalDays).
-  const ratio = dayProgressRatio(stats.pace.daysElapsed, stats.totalDays);
-  // No daily budget → no pace verdict at all. With a budget of 0 the expected
-  // spend is 0, so EVERY trip would read "Over budget" (or "On track" before
-  // the first expense) — a status about a budget that does not exist. The day
-  // counter below is not a budget status and stays visible.
+  // No daily budget → no budget status at all (pattern 36).
   const showBudgetStatus = hasDailyBudget(trip);
   const overBudget = stats.totalSpend > budget;
   const paceOver = stats.pace.status === 'over_budget';
-  const verdict = showBudgetStatus
-    ? overBudget || paceOver
-      ? { text: 'Over budget', color: colors.destructive }
-      : { text: 'On track', color: colors.success }
-    : null;
-  // TWO colours only (user rule): blue for every trip that is still running or
-  // not started yet — including one that is over budget — and grey ONLY once the
-  // trip is finished. No red bar, ever; the "Over budget" label carries that.
-  // Both fills are TRANSLUCENT so the cover photo shows through the bar
-  // (user request: "maak de blauwe lijn doorzichtig zodat de afbeelding er
-  // achter beter zichtbaar wordt"). A solid fill hid the photo underneath.
-  const fill = status === 'past' ? colors.mutedBar : colors.primaryBar;
 
   // Home journey card: ring = share of the FULL trip budget spent; two colours
   // only (pattern 36) — primary on track, muted otherwise, never red.
   const ringRatio = isHome && showBudgetStatus ? budgetRingRatio(stats.totalSpend, budget) : null;
-  const ringColor = overBudget || paceOver || status === 'past' ? colors.mutedForeground : colors.primary;
+  // Red (same as "Over budget") once the FULL trip budget is exceeded (user request); else primary/muted.
+  const ringOver = budget > 0 && stats.totalSpend > budget;
+  const ringColor = ringOver
+    ? colors.destructive
+    : overBudget || paceOver || status === 'past'
+      ? colors.mutedForeground
+      : colors.primary;
   const today = isHome && status === 'active' && todaySpent != null ? todayBudgetLeft(trip.dailyBudget, todaySpent) : null;
   const todayCur = todayCurrency ?? trip.homeCurrency;
 
@@ -162,7 +150,12 @@ export function TripCard({
                 {formatDateRange(trip.startDate, trip.endDate)}
               </Text>
             </View>
-            {ringRatio != null && <BudgetRing ratio={ringRatio} color={ringColor} />}
+            {ringRatio != null && <BudgetRing
+                ratio={ringRatio}
+                color={ringColor}
+                spent={formatMoneyWhole(stats.totalSpend, trip.homeCurrency)}
+                total={formatMoneyWhole(budget, trip.homeCurrency)}
+              />}
           </View>
         ) : (
         /* On the photo: name → dates → the day bar → verdict + day counter. */
@@ -170,28 +163,12 @@ export function TripCard({
           <Text style={styles.tripName} numberOfLines={1}>
             {trip.name}
           </Text>
-          <Text style={styles.dates} numberOfLines={1}>
-            {formatDateRange(trip.startDate, trip.endDate)}
-          </Text>
-
-          <View style={styles.track}>
-            <View
-              style={{
-                width: `${Math.round(ratio * 100)}%`,
-                height: '100%',
-                borderRadius: radius.full,
-                backgroundColor: fill,
-              }}
-            />
-          </View>
-
-          <View style={styles.verdictRow}>
-            {verdict && (
-              <Text style={[styles.verdictText, { color: verdict.color }]} numberOfLines={1}>
-                {verdict.text}
-              </Text>
-            )}
-            <Text style={[styles.verdictDay, !verdict && styles.verdictDaySolo]} numberOfLines={1}>
+          {/* Dates left, day counter right on ONE row (no day bar / verdict). */}
+          <View style={styles.datesRow}>
+            <Text style={[styles.dates, styles.datesInRow]} numberOfLines={1}>
+              {formatDateRange(trip.startDate, trip.endDate)}
+            </Text>
+            <Text style={styles.verdictDay} numberOfLines={1}>
               {dayText}
             </Text>
           </View>
@@ -218,22 +195,25 @@ export function TripCard({
             </Text>
           </View>
         )}
-        <View style={[styles.footerGrid, today && styles.footerGridSecondary]}>
+        {/* Home with a today block: Daily avg / Total would duplicate the ring. */}
+        {!(isHome && today) && (
+        <View style={styles.footerGrid}>
           <View style={styles.stat}>
             <Text style={styles.statLabel}>Daily avg</Text>
-            <Text style={[styles.statValue, today && styles.statValueSmall]} numberOfLines={1}>
+            <Text style={styles.statValue} numberOfLines={1}>
               {formatMoney(stats.dailyAverage, trip.homeCurrency)}
               <Text style={styles.statOf}> / {formatMoney(trip.dailyBudget, trip.homeCurrency)}</Text>
             </Text>
           </View>
           <View style={styles.statRight}>
             <Text style={styles.statLabel}>Total</Text>
-            <Text style={[styles.statValue, today && styles.statValueSmall]} numberOfLines={1}>
+            <Text style={styles.statValue} numberOfLines={1}>
               {formatMoneyWhole(stats.totalSpend, trip.homeCurrency)}
               <Text style={styles.statOf}> / {formatMoneyWhole(budget, trip.homeCurrency)}</Text>
             </Text>
           </View>
         </View>
+        )}
       </View>
     </View>
   );
@@ -288,15 +268,16 @@ function CardScrim({ strong = false }: { strong?: boolean }) {
 }
 
 /** Home journey card: SVG ring = share of the full trip budget, % in the centre. */
-const RING = 56;
-const RING_STROKE = 5;
-function BudgetRing({ ratio, color }: { ratio: number; color: string }) {
+const RING = 96;
+const RING_STROKE = 6;
+function BudgetRing({ ratio, color, spent, total }: { ratio: number; color: string; spent: string; total: string }) {
   const r = (RING - RING_STROKE) / 2;
   const c = 2 * Math.PI * r;
   const pct = Math.round(ratio * 100);
   return (
-    <View style={styles.ring} accessibilityLabel={`${pct}% of trip budget spent`}>
+    <View style={styles.ring} accessibilityLabel={`${spent} of ${total} trip budget spent (${pct}%)`}>
       <Svg width={RING} height={RING} pointerEvents="none">
+        <Circle cx={RING / 2} cy={RING / 2} r={r} fill="rgba(0,0,0,0.45)" />
         <Circle cx={RING / 2} cy={RING / 2} r={r} stroke={colors.onImageTrack} strokeWidth={RING_STROKE} fill="none" />
         <Circle
           cx={RING / 2}
@@ -311,7 +292,10 @@ function BudgetRing({ ratio, color }: { ratio: number; color: string }) {
           transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
         />
       </Svg>
-      <Text style={styles.ringText}>{pct}%</Text>
+      <View style={styles.ringCenter} pointerEvents="none">
+        <Text style={styles.ringText} numberOfLines={1}>{spent}</Text>
+        <Text style={styles.ringSub} numberOfLines={1}>of {total}</Text>
+      </View>
     </View>
   );
 }
@@ -448,13 +432,9 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: 3,
     marginBottom: spacing.md,
   },
-  track: { height: 4, borderRadius: radius.full, backgroundColor: colors.onImageTrack, overflow: 'hidden' },
-  // Verdict + day counter, on the photo (the image is their background).
-  verdictRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
-  verdictText: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '700', letterSpacing: 0.3, ...onImageTextShadow },
-  // Without a verdict there is only the day counter: fill the row and keep it
-  // right-aligned, where it sat next to the verdict.
-  verdictDaySolo: { flex: 1, textAlign: 'right' },
+  // Verdict-free photo stage: dates + day counter on one row.
+  datesRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md, marginTop: 3 },
+  datesInRow: { flex: 1, minWidth: 0, marginTop: 0 },
   verdictDay: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '600', color: colors.foreground82, ...onImageTextShadow },
   // Flat surface under the photo: the two figures, no image behind them.
   footer: {
@@ -483,18 +463,18 @@ const styles = themedStyles(() => StyleSheet.create({
   homeTitles: { flex: 1, minWidth: 0 },
   homeDates: { marginBottom: 0, color: colors.foreground82 },
   ring: { width: RING, height: RING, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  ringCenter: { position: 'absolute', alignItems: 'center', maxWidth: RING - 16 },
+  ringSub: { fontFamily: fontFamily.sans, fontSize: 10, fontWeight: '500', color: colors.foreground82, ...tabularNums },
   ringText: {
-    position: 'absolute',
     fontFamily: fontFamily.sans,
-    fontSize: fontSize.sm,
+    fontSize: fontSize.base,
     fontWeight: '700',
     color: colors.white,
+    ...tabularNums,
     ...onImageTextShadow,
   },
-  todayBlock: { marginBottom: spacing.md },
+  todayBlock: {},
   todayMain: { fontFamily: fontFamily.heading, fontSize: fontSize['2xl'], fontWeight: '700', color: colors.foreground },
   todayOver: { color: colors.mutedForeground },
   todaySub: { fontFamily: fontFamily.sans, fontSize: fontSize.sm, fontWeight: '500', color: colors.mutedForeground, marginTop: 2 },
-  statValueSmall: { fontSize: fontSize.base },
-  footerGridSecondary: { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
 }));

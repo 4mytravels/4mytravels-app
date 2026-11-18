@@ -28,7 +28,7 @@ import {
   tabularNums,
 } from '../theme/theme';
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from '../types';
-import { categoryIcon } from '../utils/categoryIcons';
+import { categoryColor, categoryIcon } from '../utils/categoryIcons';
 
 // ---------- Card ----------
 export function Card({
@@ -531,11 +531,22 @@ export function CategoryChip({
         stretch && { flex: 1 },
       ]}
     >
-      <Ionicons
-        name={categoryIcon(category)}
-        size={stretch ? 20 : 16}
-        color={colors.foreground}
-      />
+      <View
+        style={{
+          width: stretch ? 32 : 24,
+          height: stretch ? 32 : 24,
+          borderRadius: 16,
+          backgroundColor: categoryColor(category),
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <Ionicons
+          name={categoryIcon(category)}
+          size={stretch ? 17 : 13}
+          color={colors.white}
+        />
+      </View>
       <Text
         style={{
           color: selected ? colors.foreground : colors.mutedForeground,

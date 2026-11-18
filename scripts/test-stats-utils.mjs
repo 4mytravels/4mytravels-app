@@ -274,10 +274,18 @@ assert(foodOnly.length === 1 && near(foodOnly[0].value, 100),
     return { catEntries, slices, total, countryEntries, maxCountry, topCountries, cardValue: byPayment.Card ?? 0, cashValue: byPayment.Cash ?? 0 };
   })();
   const now = bd.computeBreakdown(filtered, rows, tripIds, pal);
-  assert(JSON.stringify(now) === JSON.stringify(old), 'G3 snapshot: computeBreakdown === the old inline Stats memo (byte-identical JSON)');
+  // Colours changed on purpose (2026-11: donut = app-wide category colour), so
+  // the snapshot compares everything EXCEPT the slice colour.
+  const noColor = (b) => ({ ...b, slices: b.slices.map(({ color, ...rest }) => rest) });
+  assert(JSON.stringify(noColor(now)) === JSON.stringify(noColor(old)), 'G3 snapshot: computeBreakdown === the old inline Stats memo (byte-identical JSON, colours aside)');
   assert(now.slices.length === 6 && now.slices[5].category === 'Others' && now.catEntries.length === 7, 'top 5 + Others from 7 categories');
   assert(near(now.slices[now.slices.length - 1].endAngle, 360) && near(now.slices.reduce((s, x) => s + x.frac, 0), 1), 'slices cover the full circle');
-  assert(now.slices.every((s, i) => s.color === pal[i]), 'donut colours follow the palette order (palette unchanged)');
+  const { categoryColor } = require(join(cache, 'utils', 'categoryIcons.js'));
+  assert(
+    now.slices.every((s) => s.color === (s.category === 'Others' ? pal[pal.length - 1] : categoryColor(s.category))),
+    'donut colours = categoryColor() per category, Others = palette grey',
+  );
+  assert(categoryColor('Food') !== categoryColor('Transport') && categoryColor('Lodging') === '#6B7280', 'categoryColor: distinct per category, neutral fallback for unknown');
   assert(near(now.cardValue + now.cashValue, now.total), 'card + cash = total');
   const facts = bd.quickFacts(filtered);
   assert(facts.countries === new Set(filtered.map((r) => r.country).filter(Boolean)).size && facts.days === countries.summarizeStats(filtered).days, 'quickFacts: distinct countries + distinct days');

@@ -3,6 +3,7 @@
 // (and prove they equal the old inline memo, see the snapshot there).
 import type { Expense, Trip } from '../../types';
 import { toHomeCurrency } from '../currency';
+import { categoryColor } from '../categoryIcons';
 import { groupByCountry, summarizeStats, type CountryRow } from '../countryStats';
 
 /** Donut: the top N categories, the rest folded into "Others". */
@@ -59,7 +60,9 @@ export function computeBreakdown(
     const frac = total > 0 ? value / total : 0;
     const startAngle = acc * 360;
     acc += frac;
-    slices.push({ category, value, color: palette[i % palette.length], frac, startAngle, endAngle: acc * 360 });
+    slices.push({ category, value, // App-wide category colour (same as the row circles); only the
+      // synthetic "Others" slice takes the palette's last (grey) entry.
+      color: category === 'Others' ? palette[palette.length - 1] : categoryColor(category), frac, startAngle, endAngle: acc * 360 });
   }
 
   const countryEntries = groupByCountry(all, { tripIds });

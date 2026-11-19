@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { showStatus } from '../../src/utils/statusDialog';
 import Ionicons from '@expo/vector-icons/Ionicons';
 // Lazy + guarded: this package calls TurboModuleRegistry.getEnforcing() at
@@ -34,23 +35,54 @@ import { saveTrip, updateTrip, loadTripCover } from '../../src/db/tripRepo';
 import { tripCoverStageSize, makeCoverThumb } from '../../src/utils/image';
 import { pickTripCoverBytes } from '../../src/utils/tripActions';
 import { PickerSheet, PickerRow } from '../../src/components/PickerSheet';
-import { UN_COUNTRIES, flagEmoji, countryLabel } from '../../src/data/countries';
+import { UN_COUNTRIES, flagEmoji, countryName } from '../../src/data/countries';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
-import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
-import { Button, IconButton } from '../../src/components/ui';
+import { colors, fontFamily, radius, fontSize, spacing, themedStyles, IMAGE_SCRIM, onImageTextShadow, tabularNums } from '../../src/theme/theme';
+import { IconButton } from '../../src/components/ui';
+import { inclusiveDays } from '../../src/utils/pace';
+import { localNoon } from '../../src/utils/days';
+import { formatMoney, formatMoneyWhole } from '../../src/utils/currency';
+import {
+  autoCurrency,
+  budgetHint,
+  budgetInputFor,
+  parseBudget,
+  toDailyBudget,
+  type BudgetMode,
+} from '../../src/utils/tripForm';
 import type { Trip } from '../../src/types';
 
 // bytesToBase64 lives in src/utils/image.ts (shared with the expense form).
 import { bytesToBase64 } from '../../src/utils/image';
 // Currency catalogue lives in src/data/currencies.ts (shared with the expense form).
 const CURRENCIES = SHARED_CURRENCIES;
+const CURRENCY_CODES = CURRENCIES.map((c) => c.code);
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "2026-09-22" → "22 Sep 2026" (string based: a trip date is a calendar day). */
+function dayLabel(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return ymd;
+  return `${parseInt(m[3], 10)} ${MONTHS[parseInt(m[2], 10) - 1]} ${m[1]}`;
+}
+/** Local calendar day of a picked Date — never toISOString() (UTC shift, pattern 39). */
+function ymdOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+/** Currency symbol (€, ₱, $…) for the budget prefix; falls back to the code. */
+function currencySymbol(code: string): string {
+  const sym = formatMoney(0, code).replace(/[\d.,\s\u00a0\u202f]/g, '');
+  return sym || code;
+}
 
 function CurrencyPicker({
   value,
   onSelect,
+  icon = 'cash-outline',
 }: {
   value: string;
   onSelect: (c: string) => void;
+  icon?: keyof typeof Ionicons.glyphMap;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -62,15 +94,15 @@ function CurrencyPicker({
   const selected = CURRENCIES.find((c) => c.code === value);
   return (
     <>
-      <Pressable style={styles.input} onPress={() => setOpen(true)}>
-        <Text style={styles.pickerValue}>
-          {selected ? `${selected.flag} ${value}` : value}
+      <Pressable style={styles.selectRow} onPress={() => setOpen(true)} accessibilityRole="button">
+        <Ionicons name={icon} size={20} color={colors.primaryText} />
+        <Text style={styles.selectValue} numberOfLines={1}>
+          {selected ? `${value} · ${selected.name}` : value}
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
       </Pressable>
-      {/* Currency picker — PickerSheet: the backdrop and the sheet are siblings, so
-          the search field is tappable. A bare <Modal> here also cannot nest
-          inside the modal route /trips/new on react-native-web. */}
+      {/* PickerSheet: backdrop and sheet are siblings (pattern 23), and a bare
+          <Modal> cannot nest inside the modal route on web (pattern 21). */}
       <PickerSheet
         visible={open}
         onClose={() => setOpen(false)}
@@ -97,114 +129,94 @@ function CurrencyPicker({
   );
 }
 
-function DateField({
+/**
+ * One tappable date inside the date-range row. Native: tap → the community
+ * DateTimePicker dialog (fallback: a manual YYYY-MM-DD input). Web: a real
+ * text field (pattern 13b) — the row's calendar icon opens the browser picker.
+ */
+function DatePart({
   value,
+  placeholder,
   onChange,
   minimumDate,
   maximumDate,
+  accessibilityLabel,
 }: {
   value: string; // YYYY-MM-DD or ''
-  onChange: (iso: string) => void;
+  placeholder: string;
+  onChange: (ymd: string) => void;
   minimumDate?: Date;
   maximumDate?: Date;
+  accessibilityLabel: string;
 }) {
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  const [nativeAvailable, setNativeAvailable] = useState(true);
-  const openPicker = () => {
-    setDraft(value);
-    // Web: the community DateTimePicker has no web implementation — go
-    // straight to the manual/fallback input (setState during render broke
-    // this path before; openPicker is an event handler, so it is safe).
-    if (Platform.OS === 'web') {
-      setEditing(true);
-      return;
-    }
-    setShow(true);
+  const [nativeAvailable, setNativeAvailable] = useState(!!DateTimePicker);
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const commit = () => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(draft)) onChange(draft);
+    else setDraft(value);
+    setEditing(false);
   };
-  const onPick = (_: unknown, picked?: Date) => {
-    // On Android the picker is a dialog: it fires with undefined when dismissed.
-    setShow(false);
-    if (picked) onChange(picked.toISOString().slice(0, 10));
-  };
-  const initial = value ? new Date(`${value}T12:00:00`) : new Date();
+
+  if (Platform.OS === 'web' || editing) {
+    return (
+      <TextInput
+        style={[styles.dateText, styles.dateInput]}
+        value={draft}
+        onChangeText={setDraft}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor={colors.mutedForeground}
+        autoFocus={editing}
+        accessibilityLabel={accessibilityLabel}
+      />
+    );
+  }
+  const initial = value ? localNoon(value) : new Date();
   return (
-    <View>
-      {/* Web: the whole field opens the browser's native date picker.
-          Native: the existing Pressable + DateTimePicker flow. */}
-      {Platform.OS === 'web' ? (
-        <View style={styles.input}>
-          <WebDateButton value={value} onChange={onChange} />
-          <Text style={[styles.pickerValue, !value && { color: colors.mutedForeground }]}>
-            {value || 'YYYY-MM-DD'}
-          </Text>
-        </View>
-      ) : (
-        <Pressable style={styles.input} onPress={openPicker}>
-          <Text style={[styles.pickerValue, !value && { color: colors.mutedForeground }]}>
-            {value || 'YYYY-MM-DD'}
-          </Text>
-          <Ionicons name="calendar-outline" size={20} color={colors.mutedForeground} />
-        </Pressable>
-      )}
-      {/* Fallback text input (also used to correct a failed native picker) */}
-      {editing && (
-        <TextInput
-          style={[styles.input, { marginTop: spacing.sm }]}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.mutedForeground}
-          autoFocus
-          onSubmitEditing={() => {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(draft)) {
-              onChange(draft);
-              setEditing(false);
-            }
-          }}
-          onBlur={() => {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(draft)) onChange(draft);
-            setEditing(false);
-          }}
-        />
-      )}
-      {show && (
+    <>
+      <Pressable
+        hitSlop={8}
+        onPress={() => (nativeAvailable ? setShow(true) : setEditing(true))}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={{ flexShrink: 1, minWidth: 0 }}
+      >
+        <Text style={[styles.dateText, !value && styles.dateTextPlaceholder]} numberOfLines={1}>
+          {value ? dayLabel(value) : placeholder}
+        </Text>
+      </Pressable>
+      {show && DateTimePicker && (
         <View style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}>
-          {(() => {
-            if (!nativeAvailable || !DateTimePicker) {
-              // Render-time setState is illegal — the fallback input is
-              // already toggled by openPicker/onError; just render nothing.
-              return null;
-            }
-            try {
-              const Picker = DateTimePicker as React.ComponentType<Record<string, unknown>>;
-              return (
-                <Picker
-                  value={isNaN(initial.getTime()) ? new Date() : initial}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={onPick}
-                  minimumDate={minimumDate}
-                  maximumDate={maximumDate}
-                  onError={() => {
-                    setNativeAvailable(false);
-                    setShow(false);
-                    setEditing(true);
-                  }}
-                />
-              );
-            } catch {
-              return null;
-            }
-          })()}
+          <DateTimePicker
+            value={isNaN(initial.getTime()) ? new Date() : initial}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(_: unknown, picked?: Date) => {
+              // Android: a dialog that fires with undefined when dismissed.
+              setShow(false);
+              if (picked) onChange(ymdOf(picked));
+            }}
+            minimumDate={minimumDate}
+            maximumDate={maximumDate}
+            onError={() => {
+              setNativeAvailable(false);
+              setShow(false);
+              setEditing(true);
+            }}
+          />
         </View>
       )}
-    </View>
+    </>
   );
 }
 
-function CountryMultiPicker({
+/** Countries as removable chips + a dashed "+ Add" chip opening the searchable picker. */
+function CountryChips({
   selected,
   onChange,
 }: {
@@ -214,32 +226,37 @@ function CountryMultiPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const toggle = (code: string) => {
-    onChange(
-      selected.includes(code)
-        ? selected.filter((c) => c !== code)
-        : [...selected, code],
-    );
+    onChange(selected.includes(code) ? selected.filter((c) => c !== code) : [...selected, code]);
   };
   const filtered = UN_COUNTRIES.filter((c) =>
     c.name.toLowerCase().includes(query.toLowerCase()) || c.code.toLowerCase().includes(query.toLowerCase()),
   );
-  const label =
-    selected.length === 0
-      ? 'Select countries'
-      : selected.map((c) => flagEmoji(c)).join('') +
-        ' ' +
-        (selected.length <= 3
-          ? selected.map((c) => countryLabel(c).replace(/^\S+\s/, '')).join(', ')
-          : `${selected.length} countries selected`);
   return (
     <>
-      <Pressable style={styles.input} onPress={() => setOpen(true)}>
-        <Text style={[styles.pickerValue, selected.length === 0 && { color: colors.mutedForeground }]} numberOfLines={1}>
-          {label}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
-      </Pressable>
-      {/* Country picker — PickerSheet, for the same two reasons as the currency one. */}
+      <View style={styles.chipWrap}>
+        {selected.map((code) => (
+          <Pressable
+            key={code}
+            style={styles.countryChip}
+            onPress={() => toggle(code)}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${countryName(code)}`}
+          >
+            <Text style={styles.chipFlag}>{flagEmoji(code)}</Text>
+            <Text style={styles.chipText} numberOfLines={1}>{countryName(code)}</Text>
+            <Ionicons name="close" size={16} color={colors.mutedForeground} />
+          </Pressable>
+        ))}
+        <Pressable
+          style={styles.addChip}
+          onPress={() => setOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Add country"
+        >
+          <Ionicons name="add" size={18} color={colors.primaryText} />
+          <Text style={styles.addChipText}>Add</Text>
+        </Pressable>
+      </View>
       <PickerSheet
         visible={open}
         onClose={() => setOpen(false)}
@@ -261,6 +278,68 @@ function CountryMultiPicker({
   );
 }
 
+/** Live preview of the trip card stage: photo (or brand gradient) + name over an SVG scrim. */
+function CoverPreview({
+  uri,
+  name,
+  onPhotoAction,
+}: {
+  uri: string | null;
+  name: string;
+  onPhotoAction: () => void;
+}) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  return (
+    <View style={styles.coverStage}>
+      {uri ? (
+        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : (
+        <>
+          <Svg style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none" pointerEvents="none">
+            <Defs>
+              <LinearGradient id={`newTripNoPhoto${uid}`} x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={colors.noPhoto1} />
+                <Stop offset="0.55" stopColor={colors.noPhoto2} />
+                <Stop offset="1" stopColor={colors.noPhoto3} />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100" height="100" fill={`url(#newTripNoPhoto${uid})`} />
+          </Svg>
+          <View style={styles.coverMark} pointerEvents="none">
+            <Ionicons name="airplane-outline" size={40} color={colors.foreground28} />
+          </View>
+        </>
+      )}
+      {/* Bottom scrim so the name stays readable on any photo (SVG, no banding). */}
+      <Svg style={StyleSheet.absoluteFill} viewBox="0 0 100 100" preserveAspectRatio="none" pointerEvents="none">
+        <Defs>
+          <LinearGradient id={`newTripScrim${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={IMAGE_SCRIM} stopOpacity="0" />
+            <Stop offset="0.5" stopColor={IMAGE_SCRIM} stopOpacity="0.55" />
+            <Stop offset="1" stopColor={IMAGE_SCRIM} stopOpacity="0.9" />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="45" width="100" height="55" fill={`url(#newTripScrim${uid})`} />
+      </Svg>
+      <Text
+        style={[styles.coverName, !name.trim() && styles.coverNamePlaceholder]}
+        numberOfLines={2}
+      >
+        {name.trim() || 'Your trip'}
+      </Text>
+      <Pressable
+        style={({ pressed }) => [styles.photoPill, pressed && { backgroundColor: 'rgba(10,10,26,0.85)' }]}
+        onPress={onPhotoAction}
+        accessibilityRole="button"
+        accessibilityLabel={uri ? 'Change or remove photo' : 'Add photo'}
+      >
+        <Ionicons name="camera-outline" size={16} color={colors.onImage} />
+        <Text style={styles.photoPillText}>{uri ? 'Change photo' : 'Add photo'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 // G1: /trips/new creates a trip; editing lives at /trip/[id]/edit. The old
 // deeplink /trips/new?editId=X redirects there, so bookmarks and older code
 // paths keep working.
@@ -275,17 +354,21 @@ export function TripEditor({ editId }: { editId?: string }) {
   const existing = useTripStore((s) => (editId ? s.trips.find((t) => t.id === editId) : undefined));
   const addTrip = useTripStore((s) => s.addTrip);
   const updateTripStore = useTripStore((s) => s.updateTrip);
+  const isEdit = !!existing;
   const [name, setName] = useState(existing?.name ?? '');
-  const [startDate, setStartDate] = useState(existing?.startDate ?? (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })());
+  const [startDate, setStartDate] = useState(existing?.startDate ?? ymdOf(new Date()));
   const [endDate, setEndDate] = useState(existing?.endDate ?? '');
   const [homeCurrency, setHomeCurrency] = useState(existing?.homeCurrency ?? (useSettingsStore.getState().defaultHomeCurrency || 'EUR'));
   const [defaultCurrency, setDefaultCurrency] = useState(existing?.defaultCurrency ?? 'EUR');
-  const [dailyBudget, setDailyBudget] = useState(existing ? String(existing.dailyBudget) : '');
+  // Currency auto-fills from the FIRST country until the user picks one by
+  // hand. In edit mode the stored currency is a deliberate choice: touched.
+  const [currencyTouched, setCurrencyTouched] = useState(isEdit);
   const [countries, setCountries] = useState<string[]>(existing?.countries ?? []);
+  // Budget: the input is per day or total; STORAGE stays a per-day number.
+  const [budgetMode, setBudgetMode] = useState<BudgetMode>('day');
+  const [budgetInput, setBudgetInput] = useState(existing && existing.dailyBudget > 0 ? String(existing.dailyBudget) : '');
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [photoSheet, setPhotoSheet] = useState(false);
   // M4: the store only holds the card thumbnail, so the FULL cover is loaded
   // once for the editor preview. Saving without a new pick passes `undefined`
   // to updateTrip, which keeps the stored cover + thumbnail untouched.
@@ -309,28 +392,50 @@ export function TripEditor({ editId }: { editId?: string }) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [phase, setPhase] = useState<string | null>(null);
 
-  const isEdit = !!existing;
   // Seed the home currency from the global default (Settings) for new trips.
-  // The user can still override it per trip in the form below.
+  // The user can still override it per trip (homeTouched).
   const defaultHomeCurrency = useSettingsStore((s) => s.defaultHomeCurrency);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const [homeTouched, setHomeTouched] = useState(false);
-  // M9: editing opens "More details" when any optional field carries data, and
-  // "Advanced" when this trip overrides the Settings home currency.
-  const [detailsOpen, setDetailsOpen] = useState(
-    !!existing &&
-      ((existing.countries?.length ?? 0) > 0 || existing.dailyBudget > 0 || !!(existing as { coverThumb?: unknown; coverBytes?: unknown }).coverThumb || !!(existing as { coverBytes?: unknown }).coverBytes || existing.defaultCurrency !== 'EUR'),
-  );
-  const [advancedOpen, setAdvancedOpen] = useState(
-    !!existing && existing.homeCurrency !== (useSettingsStore.getState().defaultHomeCurrency || 'EUR'),
-  );
   useEffect(() => { void hydrateSettings(); }, [hydrateSettings]);
   useEffect(() => {
     if (!isEdit && !homeTouched && defaultHomeCurrency) setHomeCurrency(defaultHomeCurrency);
   }, [defaultHomeCurrency, isEdit, homeTouched]);
-  // Only the name is required. A daily budget is optional: with none, every
-  // budget figure (daily avg / budget, over-budget, Day X of Y) degrades to a
-  // neutral 0-budget state instead of blocking the save.
+
+  // Country → currency autofill (first selected country).
+  const autoCur = autoCurrency(countries, CURRENCY_CODES);
+  useEffect(() => {
+    if (!currencyTouched && autoCur) setDefaultCurrency(autoCur);
+  }, [autoCur, currencyTouched]);
+  const currencyAutoFilled = !currencyTouched && !!autoCur && autoCur === defaultCurrency;
+
+  // Inclusive day count (start = day 1); null for an open-ended trip.
+  const days = endDate && startDate && endDate >= startDate ? inclusiveDays(startDate, endDate) : null;
+  // Total mode needs a day count; when the end date disappears, fall back to
+  // per day WITHOUT changing the stored meaning (convert with the last count).
+  const lastDays = useRef<number | null>(days);
+  useEffect(() => {
+    if (days == null && budgetMode === 'total') {
+      const daily = toDailyBudget(parseBudget(budgetInput), 'total', lastDays.current);
+      setBudgetMode('day');
+      setBudgetInput(budgetInputFor(daily, 'day', null));
+    }
+    lastDays.current = days;
+  }, [days, budgetMode, budgetInput]);
+  const switchBudgetMode = (mode: BudgetMode) => {
+    if (mode === budgetMode) return;
+    if (mode === 'total' && days == null) return;
+    const daily = toDailyBudget(parseBudget(budgetInput), budgetMode, days);
+    setBudgetMode(mode);
+    setBudgetInput(budgetInputFor(daily, mode, days));
+  };
+  const budgetAmount = parseBudget(budgetInput);
+  const hint = budgetHint(budgetAmount, budgetMode, days, (n) =>
+    budgetMode === 'day' ? formatMoneyWhole(n, homeCurrency) : formatMoney(n, homeCurrency),
+  );
+  const homeSymbol = useMemo(() => currencySymbol(homeCurrency), [homeCurrency]);
+
+  // Only the name is required. A budget is optional: 0 = no budget.
   const canSave = name.trim().length > 0;
 
   const save = async () => {
@@ -345,16 +450,13 @@ export function TripEditor({ editId }: { editId?: string }) {
       endDate: endDate.trim() || undefined,
       homeCurrency,
       defaultCurrency,
-      dailyBudget: parseFloat(dailyBudget) || 0,
+      dailyBudget: toDailyBudget(budgetAmount, budgetMode, days),
       countries,
     };
     try {
       // Each phase is surfaced in the UI so a hang is visible instead of silent.
-      // NOTE: no artificial timeout here. Writing a trip photo BLOB through the
-      // encrypted SQLCipher layer can legitimately take >4s on a mid-range
-      // phone, and the old 4s race ABORTED the write ("TIMEOUT in saveTrip"),
-      // which is why a photo that previewed fine sometimes wasn't stored. The
-      // phase label is enough to make a real hang visible.
+      // NOTE: no artificial timeout (pattern 16) — a SQLCipher BLOB write can
+      // legitimately take >4s; racing it ABORTED the photo write before.
       const step = async (label: string, fn: () => Promise<unknown>) => {
         setPhase(label);
         return fn();
@@ -388,9 +490,7 @@ export function TripEditor({ editId }: { editId?: string }) {
       }
       setPhase('navigating back');
       // Web (static export): back() on a modal route can trigger a remount
-      // cascade (focus effects refire in a loop -> React #310, grey screen).
-      // replace() + dismiss() (in that order, next tick) navigates to the
-      // trips list AND drops the modal presentation layer.
+      // cascade (React #310). replace() + dismiss() on the next tick.
       if (Platform.OS === 'web') {
         router.replace('/trips');
         setTimeout(() => { try { router.dismiss(); } catch { /* flat stack */ } }, 0);
@@ -417,150 +517,198 @@ export function TripEditor({ editId }: { editId?: string }) {
     // M4: the card thumbnail is made once here, not on every card render.
     setCoverThumb(await makeCoverThumb(bytes));
     setCoverPreview('data:image/jpeg;base64,' + bytesToBase64(bytes));
-    // Choosing a photo ALWAYS cancels a previous "Remove" click. Without this,
-    // remove-then-pick left coverRemoved=true and save() wrote cover_photo =
-    // NULL — the new photo previewed but was silently dropped on restart.
+    // Choosing a photo ALWAYS cancels a previous "Remove" (pattern 19).
     setCoverRemoved(false);
   };
+  const removeCover = () => {
+    setCoverBytes(null);
+    setCoverThumb(null);
+    setCoverPreview(null);
+    setCoverRemoved(true);
+  };
+
+  const close = () => (Platform.OS === 'web' ? router.replace('/trips') : router.back());
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <View style={styles.sheet}>
         <View style={styles.handle} />
+        {/* Header: close × left, title centred (mockup). */}
         <View style={styles.header}>
-          <Text style={styles.title}>{isEdit ? 'Edit trip' : 'New trip'}</Text>
-          <IconButton
-            icon="close"
-            label="Close"
-            variant="plain"
-            size={24}
-            color={colors.mutedForeground}
-            onPress={() => (Platform.OS === 'web' ? router.replace('/trips') : router.back())}
-          />
+          <View style={styles.headerSide}>
+            <IconButton
+              icon="close"
+              label="Close"
+              variant="plain"
+              size={26}
+              color={colors.foreground}
+              onPress={close}
+            />
+          </View>
+          <Text style={styles.title} numberOfLines={1}>{isEdit ? 'Edit trip' : 'New trip'}</Text>
+          <View style={styles.headerSide} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          <Field label="Name">
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Japan in autumn" placeholderTextColor={colors.mutedForeground} />
-          </Field>
-          <View style={styles.row}>
-            <Field label="Start date" style={{ flex: 1, marginRight: spacing.md }}>
-              <DateField
-                value={startDate}
-                onChange={setStartDate}
-                maximumDate={endDate ? new Date(`${endDate}T12:00:00`) : undefined}
-              />
-            </Field>
-            <Field label="End date" style={{ flex: 1 }}>
-              <DateField
-                value={endDate}
-                onChange={setEndDate}
-                minimumDate={startDate ? new Date(`${startDate}T12:00:00`) : undefined}
-              />
-            </Field>
-          </View>
-          {/* M9: step 1 is name + dates only. Everything else is optional and
-              sits behind "More details"; the home currency comes from
-              Settings and lives under "Advanced". */}
-          <Pressable
-            style={styles.detailsToggle}
-            onPress={() => setDetailsOpen((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: detailsOpen }}
-          >
-            <Text style={styles.detailsToggleText}>{detailsOpen ? 'Fewer details' : 'More details'}</Text>
-            <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
-            {!detailsOpen && (
-              <Text style={styles.detailsSummary} numberOfLines={1}>
-                {[
-                  defaultCurrency,
-                  countries.length ? `${countries.length} ${countries.length === 1 ? 'country' : 'countries'}` : null,
-                  parseFloat(dailyBudget) > 0 ? `${dailyBudget}/day` : 'No budget',
-                  coverPreview ? 'Photo' : null,
-                ].filter(Boolean).join(' · ')}
-              </Text>
-            )}
-          </Pressable>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          <CoverPreview
+            uri={coverPreview}
+            name={name}
+            onPhotoAction={() => (coverPreview ? setPhotoSheet(true) : void pickCover())}
+          />
+          <Text style={styles.coverHint}>Stored encrypted locally. GPS/EXIF location is never saved.</Text>
 
-          {detailsOpen && (<>
-          <Field label="Local currency">
-            <CurrencyPicker value={defaultCurrency} onSelect={setDefaultCurrency} />
-            <Text style={styles.coverHint}>Pre-filled when you add an expense.</Text>
-          </Field>
-          <Field label="Countries visited">
-            <CountryMultiPicker selected={countries} onChange={setCountries} />
-          </Field>
-          <Field label="Daily budget">
-            <TextInput style={styles.input} value={dailyBudget} onChangeText={setDailyBudget} keyboardType="decimal-pad" placeholder="No budget" placeholderTextColor={colors.mutedForeground} />
+          <Field label="Trip name">
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Japan in autumn"
+              placeholderTextColor={colors.mutedForeground}
+            />
           </Field>
 
-          {/* Trip photo (optional) — replaces the airplane icon on the trip card */}
-          <Field label="Trip photo">
-            {coverPreview ? (
-              <View style={styles.coverPreviewBlock}>
-                {/* SAME format as the trip card stage (src/components/TripCard.tsx):
-                    16:9 via the shared tripCoverStageSize (Q13), cover-fit,
-                    same corner radius — WYSIWYG with the card. */}
-                <Image
-                  source={{ uri: coverPreview }}
-                  style={styles.coverStage}
-                  resizeMode="cover"
-                />
-                <View style={styles.coverActions}>
-                  {/* M3: the shared Button (was two hand-rolled pills). */}
-                  <Button
-                    style={styles.coverBtnGrow}
-                    label="Change photo"
-                    icon="swap-horizontal-outline"
-                    variant="secondary"
-                    size="md"
-                    onPress={() => { void pickCover(); }}
-                  />
-                  <Button
-                    style={styles.coverBtnGrow}
-                    label="Remove"
-                    icon="trash-outline"
-                    variant="destructive"
-                    size="md"
-                    onPress={() => { setCoverBytes(null); setCoverPreview(null); setCoverRemoved(true); }}
-                  />
-                </View>
-              </View>
+          {/* Dates in one row: icon · start → end · inclusive day-count pill. */}
+          <View style={[styles.dateRow, { marginBottom: spacing.xl }]}>
+            {Platform.OS === 'web' ? (
+              <WebDateButton value={startDate} onChange={setStartDate} />
             ) : (
-              <Pressable style={styles.coverAdd} onPress={() => { void pickCover(); }}>
-                <Ionicons name="image-outline" size={20} color={colors.mutedForeground} />
-                <Text style={styles.coverAddText}>Choose a photo for this trip</Text>
-              </Pressable>
+              <Ionicons name="calendar-outline" size={22} color={colors.primaryText} />
             )}
-            <Text style={styles.coverHint}>Stored encrypted locally. GPS/EXIF location is never saved.</Text>
+            <View style={styles.dateParts}>
+              <DatePart
+                value={startDate}
+                placeholder="Start date"
+                onChange={setStartDate}
+                maximumDate={endDate ? localNoon(endDate) : undefined}
+                accessibilityLabel="Start date"
+              />
+              <Ionicons name="arrow-forward" size={16} color={colors.primaryText} style={{ flexShrink: 0 }} />
+              <DatePart
+                value={endDate}
+                placeholder="Add end date"
+                onChange={setEndDate}
+                minimumDate={startDate ? localNoon(startDate) : undefined}
+                accessibilityLabel="End date"
+              />
+            </View>
+            {days != null && (
+              <View style={styles.daysPill}>
+                <Text style={styles.daysPillText}>{days} {days === 1 ? 'day' : 'days'}</Text>
+              </View>
+            )}
+            {Platform.OS !== 'web' && endDate ? (
+              <IconButton
+                icon="close-circle"
+                label="Clear end date"
+                variant="plain"
+                size={18}
+                color={colors.mutedForeground}
+                onPress={() => setEndDate('')}
+              />
+            ) : null}
+          </View>
+
+          <Field label="Countries">
+            <CountryChips selected={countries} onChange={setCountries} />
           </Field>
 
-          <Pressable
-            style={styles.detailsToggle}
-            onPress={() => setAdvancedOpen((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: advancedOpen }}
-          >
-            <Text style={styles.detailsToggleText}>Advanced</Text>
-            <Ionicons name={advancedOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primaryText} />
-            {!advancedOpen && (
-              <Text style={styles.detailsSummary} numberOfLines={1}>Home currency {homeCurrency}</Text>
-            )}
-          </Pressable>
-          {advancedOpen && (
-            <Field label="Home currency">
-              <CurrencyPicker value={homeCurrency} onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }} />
-              <Text style={styles.coverHint}>
-                Totals for this trip are converted to this currency. The default comes from Settings ({defaultHomeCurrency || 'EUR'}).
-              </Text>
-            </Field>
-          )}
-          </>)}
+          <Field label="Currency">
+            <CurrencyPicker
+              value={defaultCurrency}
+              onSelect={(c) => { setCurrencyTouched(true); setDefaultCurrency(c); }}
+            />
+            <Text style={styles.coverHint}>
+              {currencyAutoFilled ? 'Auto-filled from country' : 'Pre-filled when you add an expense.'}
+            </Text>
+          </Field>
+
+          <Field label="Budget">
+            <View style={styles.segment}>
+              {(['day', 'total'] as const).map((m) => {
+                const active = budgetMode === m;
+                const disabled = m === 'total' && days == null;
+                return (
+                  <Pressable
+                    key={m}
+                    style={[styles.segmentItem, active && styles.segmentItemActive]}
+                    onPress={() => switchBudgetMode(m)}
+                    disabled={disabled}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active, disabled }}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        active && styles.segmentTextActive,
+                        disabled && styles.segmentTextDisabled,
+                      ]}
+                    >
+                      {m === 'day' ? 'Per day' : 'Total'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={[styles.input, styles.budgetInputRow]}>
+              <Text style={styles.budgetSymbol}>{homeSymbol}</Text>
+              <TextInput
+                style={styles.budgetInput}
+                value={budgetInput}
+                onChangeText={setBudgetInput}
+                keyboardType="decimal-pad"
+                placeholder="No budget"
+                placeholderTextColor={colors.mutedForeground}
+                accessibilityLabel={budgetMode === 'day' ? 'Budget per day' : 'Total budget'}
+              />
+            </View>
+            <Text style={styles.coverHint}>
+              {days == null
+                ? 'Add an end date to enter a total budget.'
+                : hint ?? 'Leave empty for no budget.'}
+            </Text>
+          </Field>
+
+          {/* Per-trip home currency override (default from Settings). */}
+          <Field label="Home currency">
+            <CurrencyPicker
+              value={homeCurrency}
+              icon="home-outline"
+              onSelect={(c) => { setHomeTouched(true); setHomeCurrency(c); }}
+            />
+            <Text style={styles.coverHint}>
+              Totals for this trip are converted to this currency. Default from Settings ({defaultHomeCurrency || 'EUR'}).
+            </Text>
+          </Field>
         </ScrollView>
 
+        {/* Sticky footer — outside the ScrollView, so it rides above the
+            keyboard (KeyboardAvoidingView) and the bottom inset (SafeAreaView). */}
         <View style={styles.footer}>
-          <Button label={saving ? 'Saving…' : isEdit ? 'Save trip' : 'Create trip'} icon="checkmark-outline" disabled={!canSave || saving} onPress={save} />
+          <Pressable
+            style={({ pressed }) => [
+              styles.cta,
+              (!canSave || saving) && styles.ctaDisabled,
+              pressed && canSave && !saving && { opacity: 0.88 },
+            ]}
+            onPress={save}
+            disabled={!canSave || saving}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canSave || saving, busy: saving }}
+          >
+            <Ionicons
+              name="checkmark"
+              size={22}
+              color={!canSave || saving ? colors.mutedForeground : colors.ctaForeground}
+            />
+            <Text style={[styles.ctaText, (!canSave || saving) && styles.ctaTextDisabled]}>
+              {saving ? 'Saving…' : isEdit ? 'Update trip' : 'Create trip'}
+            </Text>
+          </Pressable>
           {errorMsg ? (
             <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.red12, borderRadius: radius.lg }}>
               <Text style={{ color: colors.destructive, fontSize: fontSize.sm, fontFamily: fontFamily.sans }}>{errorMsg}</Text>
@@ -569,6 +717,21 @@ export function TripEditor({ editId }: { editId?: string }) {
         </View>
       </View>
     </KeyboardAvoidingView>
+    {/* Photo actions: replacing never requires removing first (pattern 19). */}
+    <PickerSheet visible={photoSheet} onClose={() => setPhotoSheet(false)} title="Trip photo">
+      <PickerRow
+        label="Choose another photo"
+        icon="images-outline"
+        active={false}
+        onPress={() => { setPhotoSheet(false); void pickCover(); }}
+      />
+      <PickerRow
+        label="Remove photo"
+        icon="trash-outline"
+        active={false}
+        onPress={() => { setPhotoSheet(false); removeCover(); }}
+      />
+    </PickerSheet>
     </SafeAreaView>
   );
 }
@@ -599,77 +762,182 @@ const styles = themedStyles(() => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flex: 1,
-    paddingHorizontal: spacing['2xl'],
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    marginTop: 0,
+    paddingBottom: spacing.lg,
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.white20, alignSelf: 'center', marginBottom: spacing.lg },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
-  title: { fontSize: fontSize['3xl'], fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
-  detailsToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44, marginBottom: spacing.md },
-  detailsToggleText: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
-  detailsSummary: { flex: 1, textAlign: 'right', color: colors.mutedForeground, fontSize: fontSize.sm, fontFamily: fontFamily.sans },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.white20, alignSelf: 'center', marginBottom: spacing.md },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.lg },
+  headerSide: { width: 44, alignItems: 'flex-start' },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: fontSize['2xl'],
+    fontWeight: '700',
+    color: colors.foreground,
+    fontFamily: fontFamily.heading,
+  },
   scroll: { paddingBottom: spacing.lg },
-  row: { flexDirection: 'row' },
-  label: { fontSize: fontSize.md, color: colors.mutedForeground, fontWeight: '500', fontFamily: fontFamily.sans, marginBottom: spacing.sm },
+  label: { fontSize: fontSize.md, color: colors.foreground, fontWeight: '600', fontFamily: fontFamily.sans, marginBottom: spacing.sm },
   input: {
     backgroundColor: colors.secondary,
     borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
     fontSize: fontSize.lg,
     color: colors.foreground,
     fontFamily: fontFamily.sans,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
-  footer: { marginTop: spacing.sm },
-  pickerValue: { flex: 1, fontSize: fontSize.lg, color: colors.foreground, fontFamily: fontFamily.sans },
-  pickerBackdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
-  pickerSheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius['3xl'],
-    borderTopRightRadius: radius['3xl'],
-    padding: spacing.xl,
-  },
-  pickerTitle: { color: colors.foreground, fontSize: fontSize.xl, fontWeight: '700', fontFamily: fontFamily.heading, marginBottom: spacing.md },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  pickerRowActive: {},
-  pickerRowText: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-  coverPreviewBlock: { marginTop: spacing.xs },
-  // Trip cover preview — EXACTLY the trip card stage: the shared 16:9
-  // tripCoverStageSize (src/utils/image.ts, Q13), cover-fit, the card's
-  // radius['3xl'] corner. The old 132×100 thumb was a different shape.
+  // Cover preview — the trip card stage (shared 16:9 tripCoverStageSize).
   coverStage: {
     ...tripCoverStageSize,
     borderRadius: radius['3xl'],
+    overflow: 'hidden',
     backgroundColor: colors.secondary,
     borderWidth: 1,
     borderColor: colors.borderStrong,
+    justifyContent: 'flex-end',
   },
-  // Buttons sit UNDER the full-width preview now (they no longer squeeze
-  // beside a small square), sharing the row equally.
-  coverActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
-  coverBtnGrow: { flex: 1 },
-  coverAdd: {
+  coverMark: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  coverName: {
+    color: colors.onImage,
+    fontFamily: fontFamily.heading,
+    fontSize: fontSize['3xl'],
+    fontWeight: '700',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.lg,
+    ...onImageTextShadow,
+  },
+  coverNamePlaceholder: { color: colors.onImageMuted },
+  photoPill: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(10,10,26,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  photoPillText: { color: colors.onImage, fontSize: fontSize.sm, fontWeight: '600', fontFamily: fontFamily.sans },
+  coverHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm, marginBottom: spacing.sm },
+  // Date range row.
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.secondary,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: spacing.lg,
+    minHeight: 56,
+  },
+  dateParts: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dateText: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, fontWeight: '600', ...tabularNums },
+  dateTextPlaceholder: { color: colors.primaryText, fontWeight: '500' },
+  // Web / fallback: a real text field (pattern 13a/b — minWidth 0 to shrink).
+  dateInput: { flex: 1, minWidth: 0, paddingVertical: spacing.sm },
+  daysPill: {
+    flexShrink: 0,
+    backgroundColor: colors.primary12,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  daysPillText: { color: colors.primaryText, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans, ...tabularNums },
+  // Country chips.
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  countryChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.xl,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.md,
+    minHeight: 40,
+    borderRadius: radius.full,
+    backgroundColor: colors.secondary,
     borderWidth: 1,
     borderColor: colors.border,
-    borderStyle: 'dashed',
+    maxWidth: '100%',
   },
-  coverAddText: { color: colors.mutedForeground, fontSize: fontSize.md, fontFamily: fontFamily.sans },
-  coverHint: { color: colors.mutedForeground, fontSize: fontSize.xs, fontFamily: fontFamily.sans, marginTop: spacing.sm },
+  chipFlag: { fontSize: fontSize.lg },
+  chipText: { color: colors.foreground, fontSize: fontSize.md, fontFamily: fontFamily.sans, flexShrink: 1 },
+  addChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    minHeight: 40,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.primaryBorder,
+  },
+  addChipText: { color: colors.primaryText, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  // Select row (currency).
+  selectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.secondary,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: spacing.lg,
+    minHeight: 56,
+  },
+  selectValue: { flex: 1, minWidth: 0, color: colors.foreground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  // Budget segmented control.
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: colors.secondary,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 3,
+    gap: 3,
+    marginBottom: spacing.md,
+  },
+  segmentItem: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 40, borderRadius: radius.full },
+  segmentItemActive: { backgroundColor: colors.primarySolid },
+  segmentText: { color: colors.mutedForeground, fontSize: fontSize.md, fontWeight: '600', fontFamily: fontFamily.sans },
+  segmentTextActive: { color: colors.primaryForeground },
+  segmentTextDisabled: { opacity: 0.55 },
+  budgetInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 0, minHeight: 56 },
+  budgetSymbol: { color: colors.mutedForeground, fontSize: fontSize.lg, fontFamily: fontFamily.sans, fontWeight: '600' },
+  budgetInput: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontFamily: fontFamily.sans,
+    paddingVertical: spacing.lg,
+    ...tabularNums,
+  },
+  // Orange sticky CTA.
+  footer: { paddingTop: spacing.md },
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 56,
+    borderRadius: radius.full,
+    backgroundColor: colors.cta,
+    borderWidth: 1,
+    borderColor: colors.cta,
+  },
+  // Disabled: readable outline + muted text, no opacity fade.
+  ctaDisabled: { backgroundColor: 'transparent', borderColor: colors.borderStrong },
+  ctaText: { color: colors.ctaForeground, fontSize: fontSize.lg, fontWeight: '700', fontFamily: fontFamily.heading },
+  ctaTextDisabled: { color: colors.mutedForeground },
 }));

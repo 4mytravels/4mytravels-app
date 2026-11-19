@@ -102,6 +102,7 @@ export function ExpenseForm({
   const sheetKeyboardPad =
     Platform.OS !== 'ios' && keyboardHeight > 0 ? { paddingBottom: spacing.xl + keyboardHeight } : null;
   const [amount, setAmount] = useState(initialExpense ? String(initialExpense.amount) : '');
+  const amountRef = useRef<TextInput>(null);
   const [currency, setCurrency] = useState(initialExpense?.currency ?? defaultCurrency);
   const [category, setCategory] = useState<ExpenseCategory>(initialExpense?.category ?? 'Food');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
@@ -441,6 +442,11 @@ export function ExpenseForm({
             isEdit ? ' (locked to entry date)' : rateSource ? ` (${rateSource})` : ''
           }`
         : null;
+  // Currency symbol in front of the amount (₱, €, $…); falls back to the code.
+  const currencySymbol = useMemo(() => {
+    const sym = formatMoney(0, currency).replace(/[\d.,\s\u00a0\u202f]/g, '');
+    return sym || currency;
+  }, [currency]);
   const heroLine =
     amountNum > 0 && homeAmount != null && currency !== homeCurrency
       ? [`≈ ${formatMoney(homeAmount, homeCurrency)}`, rateLabel].filter(Boolean).join(' · ')
@@ -488,18 +494,24 @@ export function ExpenseForm({
         >
           {/* Amount hero */}
           <View style={styles.hero}>
-            <TextInput
-              style={styles.amountHero}
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
-              inputMode="decimal"
-              placeholder="0"
-              placeholderTextColor={colors.white35}
-              autoFocus={!isEdit}
-              textAlign="center"
-              accessibilityLabel="Amount"
-            />
+            {/* Symbol + input as one centred row; the input is sized to its
+                content so the caret sits next to the amount, not at the edge. */}
+            <Pressable style={styles.heroAmountRow} onPress={() => amountRef.current?.focus()} accessible={false}>
+              <Text style={[styles.amountSymbol, !amount && styles.amountSymbolEmpty]}>{currencySymbol}</Text>
+              <TextInput
+                ref={amountRef}
+                style={[styles.amountHero, { width: Math.max(1, (amount || '0').length) * 27 + 8 }]}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                placeholder="0"
+                placeholderTextColor={colors.white35}
+                autoFocus={!isEdit}
+                textAlign="left"
+                accessibilityLabel="Amount"
+              />
+            </Pressable>
             <Pressable style={styles.currencyChip} onPress={() => setShowCurrencies(true)} accessibilityLabel="Currency">
               <Text style={styles.currencyText}>
                 {currencyInfo(currency).flag ? currencyInfo(currency).flag + ' ' : ''}
@@ -596,20 +608,28 @@ export function ExpenseForm({
 
           {/* Compact detail rows */}
           <View style={styles.list}>
-            {/* Payment — tap toggles card/cash */}
-            <Pressable
-              style={styles.listRow}
-              onPress={() => setPaymentMethod((m) => (m === 'card' ? 'cash' : 'card'))}
-              accessibilityRole="button"
-              accessibilityLabel={`Payment: ${paymentMethod}. Tap to switch.`}
-            >
+            {/* Payment — both options visible side by side */}
+            <View style={styles.listRow}>
               <Text style={styles.listLabel}>Payment</Text>
-              <View style={styles.listValueWrap}>
-                <Ionicons name={paymentMethod === 'card' ? 'card-outline' : 'cash-outline'} size={16} color={colors.foreground} />
-                <Text style={styles.listValue}>{paymentMethod === 'card' ? 'Card' : 'Cash'}</Text>
-                <Ionicons name="swap-horizontal" size={16} color={colors.mutedForeground} />
+              <View style={styles.payGroup}>
+                {PAYMENT_METHODS.map((m) => {
+                  const on = paymentMethod === m;
+                  return (
+                    <Pressable
+                      key={m}
+                      onPress={() => setPaymentMethod(m)}
+                      style={[styles.payPill, on && styles.payPillOn]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={m === 'card' ? 'Card' : 'Cash'}
+                    >
+                      <Ionicons name={m === 'card' ? 'card-outline' : 'cash-outline'} size={15} color={on ? colors.foreground : colors.mutedForeground} />
+                      <Text style={[styles.payPillText, on && styles.payPillTextOn]}>{m === 'card' ? 'Card' : 'Cash'}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-            </Pressable>
+            </View>
 
             {/* Country */}
             <Pressable style={styles.listRow} onPress={() => setCountryOpen(true)} accessibilityRole="button">
@@ -887,10 +907,20 @@ const styles = themedStyles(() => StyleSheet.create({
   headerSide: { width: 40 },
   title: { flex: 1, textAlign: 'center', fontSize: fontSize.xl, fontWeight: '700', color: colors.foreground, fontFamily: fontFamily.heading },
   hero: { alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.xl },
+  heroAmountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
+  amountSymbol: { fontSize: 32, fontWeight: '600', color: colors.foreground, fontFamily: fontFamily.heading, marginRight: 4 },
+  amountSymbolEmpty: { color: colors.white35 },
+  payGroup: { flexDirection: 'row', gap: spacing.sm },
+  payPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34, paddingHorizontal: spacing.md,
+    borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: 'transparent',
+  },
+  payPillOn: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
+  payPillText: { fontSize: fontSize.md, color: colors.mutedForeground, fontFamily: fontFamily.sans, fontWeight: '500' },
+  payPillTextOn: { color: colors.foreground, fontWeight: '600' },
   amountHero: {
-    alignSelf: 'stretch',
     minWidth: 0,
-    textAlign: 'center',
+    padding: 0,
     fontSize: 44,
     fontWeight: '700',
     color: colors.foreground,

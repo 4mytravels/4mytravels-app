@@ -18,6 +18,11 @@ export const darkColors = {
   // text/icons on dark surfaces (9.0:1). `primary` stays for bars/borders.
   primarySolid: '#4F46E5', // indigo-600
   primaryText: '#A5B4FC', // indigo-300
+  // Orange call-to-action (New trip "Create trip", owner request). White on
+  // this coral is only ~2.8:1, so the label is a near-black brown (6.76:1);
+  // same values in both schemes (asserted in test-theme-contrast.mjs).
+  cta: '#FF6B4A',
+  ctaForeground: '#1F0A04',
   secondary: '#18203A', // oklch(0.250 0.050 270.000)
   secondaryForeground: '#E2E8F0',
 

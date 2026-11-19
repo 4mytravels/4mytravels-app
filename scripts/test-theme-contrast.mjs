@@ -57,7 +57,7 @@ try {
     ['foreground', 'background'], ['foreground', 'card'], ['foreground', 'secondary'],
     ['mutedForeground', 'background'], ['mutedForeground', 'card'], ['mutedForeground', 'secondary'],
     ['primaryText', 'background'], ['primaryText', 'card'], ['primaryText', 'primary12', 'card'],
-    ['primaryForeground', 'primarySolid'],
+    ['primaryForeground', 'primarySolid'], ['ctaForeground', 'cta'],
     ['foreground', 'primary12', 'card'], ['foreground', 'navSurface'], ['mutedForeground', 'navSurface'],
     ['success', 'card'], ['warning', 'card'], ['danger', 'card'], ['info', 'card'], ['teal', 'card'],
     ['success', 'success15', 'card'], ['warning', 'warning15', 'card'], ['danger', 'danger15', 'card'],

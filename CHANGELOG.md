@@ -4,6 +4,14 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
+### Feature batch 2026-11-21
+
+- First-start onboarding: a centred, non-dismissible dialog asks for the home currency (searchable) and the appearance (System / Light / Dark) before first use; "Get started" stores `onboarding_done`. On the PWA it appears after unlock. Existing installs with trips are marked onboarded silently. Web uses a body portal (z-index 10000) so the search field keeps focus.
+
+### Store
+- F-Droid screenshot 5 shows the redesigned *Add expense* sheet
+  (`fastlane/metadata/android/en-US/images/phoneScreenshots/5.png`).
+
 ### Verbeterplan fase 1 (branch `verbeterplan-2026-11-16`, dev only)
 - **Fixed an endless query loop** on Home, Expenses and Stats (inline
   `useFocusEffect` callbacks); `react-hooks/exhaustive-deps` is now an error. (Q1)

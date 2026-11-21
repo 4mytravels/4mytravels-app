@@ -30,12 +30,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "resize",
-      "splash": {
-        "backgroundColor": "#0A0A1A",
-        "image": "./assets/splash.png",
-        "resizeMode": "contain"
-      }
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "bundler": "metro",
@@ -46,7 +41,20 @@
       ["expo-router", { "asyncRoutes": { "web": "production", "default": false } }],
       "expo-secure-store",
       "expo-local-authentication",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0A0A1A",
+          "image": "./assets/icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#0A0A1A",
+            "image": "./assets/icon.png"
+          }
+        }
+      ]
     ],
     "extra": {
       "router": {},

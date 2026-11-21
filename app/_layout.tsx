@@ -22,6 +22,8 @@ import { disableBiometric } from '../src/db/web/biometric';
 import { BiometricEnrollPrompt } from '../src/components/BiometricEnrollPrompt';
 import { OnboardingHost } from '../src/components/OnboardingHost';
 import { AppLockHost } from '../src/components/AppLockHost';
+import { BrandSplash } from '../src/components/BrandSplash';
+import { isBooted } from '../src/utils/splash';
 
 // PWA service worker registration (web only, static builds only). Deferred
 // past first paint; skipped on localhost (Metro dev server serves different
@@ -50,14 +52,19 @@ function usePwaBootstrap(ready: boolean): void {
 // G5: the provider sits OUTSIDE the layout body so the palette is set before
 // any `colors.x` in it is read; RootInner subscribes so it re-renders on a switch.
 export default function RootLayout() {
+  // Native: OS splash is held (BrandSplash) until RootInner reports booted,
+  // then a matching JS overlay fades out. Web: BrandSplash renders nothing.
+  const [booted, setBooted] = useState(false);
+  const onBooted = useCallback(() => setBooted(true), []);
   return (
     <ThemeProvider>
-      <RootInner />
+      <RootInner onBooted={onBooted} />
+      <BrandSplash booted={booted} />
     </ThemeProvider>
   );
 }
 
-function RootInner() {
+function RootInner({ onBooted }: { onBooted: () => void }) {
   useThemeMode();
   const fontsLoaded = useAppFonts();
   const isWeb = Platform.OS === 'web';
@@ -69,6 +76,12 @@ function RootInner() {
 
   const { ready, error, retry: retryStorage } = useStorageInit(passphrase, keyHex);
   const wrongKey = isWeb && error === 'wrong-key';
+
+  useEffect(() => {
+    // useAppFonts() returns useFonts' [loaded, error] tuple; a font error must not hold the splash.
+    const fontsDone = fontsLoaded[0] || fontsLoaded[1] != null;
+    if (isBooted(ready, fontsDone, error)) onBooted();
+  }, [ready, fontsLoaded, error, onBooted]);
 
   // A rejected passphrase resets the gate for a retry.
   useEffect(() => {

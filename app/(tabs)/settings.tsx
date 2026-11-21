@@ -14,9 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NavFadeScrim } from '../../src/components/FadeScrim';
 import { WebNotices } from '../../src/components/WebNotices';
-import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
-import { File, Paths } from 'expo-file-system';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { colors, fontFamily, radius, fontSize, spacing, themedStyles } from '../../src/theme/theme';
@@ -35,12 +33,12 @@ import {
 import { saveBackup } from '../../src/services/saveBackup';
 import { markBackupDone, shouldNudgeBackup, scheduleBackupReminder } from '../../src/services/backupReminder';
 import { saveTrip } from '../../src/db/tripRepo';
-import type { Expense } from '../../src/types';
 import { saveExpense, loadExpensesForList } from '../../src/db/expenseRepo';
 import { useExpenseStore } from '../../src/store/expenseStore';
 import { syncCoverThumbs } from '../../src/utils/coverThumbs';
 import { readPickedDocumentText } from '../../src/utils/readPickedDocument';
 import { showStatus } from '../../src/utils/statusDialog';
+import { exportTripsCsv } from '../../src/utils/tripActions';
 import {
   disableBiometric,
   isBiometricAvailable,
@@ -58,7 +56,6 @@ import { lockUnavailableReason } from '../../src/utils/appLock';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
-import { expensesToCsv } from '../../src/services/csv';
 // AUTO_TRIP = "import without choosing a trip, create it from the file".
 // It lives in the shared import service so this screen and the web share-target
 // path can never disagree about what the sentinel means.
@@ -171,56 +168,16 @@ export default function SettingsScreen() {
     setBusy(false);
   };
 
-  // ---- CSV export: one trip, or everything as multiple per-trip files ----
-  const shareCsv = async (csv: string, filename: string) => {
-    const file = new File(Paths.cache, filename);
-    await file.write(csv);
-    await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Export expenses' });
-  };
-
+  // ---- CSV export: one trip, or ALL trips as one file per trip ----
+  // Saved (folder picker / downloads), never shared — src/utils/tripActions.ts.
   const exportSingleTrip = async (tripId: string) => {
     const trip = trips.find((t) => t.id === tripId);
     if (!trip) return;
-    try {
-      const list = await loadExpensesForList(tripId);
-      if (list.length === 0) {
-        showStatus('Nothing to export', 'This trip has no expenses yet.');
-        return;
-      }
-      const csv = expensesToCsv(list, { [trip.id]: trip.name });
-      const safeName = trip.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-      await shareCsv(csv, `4mt-expenses-${safeName || 'trip'}.csv`);
-      setExportOpen(false);
-    } catch (e) {
-      showStatus('Export failed', e instanceof Error ? e.message : String(e));
-    }
+    if (await exportTripsCsv([trip])) setExportOpen(false);
   };
 
   const exportAllTrips = async () => {
-    try {
-      // ONE share sheet, ONE file. The old loop fired one system share dialog
-      // per trip, so "all trips" meant picking N files one by one. All trips
-      // are combined into a single CSV — the format already carries
-      // trip_id + trip_name per row, so nothing is lost.
-      const all: Array<{ trip: (typeof trips)[number]; list: Expense[] }> = [];
-      for (const t of trips) {
-        const list = await loadExpensesForList(t.id);
-        if (list.length > 0) all.push({ trip: t, list });
-      }
-      if (all.length === 0) {
-        showStatus('Nothing to export', 'No trips with expenses found.');
-        setExportOpen(false);
-        return;
-      }
-      const merged = all.flatMap(({ trip, list }) => list);
-      const names: Record<string, string> = {};
-      for (const { trip } of all) names[trip.id] = trip.name;
-      const csv = expensesToCsv(merged, names);
-      await shareCsv(csv, `4mt-expenses-all-${all.length}-trips.csv`);
-      setExportOpen(false);
-    } catch (e) {
-      showStatus('Export failed', e instanceof Error ? e.message : String(e));
-    }
+    if (await exportTripsCsv(trips)) setExportOpen(false);
   };
 
   // ---- CSV import: own format or TravelSpend, with or without a target trip ----

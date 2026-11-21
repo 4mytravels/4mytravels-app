@@ -2,9 +2,9 @@
 // TripCard and the trip editor (Q17, M9). One implementation per action, so the
 // three entry points can never drift apart (pattern 27/36: one shared copy).
 import * as ImagePicker from 'expo-image-picker';
-import * as Sharing from 'expo-sharing';
-import { File, Paths } from 'expo-file-system';
-import type { Trip } from '../types';
+import type { Expense, Trip } from '../types';
+import { planTripCsvFiles, savedMessage } from './csvExportFiles';
+import { saveCsvFiles } from '../services/saveCsvFiles';
 import { useTripStore } from '../store/tripStore';
 import { useExpenseStore } from '../store/expenseStore';
 import { loadExpensesForList } from '../db/expenseRepo';
@@ -51,22 +51,35 @@ export async function changeTripCover(trip: Trip): Promise<boolean> {
   }
 }
 
-/** Export ONE trip's expenses as CSV through the share sheet. */
-export async function exportTripCsv(trip: Trip): Promise<void> {
+/**
+ * Export trips as CSV — ONE file per trip (travelspend_export_<Trip>-<year>.csv),
+ * SAVED into a folder the user picks once (native SAF / web directory picker or
+ * downloads). Never the share sheet. Resolves true when at least one file was saved.
+ */
+export async function exportTripsCsv(trips: Trip[]): Promise<boolean> {
   try {
-    const list = await loadExpensesForList(trip.id);
-    if (list.length === 0) {
-      showStatus('Nothing to export', `"${trip.name}" has no expenses yet.`);
-      return;
+    const expenses: Expense[] = [];
+    // List variant: no receipt BLOBs (pattern 43).
+    for (const t of trips) expenses.push(...(await loadExpensesForList(t.id)));
+    const plan = planTripCsvFiles(trips, expenses);
+    if (plan.length === 0) {
+      showStatus('Nothing to export', trips.length === 1 ? `"${trips[0].name}" has no expenses yet.` : 'No trips with expenses found.');
+      return false;
     }
-    const csv = expensesToCsv(list, { [trip.id]: trip.name });
-    const safe = trip.name.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'trip';
-    const file = new File(Paths.cache, `4mt-${safe}.csv`);
-    await file.write(csv);
-    await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Export expenses' });
-  } catch {
-    // share-sheet cancellation is not an error
+    const files = plan.map((p) => ({ name: p.fileName, text: expensesToCsv(p.expenses, { [p.trip.id]: p.trip.name }) }));
+    const res = await saveCsvFiles(files);
+    if (res.cancelled) return false;
+    showStatus('Export complete', savedMessage(res.saved, res.where));
+    return res.saved > 0;
+  } catch (e) {
+    showStatus('Export failed', e instanceof Error ? e.message : String(e));
+    return false;
   }
+}
+
+/** Export ONE trip's expenses as a saved CSV file. */
+export async function exportTripCsv(trip: Trip): Promise<void> {
+  await exportTripsCsv([trip]);
 }
 
 /**

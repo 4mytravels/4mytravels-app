@@ -51,6 +51,7 @@ import {
   type BudgetMode,
 } from '../../src/utils/tripForm';
 import type { Trip } from '../../src/types';
+import { TRIP_ICONS, tripIcon, type TripIconName } from '../../src/utils/tripIcons';
 
 // bytesToBase64 lives in src/utils/image.ts (shared with the expense form).
 import { bytesToBase64 } from '../../src/utils/image';
@@ -215,6 +216,30 @@ function DatePart({
   );
 }
 
+/** Trip icon: a wrapping grid of the curated set (src/utils/tripIcons.ts).
+ *  Plain inline Pressables — no overlay, so no portal/z-index concerns on web. */
+function TripIconGrid({ value, onChange }: { value: TripIconName; onChange: (i: TripIconName) => void }) {
+  return (
+    <View style={styles.iconGrid} accessibilityRole="radiogroup">
+      {TRIP_ICONS.map((name) => {
+        const active = name === value;
+        return (
+          <Pressable
+            key={name}
+            onPress={() => onChange(name)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`Trip icon ${name.replace(/-outline$/, '').replace(/-/g, ' ')}`}
+            style={[styles.iconTile, active && styles.iconTileActive]}
+          >
+            <Ionicons name={name} size={22} color={active ? colors.primaryText : colors.mutedForeground} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 /** Countries as removable chips + a dashed "+ Add" chip opening the searchable picker. */
 function CountryChips({
   selected,
@@ -364,6 +389,7 @@ export function TripEditor({ editId }: { editId?: string }) {
   // hand. In edit mode the stored currency is a deliberate choice: touched.
   const [currencyTouched, setCurrencyTouched] = useState(isEdit);
   const [countries, setCountries] = useState<string[]>(existing?.countries ?? []);
+  const [icon, setIcon] = useState<TripIconName>(tripIcon(existing));
   // Budget: the input is per day or total; STORAGE stays a per-day number.
   const [budgetMode, setBudgetMode] = useState<BudgetMode>('day');
   const [budgetInput, setBudgetInput] = useState(existing && existing.dailyBudget > 0 ? String(existing.dailyBudget) : '');
@@ -452,6 +478,7 @@ export function TripEditor({ editId }: { editId?: string }) {
       defaultCurrency,
       dailyBudget: toDailyBudget(budgetAmount, budgetMode, days),
       countries,
+      icon,
     };
     try {
       // Each phase is surfaced in the UI so a hang is visible instead of silent.
@@ -475,6 +502,7 @@ export function TripEditor({ editId }: { editId?: string }) {
           defaultCurrency: trip.defaultCurrency,
           dailyBudget: trip.dailyBudget,
           countries: trip.countries,
+          icon: trip.icon,
           ...(coverArg === undefined
             ? {}
             : { coverThumb: coverArg ? (coverThumb ?? coverArg) : null, coverBytes: undefined }),
@@ -615,6 +643,11 @@ export function TripEditor({ editId }: { editId?: string }) {
 
           <Field label="Countries">
             <CountryChips selected={countries} onChange={setCountries} />
+          </Field>
+
+          <Field label="Icon">
+            <TripIconGrid value={icon} onChange={setIcon} />
+            <Text style={styles.coverHint}>Shown next to the trip in filters.</Text>
           </Field>
 
           <Field label="Currency">
@@ -854,6 +887,18 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   daysPillText: { color: colors.primaryText, fontSize: fontSize.sm, fontWeight: '700', fontFamily: fontFamily.sans, ...tabularNums },
+  // Trip icon grid.
+  iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  iconTile: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  iconTileActive: { backgroundColor: colors.primary12, borderColor: colors.primaryBorder },
   // Country chips.
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   countryChip: {

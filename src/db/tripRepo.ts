@@ -3,6 +3,7 @@
 import { getStorageAdapter, type StorageAdapter } from './index';
 import { bytesFromBlob } from './blob';
 import type { Trip } from '../types';
+import { normalizeTripIcon } from '../utils/tripIcons';
 
 function parseCountries(raw: unknown): string[] | undefined {
   if (typeof raw !== 'string' || !raw) return undefined;
@@ -34,6 +35,7 @@ function rowToTrip(r: Record<string, unknown>): TripRow {
     coverBytes: 'cover_photo' in r ? bytesFromBlob(r.cover_photo) : undefined,
     coverThumb: bytesFromBlob(r.cover_thumb),
     countries: parseCountries(r.countries),
+    icon: normalizeTripIcon(r.icon),
   };
 }
 
@@ -41,7 +43,7 @@ function rowToTrip(r: Record<string, unknown>): TripRow {
 // cover_photo (~500 KB per trip) — the cold start paid for every cover just to
 // draw ~40 KB thumbnails. Same trap as receipt_photo (pattern 43).
 const LIST_COLUMNS =
-  'id, name, start_date, end_date, home_currency, default_currency, daily_budget, countries, cover_thumb';
+  'id, name, start_date, end_date, home_currency, default_currency, daily_budget, countries, cover_thumb, icon';
 
 /** Trips for the UI: metadata + card thumbnail, no full cover. */
 export async function loadTrips(db: StorageAdapter = getStorageAdapter()): Promise<TripRow[]> {
@@ -107,8 +109,8 @@ export async function saveTrip(
   const thumb = cover ? (coverThumb ?? (trip as TripRow).coverThumb ?? null) : null;
   await db.exec(
     `INSERT OR REPLACE INTO trips
-       (id, name, start_date, end_date, home_currency, default_currency, daily_budget, cover_photo, countries, cover_thumb)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, start_date, end_date, home_currency, default_currency, daily_budget, cover_photo, countries, cover_thumb, icon)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       trip.id,
       trip.name,
@@ -120,6 +122,7 @@ export async function saveTrip(
       cover,
       trip.countries?.length ? JSON.stringify(trip.countries) : null,
       thumb,
+      normalizeTripIcon(trip.icon),
     ],
   );
 }
@@ -151,6 +154,7 @@ export async function updateTrip(
     trip.defaultCurrency,
     trip.dailyBudget,
     trip.countries?.length ? JSON.stringify(trip.countries) : null,
+    normalizeTripIcon(trip.icon),
   ];
   if (coverPhoto !== undefined) params.push(coverPhoto, coverPhoto ? (coverThumb ?? null) : null);
   params.push(trip.id);
@@ -158,7 +162,7 @@ export async function updateTrip(
   await db.exec(
     `UPDATE trips SET
        name = ?, start_date = ?, end_date = ?, home_currency = ?,
-       default_currency = ?, daily_budget = ?, countries = ?,
+       default_currency = ?, daily_budget = ?, countries = ?, icon = ?,
        ${coverSql}
      WHERE id = ?`,
     params,

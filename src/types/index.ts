@@ -72,6 +72,7 @@ export interface Trip {
   dailyBudget: number; // denominated in home currency
   coverPhotoId?: string; // blob inside encrypted DB, EXIF stripped
   countries?: string[]; // ISO 3166-1 alpha-2 codes visited on this trip, e.g. ['JP','TH']
+  icon?: string | null; // Ionicons name from TRIP_ICONS; null/unknown → tripIcon() default
 }
 
 export interface RateSnapshot {

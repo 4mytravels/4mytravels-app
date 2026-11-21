@@ -14,8 +14,9 @@ import { FilterChip, Button } from './ui';
 import { PickerSheet, PickerRow } from './PickerSheet';
 import { pruneTripIds, tripFilterShortLabel } from '../utils/tripFilter';
 import { spacing } from '../theme/theme';
+import { tripIcon } from '../utils/tripIcons';
 
-type TripLike = { id: string; name: string };
+type TripLike = { id: string; name: string; icon?: string | null };
 
 export function TripFilter({
   trips,
@@ -33,11 +34,13 @@ export function TripFilter({
   const [open, setOpen] = useState(false);
   const active = pruneTripIds(selected, trips);
   const label = tripFilterShortLabel(active, trips);
+  // Exactly one trip selected → the chip shows that trip's own icon.
+  const only = active.length === 1 ? trips.find((t) => t.id === active[0]) : undefined;
   return (
     <>
       <FilterChip
         label={label}
-        icon="filter-outline"
+        icon={only ? tripIcon(only) : 'filter-outline'}
         trailingIcon="chevron-down"
         selected={active.length > 0}
         onPress={() => setOpen(true)}
@@ -59,7 +62,7 @@ export function TripFilter({
         {trips.map((t) => (
           <PickerRow
             key={t.id}
-            icon="airplane-outline"
+            icon={tripIcon(t)}
             label={t.name}
             active={active.includes(t.id)}
             onPress={() => onToggle(t.id)}

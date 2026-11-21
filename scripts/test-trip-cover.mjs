@@ -84,7 +84,7 @@ const photoB = new Uint8Array([7, 7, 7, 7]);
   await updateTrip(trip, undefined, recording);
   let call = recording.calls.at(-1);
   assert(/cover_photo\s*=\s*cover_photo/.test(call.sql), 'undefined -> cover_photo = cover_photo');
-  assert(call.params.length === 8, 'undefined bindt geen foto-parameter (params=' + call.params.length + ')');
+  assert(call.params.length === 9, 'undefined bindt geen foto-parameter (params=' + call.params.length + ')');
   assert(call.params.at(-1) === 'trip-1', 'WHERE-parameter blijft als laatste (id)');
 
   // 2. Replace: the blob is bound as a parameter, and (M4) its thumbnail too.
@@ -93,9 +93,9 @@ const photoB = new Uint8Array([7, 7, 7, 7]);
   call = recording.calls.at(-1);
   assert(/cover_photo\s*=\s*\?/.test(call.sql), 'bytes -> cover_photo = ?');
   assert(/cover_thumb\s*=\s*\?/.test(call.sql), 'bytes -> cover_thumb = ? (thumb follows the cover)');
-  assert(call.params.length === 10, 'bytes bindt foto + thumb (params=' + call.params.length + ')');
-  assert(call.params[7] instanceof Uint8Array, 'gebonden foto is een Uint8Array');
-  assert(call.params[8] === thumbA, 'gebonden thumb is de meegegeven thumbnail');
+  assert(call.params.length === 11, 'bytes bindt foto + thumb (params=' + call.params.length + ')');
+  assert(call.params[8] instanceof Uint8Array, 'gebonden foto is een Uint8Array');
+  assert(call.params[9] === thumbA, 'gebonden thumb is de meegegeven thumbnail');
 
   // 3. Clear: null must be bound so SQLite actually NULLs the column. This is
   //    the assertion the old COALESCE version could never pass.
@@ -103,17 +103,17 @@ const photoB = new Uint8Array([7, 7, 7, 7]);
   call = recording.calls.at(-1);
   assert(/cover_photo\s*=\s*\?/.test(call.sql), 'null -> cover_photo = ? (geen COALESCE)');
   assert(!/COALESCE/i.test(call.sql), 'geen COALESCE meer in de UPDATE');
-  assert(call.params.length === 10, 'null bindt foto + thumb (params=' + call.params.length + ')');
-  assert(call.params[7] === null, 'gebonden waarde is null -> kolom wordt geleegd');
-  assert(call.params[8] === null, 'thumb wordt mee geleegd, ook als er een thumb werd meegegeven');
+  assert(call.params.length === 11, 'null bindt foto + thumb (params=' + call.params.length + ')');
+  assert(call.params[8] === null, 'gebonden waarde is null -> kolom wordt geleegd');
+  assert(call.params[9] === null, 'thumb wordt mee geleegd, ook als er een thumb werd meegegeven');
 
   // 4. Photo B after photo A must be a plain replace, never a merge. Without a
   //    thumb argument the thumb column is NULLed (backfilled later), never stale.
   await updateTrip(trip, photoB, recording);
   call = recording.calls.at(-1);
-  assert(call.params[7] instanceof Uint8Array && call.params[7].length === 4,
+  assert(call.params[8] instanceof Uint8Array && call.params[8].length === 4,
     'tweede foto wordt volledig vervangen (niet gemerged)');
-  assert(call.params[8] === null, 'nieuwe foto zonder thumb -> thumb NULL (geen oude thumbnail van foto A)');
+  assert(call.params[9] === null, 'nieuwe foto zonder thumb -> thumb NULL (geen oude thumbnail van foto A)');
 
   // 5. M4: the list load never materialises the full cover BLOB.
   const { loadTrips, backfillCoverThumbs } = require(join(cache, 'db', 'tripRepo.js'));

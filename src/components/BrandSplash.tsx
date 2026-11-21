@@ -3,7 +3,7 @@
 // splash under it and fades/scales the overlay out (~400 ms, native driver).
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
-import * as SplashScreen from 'expo-splash-screen';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 import {
   SPLASH_BG,
   SPLASH_FADE_MS,
@@ -14,7 +14,11 @@ import {
 
 // Module scope: must run before the first render, or the OS splash auto-hides
 // and the user sees the loader/white window in between.
-void SplashScreen.preventAutoHideAsync().catch(() => {});
+// Guarded: an APK built without the native module must still boot.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SplashScreen: typeof import('expo-splash-screen') | null =
+  requireOptionalNativeModule('ExpoSplashScreen') != null ? require('expo-splash-screen') : null;
+void SplashScreen?.preventAutoHideAsync().catch(() => {});
 
 export function BrandSplash({ booted }: { booted: boolean }) {
   const [phase, setPhase] = useState<SplashPhase>('native');
@@ -41,7 +45,7 @@ export function BrandSplash({ booted }: { booted: boolean }) {
       pointerEvents="none"
       onLayout={() => {
         // Overlay is painted: drop the OS splash beneath it, then fade.
-        SplashScreen.hide();
+        SplashScreen?.hide();
         setPhase((p) => nextSplashPhase(p, 'overlayShown'));
       }}
       style={[

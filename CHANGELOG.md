@@ -7,6 +7,7 @@ All notable changes to 4MyTravels will be documented in this file.
 ### Feature batch 2026-11-21
 
 - First-start onboarding: a centred, non-dismissible dialog asks for the home currency (searchable) and the appearance (System / Light / Dark) before first use; "Get started" stores `onboarding_done`. On the PWA it appears after unlock. Existing installs with trips are marked onboarded silently. Web uses a body portal (z-index 10000) so the search field keeps focus.
+- Android: optional "Unlock with biometrics" (Settings > Security, default off) via `expo-local-authentication` — fingerprint/face with device PIN/password fallback, asked at start and after >60 s in the background; enabling and disabling both require a successful authentication. UI lock only (the SQLCipher key in the Keystore is unchanged). Not a passkey. Adds the `USE_BIOMETRIC`/`USE_FINGERPRINT` permissions — **needs a new native build**. PWA unchanged; its WebAuthn button is relabelled "passkey unlock".
 
 ### Store
 - F-Droid screenshot 5 shows the redesigned *Add expense* sheet

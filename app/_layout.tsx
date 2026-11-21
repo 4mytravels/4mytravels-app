@@ -21,6 +21,7 @@ import { getStorageAdapter } from '../src/db';
 import { disableBiometric } from '../src/db/web/biometric';
 import { BiometricEnrollPrompt } from '../src/components/BiometricEnrollPrompt';
 import { OnboardingHost } from '../src/components/OnboardingHost';
+import { AppLockHost } from '../src/components/AppLockHost';
 
 // PWA service worker registration (web only, static builds only). Deferred
 // past first paint; skipped on localhost (Metro dev server serves different
@@ -203,6 +204,9 @@ function RootInner() {
         an appearance pick remounts that tree and must not reset the wizard.
         Only reached once storage is ready, i.e. after the PWA unlock gate. */}
     <OnboardingHost />
+    {/* Native-only optional app lock (Settings > Security). Last, so its
+        Modal sits above onboarding. Renders null on web. */}
+    <AppLockHost />
     </>
   );
 }

@@ -47,6 +47,14 @@ import {
   isBiometricEnrolled,
 } from '../../src/db/web/biometric';
 import { enrollBiometricForSession } from '../../src/db/web/biometricSession';
+import {
+  DEVICE_AUTH_SUPPORTED,
+  authenticateDevice,
+  getDeviceAuthCapability,
+  readAppLockEnabled,
+  writeAppLockEnabled,
+} from '../../src/services/deviceAuth';
+import { lockUnavailableReason } from '../../src/utils/appLock';
 import { useTripStore } from '../../src/store/tripStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
 import { CURRENCIES as SHARED_CURRENCIES } from '../../src/data/currencies';
@@ -120,6 +128,30 @@ export default function SettingsScreen() {
           : 'Setup was cancelled. You can try again.',
       );
     }
+  };
+  // Native only: app lock via expo-local-authentication (biometrics or device
+  // PIN/password). NOT a passkey. UI lock; the Keystore DB key is unchanged.
+  const [appLockOn, setAppLockOn] = useState(false);
+  useEffect(() => {
+    if (!DEVICE_AUTH_SUPPORTED) return;
+    void readAppLockEnabled().then(setAppLockOn).catch(() => {});
+  }, []);
+  const toggleAppLock = async () => {
+    if (appLockOn) {
+      // Turning it off also requires the owner, or anyone holding the unlocked phone could.
+      if (!(await authenticateDevice('Confirm to turn off the app lock'))) return;
+      await writeAppLockEnabled(false);
+      setAppLockOn(false);
+      return;
+    }
+    const reason = lockUnavailableReason(await getDeviceAuthCapability());
+    if (reason) { showStatus('App lock unavailable', reason); return; }
+    if (!(await authenticateDevice('Confirm to turn on the app lock'))) {
+      showStatus('App lock not enabled', 'Authentication was cancelled. You can try again.');
+      return;
+    }
+    await writeAppLockEnabled(true);
+    setAppLockOn(true);
   };
   const [currencyQuery, setCurrencyQuery] = useState('');
 
@@ -358,15 +390,36 @@ export default function SettingsScreen() {
             <SectionTitle title="Security" />
             <Card>
               <Text style={styles.note}>
-                Unlock with fingerprint or face instead of typing your passphrase. The passphrase
-                stays your recovery key for new devices or a reset browser.
+                Unlock with fingerprint or face (a passkey stored by this browser) instead of
+                typing your passphrase. The passphrase stays your recovery key for new devices or
+                a reset browser.
               </Text>
               <View style={styles.actions}>
                 <Button
-                  label={bioEnrolled ? 'Disable biometric unlock' : 'Enable biometric unlock'}
+                  label={bioEnrolled ? 'Disable passkey unlock' : 'Enable passkey unlock'}
                   icon="finger-print-outline"
                   variant={bioEnrolled ? 'ghost' : 'primary'}
                   onPress={toggleBiometric}
+                />
+              </View>
+            </Card>
+          </View>
+        )}
+
+        {Platform.OS !== 'web' && DEVICE_AUTH_SUPPORTED && (
+          <View style={styles.section}>
+            <SectionTitle title="Security" />
+            <Card>
+              <Text style={styles.note}>
+                Lock the app with your fingerprint, face or device PIN. Asked at start and when you
+                return after more than a minute away. Your data stays encrypted either way.
+              </Text>
+              <View style={styles.actions}>
+                <Button
+                  label={appLockOn ? 'Disable unlock with biometrics' : 'Enable unlock with biometrics'}
+                  icon={appLockOn ? 'lock-open-outline' : 'finger-print-outline'}
+                  variant={appLockOn ? 'ghost' : 'primary'}
+                  onPress={() => void toggleAppLock()}
                 />
               </View>
             </Card>

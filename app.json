@@ -45,6 +45,7 @@
     "plugins": [
       ["expo-router", { "asyncRoutes": { "web": "production", "default": false } }],
       "expo-secure-store",
+      "expo-local-authentication",
       "expo-sharing"
     ],
     "extra": {

@@ -4,7 +4,13 @@ All notable changes to 4MyTravels will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-21
+
 ### Feature batch 2026-11-21
+
+- Fix: an older dev-client without the new native modules no longer crashes at boot (guarded `expo-local-authentication` / `expo-splash-screen`).
+- EAS: `.easignore` excludes the committed `android/` so EAS prebuilds from `app.config.js`.
+- F-Droid: short description under 80 characters.
 
 - Branded start: the native splash is now configured through the `expo-splash-screen` plugin (brand background `#0A0A1A`, light and dark, logo 200 dp) instead of the ignored legacy `android.splash` key that left a white window with a small logo. The splash stays up until storage is ready, then a matching overlay fades/scales out (~400 ms). PWA: manifest already brand-coloured; the `<html>` element now also has the brand background before hydration. Adds `expo-splash-screen` — **needs a new native build**.
 - First-start onboarding: a centred, non-dismissible dialog asks for the home currency (searchable) and the appearance (System / Light / Dark) before first use; "Get started" stores `onboarding_done`. On the PWA it appears after unlock. Existing installs with trips are marked onboarded silently. Web uses a body portal (z-index 10000) so the search field keeps focus.

@@ -1,0 +1,9 @@
+First start: choose your home currency and appearance (System, Light, Dark).
+
+Optional biometric or device PIN unlock (Settings > Security).
+
+CSV export saves files instead of sharing; "All trips" writes one CSV per trip.
+
+Pick an icon per trip; it shows in the trip filters.
+
+Branded start screen instead of a white flash.

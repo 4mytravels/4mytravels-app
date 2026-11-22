@@ -22,10 +22,12 @@
     "expo-image-manipulator": "~57.0.18",
     "expo-image-picker": "~57.0.18",
     "expo-linking": "~57.0.10",
+    "expo-local-authentication": "~57.0.3",
     "expo-modules-core": "~57.0.12",
     "expo-router": "~57.0.21",
     "expo-secure-store": "~57.0.4",
     "expo-sharing": "~57.0.20",
+    "expo-splash-screen": "~57.0.11",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -58,7 +60,11 @@
     "test:stats": "node scripts/test-stats-utils.mjs",
     "test:scroll": "node scripts/test-scroll-target.mjs",
     "test:store": "node scripts/test-expense-store.mjs",
-    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:scroll && npm run test:store"
+    "test:edit": "node scripts/test-edit-paths.mjs",
+    "test:policy": "node scripts/test-storage-policy.mjs",
+    "test:layout": "node scripts/test-layout.mjs",
+    "test:backup": "node scripts/test-backup-restore.mjs && node scripts/test-backup-roundtrip.mjs && node scripts/test-backup-share.mjs",
+    "test": "npm run test:cover && npm run test:days && npm run test:csv && npm run test:filter && npm run test:receipts && npm run test:stats && npm run test:backup && npm run test:scroll && npm run test:store && npm run test:edit && npm run test:policy && npm run test:layout"
   },
   "private": true
 }

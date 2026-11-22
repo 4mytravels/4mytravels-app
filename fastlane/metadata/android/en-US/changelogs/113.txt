@@ -4,6 +4,6 @@ Optional biometric or device PIN unlock (Settings > Security).
 
 CSV export saves files instead of sharing; "All trips" writes one CSV per trip.
 
-Pick an icon per trip; it shows in the trip filters.
+Pick an icon per trip (beach, mountains, city, safari and more); it shows in the trip filters.
 
 Branded start screen instead of a white flash.

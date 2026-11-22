@@ -51,7 +51,8 @@ import {
   type BudgetMode,
 } from '../../src/utils/tripForm';
 import type { Trip } from '../../src/types';
-import { TRIP_ICONS, tripIcon, type TripIconName } from '../../src/utils/tripIcons';
+import { TRIP_ICONS, tripIcon, tripIconLabel, type TripIconName } from '../../src/utils/tripIcons';
+import { AppIcon } from '../../src/components/AppIcon';
 
 // bytesToBase64 lives in src/utils/image.ts (shared with the expense form).
 import { bytesToBase64 } from '../../src/utils/image';
@@ -229,10 +230,10 @@ function TripIconGrid({ value, onChange }: { value: TripIconName; onChange: (i: 
             onPress={() => onChange(name)}
             accessibilityRole="radio"
             accessibilityState={{ selected: active }}
-            accessibilityLabel={`Trip icon ${name.replace(/-outline$/, '').replace(/-/g, ' ')}`}
+            accessibilityLabel={`Trip icon ${tripIconLabel(name)}`}
             style={[styles.iconTile, active && styles.iconTileActive]}
           >
-            <Ionicons name={name} size={22} color={active ? colors.primaryText : colors.mutedForeground} />
+            <AppIcon name={name} size={22} color={active ? colors.primaryText : colors.mutedForeground} />
           </Pressable>
         );
       })}

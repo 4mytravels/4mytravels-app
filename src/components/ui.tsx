@@ -14,6 +14,7 @@ import {
   type TextProps,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { AppIcon, type AppIconName } from './AppIcon';
 import {
   colors,
   fontFamily,
@@ -273,7 +274,7 @@ export function FilterChip({
   label: string;
   selected?: boolean;
   onPress?: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: AppIconName;
   /** e.g. 'chevron-down' for a chip that opens a sheet. */
   trailingIcon?: keyof typeof Ionicons.glyphMap;
   style?: StyleProp<ViewStyle>;
@@ -301,7 +302,7 @@ export function FilterChip({
         style,
       ]}
     >
-      {icon && <Ionicons name={icon} size={iconSize.sm} color={selected ? colors.primaryText : colors.mutedForeground} />}
+      {icon && <AppIcon name={icon} size={iconSize.sm} color={selected ? colors.primaryText : colors.mutedForeground} />}
       <Text
         maxFontSizeMultiplier={1.3}
         numberOfLines={1}

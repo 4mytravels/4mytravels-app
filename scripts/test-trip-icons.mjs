@@ -31,9 +31,18 @@ try {
   const m = require(join(cache, 'tripIcons.js'));
   const glyphs = JSON.parse(readFileSync(join(root,
     'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json'), 'utf8'));
-  const missing = m.TRIP_ICONS.filter((n) => !(n in glyphs));
-  assert(missing.length === 0, `all ${m.TRIP_ICONS.length} curated icons exist in Ionicons (missing: ${missing.join(',') || 'none'})`);
-  assert(m.TRIP_ICONS.length >= 20 && m.TRIP_ICONS.length <= 30, 'curated set is ~24 icons');
+  const mci = JSON.parse(readFileSync(join(root,
+    'node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/MaterialCommunityIcons.json'), 'utf8'));
+  const exists = (n) => n.startsWith('mci:') ? (n.slice(4) in mci) : (n in glyphs);
+  const missing = m.TRIP_ICONS.filter((n) => !exists(n));
+  assert(missing.length === 0, `all ${m.TRIP_ICONS.length} curated icons exist in Ionicons/MCI (missing: ${missing.join(',') || 'none'})`);
+  assert(m.TRIP_ICONS.length >= 20 && m.TRIP_ICONS.length <= 40, 'curated set is 20-40 icons');
+  for (const n of ['mci:palm-tree', 'mci:image-filter-hdr', 'mci:beach']) assert(m.TRIP_ICONS.includes(n), `grid has ${n}`);
+  assert(m.tripIcon({ icon: 'mci:palm-tree' }) === 'mci:palm-tree', 'mci name kept');
+  assert(m.tripIcon({ icon: 'mci:not-real' }) === 'airplane-outline', 'unknown mci name → default');
+  assert(m.tripIcon({ icon: 'compass-outline' }) === 'compass-outline', 'legacy name from first set still valid');
+  assert(m.splitIconName('mci:ski').family === 'mci' && m.splitIconName('mci:ski').glyph === 'ski', 'splitIconName mci');
+  assert(m.tripIconLabel('mci:image-filter-hdr') === 'mountains', 'a11y label mountains');
   assert(new Set(m.TRIP_ICONS).size === m.TRIP_ICONS.length, 'no duplicates');
   assert(m.TRIP_ICONS[0] === m.DEFAULT_TRIP_ICON && m.DEFAULT_TRIP_ICON === 'airplane-outline', 'default = airplane-outline, first in grid');
   assert(m.tripIcon(undefined) === 'airplane-outline', 'undefined trip → default');

@@ -25,6 +25,7 @@
 import { PropsWithChildren, ReactNode, useEffect, useRef } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { AppIcon, type AppIconName } from './AppIcon';
 import { SheetPortal } from './SheetPortal';
 import { useKeyboardHeight } from '../utils/useKeyboardHeight';
 import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
@@ -141,13 +142,13 @@ export function PickerRow({
   active: boolean;
   onPress: () => void;
   /** Optional leading icon — used by the filter sheets so they look like the
-   *  Statistics trip filter (icon + label + checkmark). */
-  icon?: keyof typeof Ionicons.glyphMap;
+   *  Statistics trip filter (icon + label + checkmark). `mci:` names allowed. */
+  icon?: AppIconName;
 }) {
   return (
     <Pressable style={[styles.row, active && styles.rowActive]} onPress={onPress}>
       {icon && (
-        <Ionicons name={icon} size={18} color={active ? colors.primary : colors.mutedForeground} />
+        <AppIcon name={icon} size={18} color={active ? colors.primary : colors.mutedForeground} />
       )}
       <Text style={[styles.rowText, active && { color: colors.primaryText, fontWeight: '700' }]} numberOfLines={1}>
         {label}

@@ -1,7 +1,8 @@
 // Web only: after the storage is unlocked, offer biometric unlock once so the
 // passphrase is only needed for recovery. Dismissal is remembered; Settings
 // keeps a toggle. Renders nothing on native or when WebAuthn PRF is unavailable.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { getOnboardingOpen, subscribeOnboardingOpen } from '../utils/onboarding';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { colors, themedStyles } from '../theme/theme';
 import {
@@ -26,7 +27,10 @@ export function BiometricEnrollPrompt() {
     return () => { alive = false; };
   }, []);
 
-  if (!visible) return null;
+  // Wait for the first-start dialog to close; never stack on top of it.
+  const onboarding = useSyncExternalStore(subscribeOnboardingOpen, getOnboardingOpen, () => false);
+
+  if (!visible || onboarding) return null;
 
   const enable = async () => {
     setBusy(true);

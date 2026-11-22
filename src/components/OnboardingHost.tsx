@@ -16,7 +16,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useThemeMode } from '../theme/ThemeProvider';
 import { THEME_MODES, THEME_MODE_LABEL } from '../theme/themeMode';
 import { CURRENCIES } from '../data/currencies';
-import { ONBOARDING_KEY, decideOnboarding, filterCurrencies } from '../utils/onboarding';
+import { ONBOARDING_KEY, decideOnboarding, filterCurrencies, setOnboardingOpen } from '../utils/onboarding';
 import { colors, fontFamily, fontSize, radius, spacing, themedStyles } from '../theme/theme';
 import { Button, FilterChip } from './ui';
 import { OnboardingFrame } from './OnboardingFrame';
@@ -46,6 +46,7 @@ export function OnboardingHost() {
           await useSettingsStore.getState().hydrate();
           if (!alive) return;
           setCurrency(useSettingsStore.getState().defaultHomeCurrency || 'EUR');
+          setOnboardingOpen(true);
           setVisible(true);
         }
       } catch {
@@ -68,6 +69,7 @@ export function OnboardingHost() {
       /* best effort: the choice applies this session; the dialog returns next start */
     }
     setVisible(false);
+    setOnboardingOpen(false);
   };
 
   return (

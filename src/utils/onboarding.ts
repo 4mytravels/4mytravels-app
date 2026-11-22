@@ -26,3 +26,19 @@ export function filterCurrencies<T extends CurrencyLike>(list: T[], query: strin
   if (!q) return list;
   return list.filter((c) => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
 }
+
+// Module-scope "is the onboarding dialog open" flag, so other first-run
+// prompts (web biometric enrol) wait until it is closed instead of
+// stacking on top of it.
+let onboardingOpen = false;
+const openListeners = new Set<() => void>();
+export function setOnboardingOpen(v: boolean): void {
+  if (onboardingOpen === v) return;
+  onboardingOpen = v;
+  openListeners.forEach((l) => l());
+}
+export function getOnboardingOpen(): boolean { return onboardingOpen; }
+export function subscribeOnboardingOpen(l: () => void): () => void {
+  openListeners.add(l);
+  return () => { openListeners.delete(l); };
+}

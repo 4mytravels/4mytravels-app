@@ -646,11 +646,6 @@ export function TripEditor({ editId }: { editId?: string }) {
             <CountryChips selected={countries} onChange={setCountries} />
           </Field>
 
-          <Field label="Icon">
-            <TripIconGrid value={icon} onChange={setIcon} />
-            <Text style={styles.coverHint}>Shown next to the trip in filters.</Text>
-          </Field>
-
           <Field label="Currency">
             <CurrencyPicker
               value={defaultCurrency}
@@ -705,6 +700,11 @@ export function TripEditor({ editId }: { editId?: string }) {
                 ? 'Add an end date to enter a total budget.'
                 : hint ?? 'Leave empty for no budget.'}
             </Text>
+          </Field>
+
+          <Field label="Icon">
+            <TripIconGrid value={icon} onChange={setIcon} />
+            <Text style={styles.coverHint}>Shown next to the trip in filters.</Text>
           </Field>
 
           {/* Per-trip home currency override (default from Settings). */}
